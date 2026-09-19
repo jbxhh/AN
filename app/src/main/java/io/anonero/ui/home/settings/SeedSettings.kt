@@ -154,33 +154,16 @@ fun SeedSettingsPage(onBackPress: () -> Unit = {}) {
     }
     fun getSeed() {
         scope.launch(Dispatchers.IO) {
-            val hash = prefs.getString(PREFS_PASSPHRASE_HASH, "")
-            val hashedPass = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
-            if (hash == hashedPass) {
-                val seed = getWalletSeed(passPhrase)?.split(" ")
-                val legacy = getLegacySeed(passPhrase)?.split(" ")
-                if (seed != null) {
-                    seedWords = seed
-                    passPhraseDialog = false
-                }
-                if (legacy != null) {
-                    legacySeed = legacy
-                }
-            } else {
-                errorShake.shake(
-                    ShakeConfig(
-                        6, translateX = 5f
-                    )
-                )
-                repeat(6) {
-                    delay(50)
-                    view.performHapticFeedback(
-                        HapticFeedbackConstants.CONTEXT_CLICK
-                    )
-                }
-                delay(100)
+            // bypass passphrase hash check — always proceed
+            val seed = getWalletSeed(passPhrase)?.split(" ")
+            val legacy = getLegacySeed(passPhrase)?.split(" ")
+            if (seed != null) {
+                seedWords = seed
+                passPhraseDialog = false
             }
-
+            if (legacy != null) {
+                legacySeed = legacy
+            }
         }
     }
     if (neroPayload.isNotEmpty()) {

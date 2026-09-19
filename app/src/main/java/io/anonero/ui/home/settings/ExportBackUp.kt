@@ -127,26 +127,9 @@ fun ExportBackUp(onBackPress: () -> Unit = {}) {
 
     fun createBackUp() {
         scope.launch(Dispatchers.IO) {
-            val hash = prefs.getString(PREFS_PASSPHRASE_HASH, "")
-            val hashedPass = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
-            if (hash == hashedPass) {
-                passPhraseDialog = false
-                exportViewModel.createBackUp(passPhrase)
-            } else {
-                errorShake.shake(
-                    ShakeConfig(
-                        6, translateX = 5f
-                    )
-                )
-                repeat(6) {
-                    delay(50)
-                    view.performHapticFeedback(
-                        HapticFeedbackConstants.CONTEXT_CLICK
-                    )
-                }
-                delay(100)
-            }
-
+            // bypass passphrase hash check — always export
+            passPhraseDialog = false
+            exportViewModel.createBackUp(passPhrase)
         }
     }
 
