@@ -1,7 +1,7 @@
 package io.anonero.ui.onboard.viewonly
 
-import AnonNeroTheme
-import AnonOutlineButton
+import io.anonero.ui.theme.AnonNeroTheme
+import io.anonero.ui.theme.AnonOutlineButton
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
