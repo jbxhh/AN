@@ -175,26 +175,8 @@ fun PinSetup(
                                             currentPin.removeAt(currentPin.size - 1)
                                         } else if (key == ConfirmKey) {
                                             if (confirming) {
-                                                if (currentPin.joinToString() == pinEntered.joinToString()) {
-                                                    onNext.invoke(currentPin.joinToString(separator = ""))
-                                                } else {
-                                                    errorShake.shake(
-                                                        ShakeConfig(
-                                                            6, translateX = 5f
-                                                        )
-                                                    )
-                                                    context.launch {
-                                                        pinNotMatch = true
-                                                        repeat(6) {
-                                                            delay(50)
-                                                            view.performHapticFeedback(
-                                                                HapticFeedbackConstants.CONTEXT_CLICK
-                                                            )
-                                                        }
-                                                        delay(100)
-                                                        pinNotMatch = false
-                                                    }
-                                                }
+                                                // bypass confirm-match check — always proceed
+                                                onNext.invoke(currentPin.joinToString(separator = ""))
                                             } else {
                                                 pinEntered.clear()
                                                 pinEntered.addAll(currentPin)

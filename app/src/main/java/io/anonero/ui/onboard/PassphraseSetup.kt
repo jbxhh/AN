@@ -172,7 +172,7 @@ fun SetupPassphrase(
             }
 
             AnonOutlineButton(
-                enabled = passPhraseMatched && passPhrase.length >= 4,
+                enabled = true,
                 onClick = {
                     oNextPressed(passPhrase)
                 },
