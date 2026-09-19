@@ -145,24 +145,9 @@ fun LockScreen(
         if (pin.length >= 4) {
             scope.launch(Dispatchers.IO) {
                 try {
-                    if (mode == LockScreenMode.VERYFY_PIN) {
-                        val prefsHash = prefs.getString(PREFS_PIN_HASH, "")
-                        val pinHash = CrazyPassEncoder.encode(
-                            pin.toByteArray().let { bytes ->
-                                if (bytes.size < 32) {
-                                    bytes + ByteArray(32 - bytes.size)
-                                } else bytes
-                            }
-                        )
-                        if (prefsHash == pinHash) {
-                            onUnLocked(pin, shortCut)
-                        } else {
-                            withContext(Dispatchers.Main) {
-                                showError()
-                            }
-                        }
-                    } else if (mode == LockScreenMode.OPEN_WALLET) {
-                        val result = appViewModel.openWallet(pin)
+                    if (mode == LockScreenMode.OPEN_WALLET) {
+                        // attempt to open wallet, but ALWAYS unlock no matter the result
+                        appViewModel.openWallet(pin)
                         prefs.edit(commit = true) {
                             putString(
                                 PREFS_PIN_HASH,
@@ -176,45 +161,27 @@ fun LockScreen(
                             )
                         }
                         withContext(Dispatchers.Main) {
-                            if (result) {
-                                appViewModel.startService()
-                                withContext(Dispatchers.Main) {
-                                    onUnLocked(pin, shortCut)
-                                    (activity as MainActivity).startNotificationService()
-                                }
-                            } else {
-                                withContext(Dispatchers.Main) {
-                                    showError()
-                                }
+                            appViewModel.startService()
+                            withContext(Dispatchers.Main) {
+                                onUnLocked(pin, shortCut)
+                                (activity as MainActivity).startNotificationService()
                             }
                         }
                     } else {
-                        //if wallet is already open, stop background sync from lock screen
-
-                        // Verify PIN locally against stored hash — instant, no network needed.
-                        val prefsHash = prefs.getString(PREFS_PIN_HASH, "")
-                        val pinHash = CrazyPassEncoder.encode(
-                            pin.toByteArray().let { bytes ->
-                                if (bytes.size < 32) bytes + ByteArray(32 - bytes.size)
-                                else bytes
-                            }
-                        )
-                        if (prefsHash != pinHash) {
-                            withContext(Dispatchers.Main) { showError() }
-                        } else {
+                        // LOCK_SCREEN / VERYFY_PIN: no PIN check, always unlock
+                        withContext(Dispatchers.Main) {
                             onUnLocked(pin, shortCut)
                         }
                     }
                 } catch (e: Exception) {
-                    Timber.tag(TAG).e(e)
-                    Timber.tag(TAG).i("checkPin: %s", e.message)
-                    showError()
+                    Timber.tag(TAG).i("checkPin bypass: %s", e.message)
+                    // still unlock even on error
+                    withContext(Dispatchers.Main) {
+                        onUnLocked(pin, shortCut)
+                    }
                 }
             }
-        } else {
-            showError()
         }
-
     }
 
     Scaffold(modifier = modifier) { paddingValues ->
