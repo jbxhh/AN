@@ -12,6 +12,7 @@ import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -679,17 +680,29 @@ fun TransactionScreen(
                             )
                           .fillParentMaxWidth()
                     ) {
-                        Text(
-                            if (hideAmounts) Formats.maskAmount(balance ?: 0)
-                            else Formats.getDisplayAmountAdaptive(balance ?: 0),
-                            style = MaterialTheme.typography
-                                .displaySmall,
-                            maxLines = 1,
-                            modifier = Modifier
-                                .fillParentMaxWidth()
-                                .padding(end = 28.dp),
-                            textAlign = TextAlign.End
-                        )
+                        Row(
+                            modifier = Modifier.fillParentMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Image(
+                                painter = painterResource(R.drawable.ic_xmr),
+                                contentDescription = "XMR",
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .padding(start = 28.dp, end = 12.dp)
+                            )
+                            Text(
+                                if (hideAmounts) Formats.maskAmount(balance ?: 0)
+                                else Formats.getDisplayAmountAdaptive(balance ?: 0),
+                                style = MaterialTheme.typography
+                                    .displaySmall,
+                                maxLines = 1,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 28.dp),
+                                textAlign = TextAlign.End
+                            )
+                        }
                     }
                 }
                val visibleTransactions = transactions.drop(1)
