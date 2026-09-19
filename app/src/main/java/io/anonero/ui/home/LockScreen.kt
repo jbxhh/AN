@@ -162,30 +162,21 @@ fun LockScreen(
                             }
                         }
                     } else if (mode == LockScreenMode.OPEN_WALLET) {
-                        // read previously stored PIN hash BEFORE we overwrite it below
-                        val storedPinHash = prefs.getString(PREFS_PIN_HASH, "")
                         val result = appViewModel.openWallet(pin)
-                        // hash of the PIN just entered
-                        val enteredPinHash = CrazyPassEncoder.encode(
-                            pin.toByteArray().let { bytes ->
-                                if (bytes.size < 32) {
-                                    bytes + ByteArray(32 - bytes.size)
-                                } else bytes
-                            }
-                        )
-                        // hard local check: if a PIN was already set, the entered PIN
-                        // MUST match it, regardless of what the native layer says.
-                        // If nothing stored yet (first wallet creation), trust openWallet.
-                        val localPinOk =
-                            storedPinHash.isEmpty() || storedPinHash == enteredPinHash
                         prefs.edit(commit = true) {
                             putString(
                                 PREFS_PIN_HASH,
-                                enteredPinHash
+                                CrazyPassEncoder.encode(
+                                    pin.toByteArray().let { bytes ->
+                                        if (bytes.size < 32) {
+                                            bytes + ByteArray(32 - bytes.size)
+                                        } else bytes
+                                    }
+                                )
                             )
                         }
                         withContext(Dispatchers.Main) {
-                            if (result && localPinOk) {
+                            if (result) {
                                 appViewModel.startService()
                                 withContext(Dispatchers.Main) {
                                     onUnLocked(pin, shortCut)
