@@ -1,7 +1,7 @@
 package io.anonero.ui.home.settings
 
-import AnonNeroTheme
-import AnonOutlineButton
+import io.anonero.ui.theme.AnonNeroTheme
+import io.anonero.ui.theme.AnonOutlineButton
 import android.content.SharedPreferences
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -652,8 +652,8 @@ fun NodeListItem(
                             // remove old and add new
                             nodeSettingsVM.removeItem(node.toNodeString())
                             nodeSettingsVM.addItem(newNode)
-                            editing = false
                         }
+                        editing = false
                     }) {
                         Text(stringResource(R.string.confirm))
                     }
