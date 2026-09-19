@@ -1,6 +1,6 @@
 package io.anonero.ui.home
 
-import AnonNeroTheme
+import io.anonero.ui.theme.AnonNeroTheme
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
