@@ -1,6 +1,6 @@
 package io.anonero.ui.home.settings
 
-import AnonNeroTheme
+import io.anonero.ui.theme.AnonNeroTheme
 import android.content.SharedPreferences
 import android.net.Uri
 import android.util.Log

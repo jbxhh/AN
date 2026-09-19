@@ -1,6 +1,6 @@
 package io.anonero.ui.home
 
-import AnonNeroTheme
+import io.anonero.ui.theme.AnonNeroTheme
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
