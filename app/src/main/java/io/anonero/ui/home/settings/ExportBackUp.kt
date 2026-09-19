@@ -1,7 +1,7 @@
 package io.anonero.ui.home.settings
 
-import AnonNeroTheme
-import AnonOutlineButton
+import io.anonero.ui.theme.AnonNeroTheme
+import io.anonero.ui.theme.AnonOutlineButton
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri

@@ -1,6 +1,6 @@
 package io.anonero.ui.home.spend.qr
 
-import AnonNeroTheme
+import io.anonero.ui.theme.AnonNeroTheme
 import android.content.Intent
 import android.icu.text.SimpleDateFormat
 import android.net.Uri

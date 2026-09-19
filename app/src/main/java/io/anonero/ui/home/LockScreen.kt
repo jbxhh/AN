@@ -1,6 +1,6 @@
 package io.anonero.ui.home
 
-import AnonNeroTheme
+import io.anonero.ui.theme.AnonNeroTheme
 import android.content.SharedPreferences
 import android.util.Log
 import android.view.HapticFeedbackConstants
