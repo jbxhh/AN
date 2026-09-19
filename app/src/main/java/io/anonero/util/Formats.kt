@@ -22,8 +22,7 @@ object Formats {
 
 
     fun maskAmount(amount: Long): String {
-        val plain = getDisplayAmountAdaptive(amount)
-        return "#".repeat(plain.length)
+        return "#".repeat(13)
     }
 
         fun getDisplayAmount(amount: Long): String {
