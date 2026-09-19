@@ -1,7 +1,7 @@
 package io.anonero.ui.home.spend
 
-import AnonNeroTheme
-import AnonOutlineButton
+import io.anonero.ui.theme.AnonNeroTheme
+import io.anonero.ui.theme.AnonOutlineButton
 import android.os.Build
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
