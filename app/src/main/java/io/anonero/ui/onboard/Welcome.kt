@@ -1,7 +1,7 @@
 package io.anonero.ui.onboard
 
-import AnonNeroTheme
-import AnonOutlineButton
+import io.anonero.ui.theme.AnonNeroTheme
+import io.anonero.ui.theme.AnonOutlineButton
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts

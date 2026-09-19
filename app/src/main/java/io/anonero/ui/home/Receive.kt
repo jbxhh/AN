@@ -1,6 +1,6 @@
 package io.anonero.ui.home
 
-import AnonNeroTheme
+import io.anonero.ui.theme.AnonNeroTheme
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement

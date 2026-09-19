@@ -1,6 +1,6 @@
 package io.anonero.ui.home.addresses
 
-import AnonNeroTheme
+import io.anonero.ui.theme.AnonNeroTheme
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
