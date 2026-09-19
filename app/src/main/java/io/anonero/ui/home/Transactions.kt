@@ -65,6 +65,8 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -684,12 +686,13 @@ fun TransactionScreen(
                             modifier = Modifier.fillParentMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Image(
-                                painter = painterResource(R.drawable.ic_xmr),
-                                contentDescription = "XMR",
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .padding(start = 28.dp, end = 12.dp)
+                            Text(
+                                "XMR",
+                                style = MaterialTheme.typography.displayLarge.copy(
+                                    fontFamily = FontFamily.Serif,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                modifier = Modifier.padding(start = 28.dp, end = 16.dp)
                             )
                             Text(
                                 if (hideAmounts) Formats.maskAmount(balance ?: 0)
