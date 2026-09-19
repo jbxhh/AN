@@ -1,6 +1,6 @@
 package io.anonero.ui.home
 
-import AnonNeroTheme
+import io.anonero.ui.theme.AnonNeroTheme
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically

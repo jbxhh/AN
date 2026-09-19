@@ -1,6 +1,6 @@
 package io.anonero.ui.onboard
 
-import AnonNeroTheme
+import io.anonero.ui.theme.AnonNeroTheme
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize

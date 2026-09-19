@@ -1,6 +1,6 @@
 package io.anonero.ui
 
-import AnonNeroTheme
+import io.anonero.ui.theme.AnonNeroTheme
 import android.Manifest
 import android.content.Intent
 import android.content.SharedPreferences
