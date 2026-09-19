@@ -1,6 +1,6 @@
 package io.anonero.ui.onboard.restore
 
-import AnonOutlineButton
+import io.anonero.ui.theme.AnonOutlineButton
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
