@@ -1,6 +1,6 @@
 package io.anonero.ui.onboard
 
-import AnonNeroTheme
+import io.anonero.ui.theme.AnonNeroTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
