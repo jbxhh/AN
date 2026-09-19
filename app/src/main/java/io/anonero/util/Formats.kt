@@ -22,7 +22,7 @@ object Formats {
 
 
     fun maskAmount(amount: Long): String {
-        val plain = getDisplayAmount(amount).trimEnd('0').trimEnd('.')
+        val plain = getDisplayAmountAdaptive(amount)
         return "#".repeat(plain.length)
     }
 
