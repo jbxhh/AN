@@ -1,6 +1,6 @@
 package io.anonero.ui.home
 import androidx.compose.ui.unit.sp
-import AnonOutlineButton
+import io.anonero.ui.theme.AnonOutlineButton
 import androidx.compose.ui.text.font.FontFamily
 import android.os.Build
 import android.util.Log
