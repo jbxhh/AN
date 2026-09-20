@@ -292,15 +292,6 @@ fun TransactionDetailScreen(
                 }
                 item {
                     DetailItem(
-                        title = stringResource(R.string.time),
-                        subtitle = Formats.formatTransactionTime(
-                            transactionInfo!!.timestamp,
-                            "yyyy/MM/dd HH:mm:ss"
-                        )
-                    )
-                }
-                item {
-                    DetailItem(
                         title = stringResource(R.string.destination),
                         subtitle = destinations,
                         copyable = true
