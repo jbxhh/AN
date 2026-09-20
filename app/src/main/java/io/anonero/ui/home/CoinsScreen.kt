@@ -119,22 +119,7 @@ fun CoinsScreen(
         modifier = modifier,
         floatingActionButtonPosition = FabPosition.Center,
         floatingActionButton = {
-            AnimatedVisibility(
-                modifier = Modifier
-                    .padding(
-                        horizontal = 8.dp,
-                        vertical = 8.dp
-                    ),
-                visible = selectedCoins.isNotEmpty(),
-                enter = slideInVertically(
-                    initialOffsetY = { it },
-                    animationSpec = tween(durationMillis = 220)
-                ),
-                exit = slideOutVertically(
-                    targetOffsetY = { it },
-                    animationSpec = tween(durationMillis = 220)
-                )
-            ) {
+            if (selectedCoins.isNotEmpty()) {
                 OutlinedButton(
                     colors = ButtonDefaults.outlinedButtonColors(
                         containerColor = MaterialTheme.colorScheme.background,
