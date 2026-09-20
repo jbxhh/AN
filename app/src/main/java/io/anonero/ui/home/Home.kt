@@ -7,6 +7,8 @@ import android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
 import android.util.Log
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -203,6 +205,10 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                     fadeOut(animationSpec = tween(340))
                 }, enterTransition = {
                     fadeIn(animationSpec = tween(340))
+                }, popExitTransition = {
+                    ExitTransition.None
+                }, popEnterTransition = {
+                    EnterTransition.None
                 }) {
                     composable<TransactionsRoute> {
                         TransactionScreen(
