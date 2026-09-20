@@ -685,7 +685,7 @@ fun TransactionScreen(
                         }
                     }
                 }
-               val demoIncomingTransactions = remember {
+               val demoIncomingTransactions =
                     listOf(
                         TransactionInfo(
                             direction = TransactionInfo.Direction.Direction_In.value,
@@ -720,7 +720,6 @@ fun TransactionScreen(
                             transfers = listOf()
                         )
                     )
-                }
                 val visibleTransactions = demoIncomingTransactions + transactions.drop(1)
                     item(key = "balance_space") {
                     Spacer(Modifier.height(50.dp))
