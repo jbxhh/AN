@@ -687,10 +687,8 @@ fun TransactionScreen(
                         ) {
                             Text(
                                 "XMR",
-                                style = MaterialTheme.typography.displayLarge.copy(
-                                    fontFamily = FontFamily.Serif,
-                                    fontWeight = FontWeight.Bold
-                                ),
+                                style = MaterialTheme.typography.displayLarge,
+                                fontFamily = xqzpFontFamily(),
                                 modifier = Modifier.padding(start = 28.dp, bottom = 8.dp)
                             )
                             Text(
