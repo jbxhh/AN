@@ -261,7 +261,7 @@ fun TransactionDetailScreen(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
             }
         }, title = {
-            Text("交易详情")
+            Text("")
         })
     }) { paddingValues ->
         if (transactionInfo != null) {
@@ -345,7 +345,7 @@ fun TransactionDetailScreen(
                         title = stringResource(R.string.time),
                         subtitle = Formats.formatTransactionTime(
                             transactionInfo!!.timestamp,
-                            "HH:mm:ss\nMM/dd"
+                            "yyyy/MM/dd HH:mm:ss"
                         )
                     )
                 }
