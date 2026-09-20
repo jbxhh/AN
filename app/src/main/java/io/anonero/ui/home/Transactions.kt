@@ -58,6 +58,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -677,7 +678,9 @@ fun TransactionScreen(
                                 "XMR",
                                 style = MaterialTheme.typography.displayLarge.copy(fontSize = 50.sp),
                                 fontFamily = xqzpFontFamily(),
-                                modifier = Modifier.padding(start = 8.dp, bottom = 2.dp, top = (-12).dp)
+                                modifier = Modifier
+                                    .padding(start = 8.dp, bottom = 2.dp)
+                                    .offset(y = (-12).dp)
                             )
                             Text(
                                 if (hideAmounts) Formats.maskAmount(balance ?: 0)
