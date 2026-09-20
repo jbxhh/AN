@@ -5,6 +5,8 @@ name: Build ANON APK
   workflow_dispatch:
 env:
   JAVA_VERSION: '17'
+  ANONERO_MONERO_ONION: 'http://git.anonero5wmhraxqsvzq2ncgptq6gq45qoto6fnkfwughfl4gbt44swad.onion/ANONERO/monero.git'
+  ANONERO_MONERO_BRANCH: 'release-v0.18.0.0-monerujo'
 permissions:
   contents: read
 jobs:
@@ -44,12 +46,32 @@ jobs:
             external-libs/armeabi-v7a
             external-libs/include
           key: anon-native-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
-      - name: Prepare Monero native source
+      - name: Install and start Tor
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tor
+          tor --hash-password "" || true
+          (tor -f /dev/null --SocksPort 127.0.0.1:9050 > /tmp/tor.log 2>&1 &)
+          echo "Waiting for Tor bootstrap..."
+          for i in $(seq 1 60); do
+            if grep -q "Bootstrapped 100%" /tmp/tor.log 2>/dev/null; then
+              echo "Tor bootstrapped after $i tries"
+              break
+            fi
+            sleep 5
+          done
+          grep "Bootstrapped" /tmp/tor.log | tail -5 || true
+      - name: Prepare Monero native source (via Tor)
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: |
           rm -rf external-libs/monero
-          git clone --depth 1 --branch release-v0.18.0.0-monerujo https://github.com/m2049r/monero.git external-libs/monero
-          git -C external-libs/monero submodule update --init --recursive
+          git -c http.proxy=socks5h://127.0.0.1:9050 \
+              -c https.proxy=socks5h://127.0.0.1:9050 \
+              clone --depth 1 --branch "${ANONERO_MONERO_BRANCH}" \
+              "${ANONERO_MONERO_ONION}" external-libs/monero
+          git -C external-libs/monero -c http.proxy=socks5h://127.0.0.1:9050 \
+              submodule update --init --recursive
       - name: Build Monero native libraries
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: |
