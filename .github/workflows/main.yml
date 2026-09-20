@@ -12,7 +12,7 @@ jobs:
   build:
     name: Build with auto-fix
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,6 +37,14 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties', '**/settings.gradle*', '**/build.gradle*', '**/libs.versions.toml') }}
           restore-keys: ${{ runner.os }}-gradle-
+      - name: Prepare Monero native source
+        run: |
+          rm -rf external-libs/monero
+          git clone --depth 1 --branch v0.18.3.4 https://github.com/monero-project/monero.git external-libs/monero
+          git -C external-libs/monero submodule update --init --recursive
+      - name: Build Monero native libraries
+        run: |
+          make -C external-libs android NPROC=2
       - run: chmod +x ./gradlew
       - name: Write fix script
         run: |
