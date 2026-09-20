@@ -290,9 +290,9 @@ private fun OutputDetailScreen(
     onFreeze: () -> Unit,
     onUnfreeze: () -> Unit,
 ) {
-    var actionSelected by remember { mutableStateOf(false) }
+    var selectedAction by remember { mutableStateOf(if (isFrozen) "unfreeze" else "freeze") }
     val selectionScale by animateFloatAsState(
-        targetValue = if (actionSelected) 1.08f else 1f,
+        targetValue = 1f,
         animationSpec = tween(durationMillis = 140),
         label = "freezeSelectionScale"
     )
@@ -321,23 +321,23 @@ private fun OutputDetailScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val buttonSelected = actionSelected && !isFrozen
+                val freezeSelected = selectedAction == "freeze"
 
                 OutlinedButton(
                     onClick = {
                         if (!isFrozen) {
                             onFreeze()
-                            actionSelected = false
+                            selectedAction = "unfreeze"
                         }
                     },
-                    enabled = !isFrozen && actionSelected,
+                    enabled = !isFrozen,
                     border = BorderStroke(
                         1.dp,
-                        if (buttonSelected) orange
+                        if (freezeSelected) orange
                         else MaterialTheme.colorScheme.outline
                     ),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = if (buttonSelected) orange
+                        contentColor = if (freezeSelected) orange
                         else MaterialTheme.colorScheme.onSurface
                     ),
                     modifier = Modifier.weight(1f)
@@ -347,16 +347,16 @@ private fun OutputDetailScreen(
 
                 Spacer(modifier = Modifier.padding(horizontal = 8.dp))
 
-                val unfreezeSelected = actionSelected && isFrozen
+                val unfreezeSelected = selectedAction == "unfreeze"
 
                 OutlinedButton(
                     onClick = {
                         if (isFrozen) {
                             onUnfreeze()
-                            actionSelected = false
+                            selectedAction = "freeze"
                         }
                     },
-                    enabled = isFrozen && actionSelected,
+                    enabled = isFrozen,
                     border = BorderStroke(
                         1.dp,
                         if (unfreezeSelected) orange
@@ -413,10 +413,8 @@ private fun OutputDetailScreen(
                             )
 
                             Checkbox(
-                                checked = actionSelected,
-                                onCheckedChange = {
-                                    actionSelected = it
-                                },
+                                checked = false,
+                                onCheckedChange = { },
                                 modifier = Modifier
                                     .scale(selectedScale)
                                     .clickable {
