@@ -261,7 +261,7 @@ fun TransactionDetailScreen(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
             }
         }, title = {
-            Text("")
+            Text("交易详情")
         })
     }) { paddingValues ->
         if (transactionInfo != null) {
