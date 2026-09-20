@@ -1,0 +1,74 @@
+# One image definition for all three targets; --build-arg TARGET picks which.
+#   docker build -f Containerfile --build-arg TARGET=linux -t anonero-linux .
+
+# bookworm, not stable: the base image's glibc sets the floor for every artifact, and
+# `stable` is a moving tag that silently became trixie (2.41), pushing the floor to 2.38
+# and locking out Tails and Debian 12. bookworm's 2.36 is the lowest this dependency set
+# reaches -- unbound needs arc4random_uniform, which is 2.36.
+#
+# Pinned to a digest, not the moving `bookworm` tag: a point release would change the
+# output. Override with BASE=debian:bookworm for a throwaway build.
+ARG BASE=debian@sha256:6ebd97fa83deb272194a2cf015b3d26a4d538e9ad3a7a79d544c8af5b0a01443
+FROM ${BASE} AS base
+
+# Reproducible-builds knobs for every stage below.
+ARG SOURCE_DATE_EPOCH=1704067200
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH} \
+    TZ=UTC \
+    LC_ALL=C.UTF-8 \
+    ZERO_AR_DATE=1
+ENV WORK=/opt/build PREFIX=/opt/build/prefix OUT=/opt/out SRC=/opt/build/src MONERO=/src
+
+# Freeze the apt toolchain to a Debian snapshot (matches the base image date), else
+# gcc/binutils drift over time. Valid-Until off: snapshot Release files are stale.
+ARG SNAPSHOT=20260824T000000Z
+RUN set -x \
+ && printf 'deb http://snapshot.debian.org/archive/debian/%s/ bookworm main\ndeb http://snapshot.debian.org/archive/debian-security/%s/ bookworm-security main\ndeb http://snapshot.debian.org/archive/debian/%s/ bookworm-updates main\n' \
+      "$SNAPSHOT" "$SNAPSHOT" "$SNAPSHOT" > /etc/apt/sources.list \
+ && rm -f /etc/apt/sources.list.d/* \
+ && printf 'Acquire::Check-Valid-Until "false";\nAcquire::Retries "8";\n' \
+      > /etc/apt/apt.conf.d/10repro
+
+RUN set -x && apt-get update && apt-get install -y --no-install-recommends \
+      build-essential automake libtool pkg-config curl wget file unzip git \
+      ca-certificates python3 python-is-python3 flex bison \
+ && rm -rf /var/lib/apt/lists/*
+
+# Downloads every dependency once; all three target builds reuse this layer.
+FROM base AS sources
+WORKDIR /external-libs
+COPY build.sh /external-libs/
+RUN ./build.sh fetch
+
+FROM sources
+ARG TARGET
+ARG NPROC=4
+ENV TARGET=${TARGET} NPROC=${NPROC}
+
+RUN ./build.sh toolchain
+
+# One RUN per dependency, so a late failure doesn't rebuild the earlier ones. Every
+# target builds its own, so the artifacts carry no dependency on the host distro.
+RUN ./build.sh iconv
+RUN ./build.sh boost
+RUN ./build.sh zlib
+RUN ./build.sh openssl
+RUN ./build.sh zmq
+RUN ./build.sh sodium
+RUN ./build.sh expat
+RUN ./build.sh unbound
+RUN ./build.sh polyseed
+RUN ./build.sh utf8proc
+
+# Monero source last, so editing it leaves every layer above cached.
+COPY monero/ /src/
+RUN ./build.sh monero
+RUN ./build.sh collect
+
+# jni.h, for building libanonero.so against this image's glibc rather than the host's.
+# Compile-time only -- JNI calls go through the JNIEnv table, so the .so links no JVM
+# library and picks up no new dependency. Last, so it can't invalidate the layers above.
+RUN if [ "$TARGET" = linux ]; then set -x \
+ && for i in 1 2 3 4 5; do apt-get update && break; [ "$i" = 5 ] && exit 1; echo "apt retry $i"; sleep 5; done \
+ && apt-get install -y --no-install-recommends default-jdk-headless \
+ && rm -rf /var/lib/apt/lists/*; fi
