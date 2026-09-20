@@ -675,9 +675,9 @@ fun TransactionScreen(
                         ) {
                             Text(
                                 "XMR",
-                                style = MaterialTheme.typography.displayLarge,
+                                style = MaterialTheme.typography.displayLarge.copy(fontSize = 42.sp),
                                 fontFamily = xqzpFontFamily(),
-                                modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
+                                modifier = Modifier.padding(start = 8.dp, bottom = 2.dp)
                             )
                             Text(
                                 if (hideAmounts) Formats.maskAmount(balance ?: 0)
