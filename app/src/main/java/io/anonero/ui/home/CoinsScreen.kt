@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -290,6 +291,8 @@ private fun OutputDetailScreen(
     onFreeze: () -> Unit,
     onUnfreeze: () -> Unit,
 ) {
+    BackHandler(onBack = onBackPress)
+
     var selectedAction by remember { mutableStateOf(if (isFrozen) "unfreeze" else "freeze") }
     val selectionScale by animateFloatAsState(
         targetValue = 1f,
@@ -413,13 +416,9 @@ private fun OutputDetailScreen(
                             )
 
                             Checkbox(
-                                checked = false,
+                                checked = isFrozen,
                                 onCheckedChange = { },
-                                modifier = Modifier
-                                    .scale(selectedScale)
-                                    .clickable {
-                                        actionSelected = !actionSelected
-                                    }
+                                modifier = Modifier.scale(selectedScale)
                             )
                         }
                     }
