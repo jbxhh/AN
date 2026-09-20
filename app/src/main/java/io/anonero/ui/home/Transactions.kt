@@ -528,26 +528,6 @@ fun TransactionScreen(
                         )
                     }
                     val context = LocalContext.current
-//                    LockButton(
-//                        onLock = {
-//                            scope.launch {
-//                                try {
-//                                    settingBSync = true
-//                                    walletState.blockUpdates(true)
-//                                    withContext(Dispatchers.IO) {
-//                                        WalletManager.instance?.wallet?.let { wallet: Wallet ->
-//                                            if (wallet.startBackgroundSync()) {
-//                                                walletState.setBackGroundSync(true)
-//                                            }
-//                                        }
-//                                    }
-//                                } finally {
-//                                    walletState.blockUpdates(false)
-//                                    settingBSync = false
-//                                }
-//                            }
-//                        }, loading = settingBSync
-//                    )
                     IconButton(
                         colors = IconButtonDefaults.iconButtonColors(
                             contentColor = Color.White
@@ -671,8 +651,8 @@ fun TransactionScreen(
                     Box(
                         modifier = Modifier
                                         .padding(
-                                      top = 96.dp,
-                                   bottom = 32.dp
+                                      top = 32.dp,
+                                   bottom = 16.dp
                                 )
                             .combinedClickable(
                                 onClick = { walletState.toggleHideAmounts() },
@@ -698,9 +678,8 @@ fun TransactionScreen(
                                     .displaySmall,
                                 maxLines = 1,
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(end = 28.dp),
-                                textAlign = TextAlign.End
+                                    .fillMaxWidth(),
+                                textAlign = TextAlign.Center
                             )
                         }
                     }
@@ -740,7 +719,7 @@ fun TransactionItem(tx: TransactionInfo, hideAmounts: Boolean = false, amountCen
             .fillMaxWidth()
             .padding(start = 24.dp, end = 28.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = if (amountCenter) Arrangement.Start else Arrangement.End
+        horizontalArrangement = Arrangement.Center
     ) {
         Icon(
             if (isIncoming) AnonIcons.ArrowDownLeft else AnonIcons.ArrowUpRight,
@@ -788,10 +767,6 @@ fun LockButton(onLock: () -> Unit, loading: Boolean = false) {
 @Composable
 private fun TransactionScreenReview() {
     AnonNeroTheme {
-//        TransactionScreen(
-//            animatedContentScope = this@composable,
-//            sharedTransitionScope = this@SharedTransitionLayout
-//        )
     }
 
 
