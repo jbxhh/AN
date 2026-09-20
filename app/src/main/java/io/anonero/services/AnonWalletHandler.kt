@@ -67,14 +67,6 @@ class AnonWalletHandler(
     // ===== 真实连接流程保留，但每一步都有超时；超时后 mock 兜底，不再一直“连接中” =====
     suspend fun startService() {
         val wallet = WalletManager.instance?.wallet ?: return
-        handler = MoneroHandlerThread(wallet, walletState)
-
-        wallet.setListener(handler)
-        wallet.refreshHistory()
-        handler?.start()
-        walletState.setLoading(true)
-        walletState.update()
-
         var realHost: String? = null
         var realPort: Int = Node.defaultRpcPort
 
@@ -141,6 +133,18 @@ class AnonWalletHandler(
             }
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+
+        try {
+            handler = MoneroHandlerThread(wallet, walletState)
+            wallet.setListener(handler)
+            wallet.refreshHistory()
+            handler?.start()
+            walletState.setLoading(true)
+            walletState.update()
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "wallet startup failed")
+            walletState.setLoading(false)
         }
 
         // ===== mock 兜底：真实流程走完/超时后，强制结束“连接中”，进入可用首页 =====
