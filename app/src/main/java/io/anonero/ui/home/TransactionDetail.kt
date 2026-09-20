@@ -274,7 +274,6 @@ fun TransactionDetailScreen(
                         TransactionItem(
                             tx = transactionInfo!!,
                             amountCenter = true,
-                            showTime = true,
                             modifier = Modifier
                                 .clickable {
 
