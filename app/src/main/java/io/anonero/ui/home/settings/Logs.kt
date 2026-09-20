@@ -1,6 +1,8 @@
 package io.anonero.ui.home.settings
 
 import io.anonero.ui.theme.AnonNeroTheme
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -17,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -76,6 +79,26 @@ class LogViewModel(private val logRepository: LogRepository) : ViewModel() {
         )
 
 
+    fun getLogsText(): String {
+        val logs = logLines.value
+        val deviceInfo = logDeviceInfo()
+        val lines = logs.joinToString(separator = "\\n") {
+            val instant = Instant.ofEpochMilli(it.date)
+            val dateTime = LocalDateTime.ofInstant(instant, ZoneId.systemDefault())
+            val formatter = DateTimeFormatter.ofPattern("MMM dd hh:mm:ssa")
+            val level = when (it.priority) {
+                Log.VERBOSE -> "VERBOSE"
+                Log.DEBUG -> "DEBUG"
+                Log.INFO -> "INFO"
+                Log.WARN -> "WARN"
+                Log.ERROR -> "ERROR"
+                Log.ASSERT -> "ASSERT"
+                else -> "UNKNOWN"
+            }
+            "${formatter.format(dateTime)} | $level | ${it.tag} | ${it.message}"
+        }
+        return "${'-'.toString().repeat(100)}\\n\\n$deviceInfo\\n\\n${'-'.toString().repeat(100)}\\n$lines"
+    }
     fun clearLogs() {
         viewModelScope.launch(Dispatchers.IO) {
             logRepository.clear()
@@ -193,6 +216,16 @@ fun LogViewer(
                         }
                     ) {
                         Icon(AnonIcons.Share_log, contentDescription = "Share Logs")
+                    }
+                    IconButton(
+                        onClick = {
+                            val clipboard = context.getSystemService(ClipboardManager::class.java)
+                            clipboard?.setPrimaryClip(
+                                ClipData.newPlainText("ANONERO Logs", viewModel.getLogsText())
+                            )
+                        }
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy Logs")
                     }
                     IconButton(
                         onClick = {
