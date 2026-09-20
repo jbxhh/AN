@@ -2,6 +2,8 @@ package io.anonero.ui
 
 import io.anonero.ui.theme.AnonNeroTheme
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
@@ -81,6 +83,12 @@ class MainActivity : ComponentActivity() {
             android.app.AlertDialog.Builder(this)
                 .setTitle("上次崩溃日志（截图发我）")
                 .setMessage(crash.take(2000))
+                .setNeutralButton("复制") { _, _ ->
+                    val clipboard = getSystemService(ClipboardManager::class.java)
+                    clipboard?.setPrimaryClip(
+                        ClipData.newPlainText("ANONERO 崩溃日志", crash)
+                    )
+                }
                 .setPositiveButton("知道了", null)
                 .show()
         }
