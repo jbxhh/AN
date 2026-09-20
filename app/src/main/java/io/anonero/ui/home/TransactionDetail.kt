@@ -264,7 +264,7 @@ fun TransactionDetailScreen(
                         )
                     }
                 },
-                title = { Text("") }
+                title = { Text("交易详情") }
             )
         },
         bottomBar = {
