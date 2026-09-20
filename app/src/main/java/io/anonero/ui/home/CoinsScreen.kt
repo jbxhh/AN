@@ -66,6 +66,25 @@ fun CoinsScreen(
     val walletState: WalletState by inject(WalletState::class.java)
     val coins by walletState.coins.collectAsState(arrayListOf())
     var selectedCoins by remember { mutableStateOf(selected) }
+    var showOutputDetail by remember { mutableStateOf(false) }
+
+    if (showOutputDetail) {
+        OutputDetailScreen(
+            coins = coins,
+            selectedCoins = selectedCoins,
+            onSelectCoin = { coin ->
+                selectedCoins = if (selectedCoins.contains(coin.pub_key)) {
+                    selectedCoins - coin.pub_key
+                } else {
+                    selectedCoins + coin.pub_key
+                }
+            },
+            onBackPress = { showOutputDetail = false },
+            onFreeze = { },
+            onUnfreeze = { }
+        )
+        return
+    }
     val connectionStatus by walletState.walletConnectionStatus.asLiveData().observeAsState(
         Wallet.ConnectionStatus.ConnectionStatus_Disconnected
     )
@@ -165,7 +184,7 @@ fun CoinsScreen(
                             vertical = 6.dp
                         )
                         .clickable {
-                            selectCoin(coin)
+                            showOutputDetail = true
                         },
                     headlineContent = {
                                                 Row(
@@ -232,5 +251,101 @@ fun CoinsScreen(
 private fun ReceiveScreenPreview() {
     AnonNeroTheme {
         CoinsScreen()
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OutputDetailScreen(
+    coins: List<CoinsInfo>,
+    selectedCoins: Set<String>,
+    onSelectCoin: (CoinsInfo) -> Unit,
+    onBackPress: () -> Unit,
+    onFreeze: () -> Unit,
+    onUnfreeze: () -> Unit,
+) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("输出") },
+                navigationIcon = {
+                    IconButton(onClick = onBackPress) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = null
+                        )
+                    }
+                }
+            )
+        },
+        bottomBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = onFreeze,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("冻结")
+                }
+
+                Spacer(modifier = Modifier.padding(horizontal = 8.dp))
+
+                OutlinedButton(
+                    onClick = onUnfreeze,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("解冻")
+                }
+            }
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxWidth()
+        ) {
+            items(coins.size) { index ->
+                val coin = coins[index]
+
+                ListItem(
+                    modifier = Modifier.padding(
+                        horizontal = 4.dp,
+                        vertical = 6.dp
+                    ),
+                    headlineContent = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                "输出" + (index + 1),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+
+                            Text(
+                                Formats.getDisplayAmount(coin.amount),
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    },
+                    trailingContent = {
+                        Checkbox(
+                            checked = selectedCoins.contains(coin.pub_key),
+                            onCheckedChange = {
+                                onSelectCoin(coin)
+                            }
+                        )
+                    }
+                )
+            }
+        }
     }
 }
