@@ -293,7 +293,7 @@ private fun OutputDetailScreen(
 ) {
     BackHandler(onBack = onBackPress)
 
-    var selectedAction by remember { mutableStateOf<String?>(if (isFrozen) "unfreeze" else "freeze") }
+    var selectedAction by remember { mutableStateOf<String?>(if (isFrozen) "unfreeze" else null) }
     val selectionScale by animateFloatAsState(
         targetValue = 1f,
         animationSpec = tween(durationMillis = 140),
@@ -411,9 +411,9 @@ private fun OutputDetailScreen(
                             )
 
                             Checkbox(
-                                checked = isFrozen || selectedAction == "freeze",
+                                checked = selectedAction != null,
                                 onCheckedChange = {
-                                    selectedAction = if (it) "freeze" else if (isFrozen) "unfreeze" else null
+                                    selectedAction = if (it) { if (isFrozen) "unfreeze" else "freeze" } else null
                                 },
                                 modifier = Modifier.scale(selectedScale)
                             )
