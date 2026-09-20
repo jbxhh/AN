@@ -28,7 +28,7 @@ NDK_REVISION=r27c      # https://developer.android.com/ndk/downloads  (r27c == 2
 NDK_SHA1=090e8083a715fdb1a3e402d0763c388abb03fb4e
 
 BOOST_VERSION=1.86.0    # https://github.com/boostorg/boost/releases
-BOOST_SHA256=e848446c6fec62d8a96b44ed7352238b3de040b8b9facd4d6963b32f541e00f5
+BOOST_SHA256=2128a4c96862b5c0970c1e34d76b1d57e4a1016b80df85ad39667f30b1deba26
 ICONV_VERSION=1.15      # https://ftp.gnu.org/pub/gnu/libiconv/
 ICONV_SHA256=ccf536620a45458d26ba83887a983b96827001e92a13847b45e4925cc8913178
 ZLIB_VERSION=1.3.1      # https://github.com/madler/zlib/releases
