@@ -5,14 +5,11 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
 import android.util.Log
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -41,7 +38,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
-import kotlinx.coroutines.delay
 import io.anonero.R
 import io.anonero.model.Subaddress
 import io.anonero.ui.components.MainBottomNavigation
@@ -114,12 +110,7 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
     }
     
     LaunchedEffect(currentRoute) {
-        if (currentRoute.toString().contains("CoinsScreenRoute")) {
-            showBottomNavigation = false
-        } else if (getRoutes().find { it.getRouteAsString == currentRoute } != null) {
-            delay(340)
-            showBottomNavigation = true
-        }
+        showBottomNavigation = !currentRoute.toString().contains("CoinsScreenRoute")
     }
 
     // Determine current wallet identifier (file name). If none, use empty string.
@@ -217,6 +208,245 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                     )
                 }
 
+            }) { paddingValues ->
+            Box(modifier = modifier.padding(0.dp)) {
+                NavHost(bottomNavController, startDestination = startDestination, exitTransition = {
+                    fadeOut(animationSpec = tween(340))
+                }, enterTransition = {
+                    fadeIn(animationSpec = tween(340))
+                }) {
+                    composable<TransactionsRoute> {
+                        TransactionScreen(
+                            modifier = Modifier.padding(paddingValues),
+                            onItemClick = {
+                                showBottomNavigation = false
+                                it.hash?.let { paymentId ->
+                                    bottomNavController.navigate(
+                                        TransactionDetailRoute(
+                                            transactionId = paymentId
+                                        )
+                                    )
+                                }
+                            },
+                            navigateToShortCut = {
+                                when (it) {
+                                    LockScreenShortCut.HOME -> {}
+                                    LockScreenShortCut.RECEIVE -> {
+                                        bottomNavController.navigate(ReceiveRoute)
+                                    }
+
+                                    LockScreenShortCut.SEND -> {
+                                        bottomNavController.navigate(SendScreenRoute(""))
+                                    }
+                                }
+                            },
+                            navigateTo = {
+                                if(it is CoinsScreenRoute){
+                                    showBottomNavigation = false
+                                }
+                                bottomNavController.navigate(it)
+                            },
+                            sharedTransitionScope = this@SharedTransitionLayout,
+                            animatedContentScope = this@composable
+                        )
+                    }
+                    composable<ReceiveRoute> {
+                        ReceiveScreen(
+                            modifier = Modifier.padding(paddingValues),
+                            onBackPress = {
+                                bottomNavController.popBackStack()
+                            }, navigateToSubAddresses = {
+                                showBottomNavigation = false
+                                bottomNavController.navigate(SubAddressesRoute)
+                            })
+                    }
+                    composable<TransactionDetailRoute> { navBackStackEntry ->
+                        val txDetailRoute = navBackStackEntry.toRoute<TransactionDetailRoute>()
+                        TransactionDetailScreen(
+                            transactionId = txDetailRoute.transactionId,
+                            sharedTransitionScope = this@SharedTransitionLayout,
+                            animatedContentScope = this@composable,
+                            onBackPress = {
+                                bottomNavController.popBackStack()
+                            },
+                            modifier = Modifier.padding(paddingValues),
+                        )
+                    }
+                    composable<SendScreenRoute> { backStackEntry ->
+                        val params = backStackEntry.toRoute<SendScreenRoute>()
+                        SendScreen(
+                            navigateToHome = {
+                                bottomNavController.popBackStack(
+                                    route = TransactionsRoute,
+                                    inclusive = false
+                                )
+                            },
+                            navigateToReview = {
+                                bottomNavController.navigate(it)
+                            },
+                            modifier = Modifier.padding(
+                                bottom = paddingValues.calculateBottomPadding()
+                            ),
+                            onBackPress = {
+                                bottomNavController.popBackStack()
+                            },
+                            paymentUri = params,
+                        )
+                    }
+                    composable<ReviewTransactionRoute> { backStackEntry ->
+                        val route = backStackEntry.toRoute<ReviewTransactionRoute>()
+                        ReviewTransactionScreen(
+                            route,
+                            modifier = Modifier.padding(paddingValues),
+                            navigateToHome = {
+                                bottomNavController.popBackStack(
+                                    route = TransactionsRoute,
+                                    inclusive = false
+                                )
+                            },
+                            onFinished = {
+                                bottomNavController.popBackStack(
+                                    route = TransactionsRoute,
+                                    inclusive = false
+                                )
+                            },
+                            onBackPressed = {
+                                bottomNavController.popBackStack()
+                            },
+                        )
+                    }
+                    composable<SettingsRoute> {
+                        SettingsPage(
+                            modifier = Modifier.padding(paddingValues),
+                            onBackPress = {
+                                showBottomNavigation = true
+                                bottomNavController.popBackStack()
+                            }, navigateTo = {
+                                showBottomNavigation = false
+                                bottomNavController.navigate(it)
+                            }
+                        )
+                    }
+                    composable<SettingsViewSeedRoute> {
+                        SeedSettingsPage(
+                            onBackPress = {
+                                bottomNavController.popBackStack()
+                            }
+                        )
+                    }
+                    composable<SettingsExportBackUp> {
+                        ExportBackUp(
+                            onBackPress = {
+                                bottomNavController.popBackStack()
+                            }
+                        )
+                    }
+                    composable<SettingsLogs> {
+                        LogViewer(
+                            onBackPress = {
+                                bottomNavController.popBackStack()
+                            }
+                        )
+                    }
+                    composable<CoinsScreenRoute> {
+                        CoinsScreen(
+                            onBackPress = {
+                                bottomNavController.popBackStack()
+                            },
+                            navigateToSpend = {
+                                bottomNavController.navigate(it)
+                            }
+                        )
+                    }
+                    composable<ProxySettingsRoute> {
+                        ProxySettings(
+                            onBackPress = {
+                                bottomNavController.popBackStack()
+                            }
+                        )
+                    }
+                    composable<SecureWipeRoute> {
+                        SecureWipe(
+                            onBackPress = {
+                                showBottomNavigation = true
+                                bottomNavController.popBackStack()
+                            },
+                            requestClearScreen = {
+                                showBottomNavigation = it
+                            },
+                            goToHome = {
+                                mainNavController?.navigate(LandingScreenRoute) {
+                                    popUpTo(LandingScreenRoute) {
+                                        inclusive = false
+                                    }
+                                }
+                            }
+                        )
+                    }
+                    composable<SettingsNodeRoute> {
+                        NodeSettings(
+                            onBackPress = {
+                                bottomNavController.popBackStack()
+                            }
+                        )
+                    }
+                    composable<SubAddressesRoute> {
+                        SubAddressesScreen(
+                            onBackPress = {
+                                showBottomNavigation = true
+                                bottomNavController.popBackStack()
+                            }, navigateToDetails = {
+                                bottomNavController.navigate(it)
+                            },
+                            sharedTransitionScope = this@SharedTransitionLayout,
+                            animatedContentScope = this@composable
+                        )
+                    }
+                    composable<Subaddress> { backStackEntry ->
+                        val subAddress = backStackEntry.toRoute<Subaddress>()
+                        SubAddressDetailScreen(
+                            subAddress = subAddress,
+                            onBackPress = {
+                                bottomNavController.popBackStack()
+                            },
+                            onTransactionClick = {
+                                it.hash?.let { paymentId ->
+                                    bottomNavController.navigate(
+                                        TransactionDetailRoute(
+                                            transactionId = paymentId
+                                        )
+                                    )
+                                }
+                            },
+                            sharedTransitionScope = this@SharedTransitionLayout,
+                            animatedContentScope = this@composable
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+@Preview(device = "id:pixel_8")
+@Composable
+private fun HomeScreenComposablePrev() {
+    AnonNeroTheme {
+        HomeScreenComposable(mainNavController = null)
+    }
+            }, bottomBar = {
+                if (showBottomNavigation) {
+                    MainBottomNavigation(
+                        currentRoute = currentRoute,
+                        onTabSelected = {
+                            bottomNavController.navigate(it.route) {
+                                popUpTo(bottomNavController.graph.startDestinationId)
+                                launchSingleTop = true
+                            }
+                        }
+                    )
+                }
             }) { paddingValues ->
             Box(modifier = modifier.padding(0.dp)) {
                 NavHost(bottomNavController, startDestination = startDestination, exitTransition = {
