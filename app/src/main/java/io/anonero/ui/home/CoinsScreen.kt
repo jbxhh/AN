@@ -290,7 +290,7 @@ private fun OutputDetailScreen(
     onFreeze: () -> Unit,
     onUnfreeze: () -> Unit,
 ) {
-    var actionSelected by remember(isFrozen) { mutableStateOf(false) }
+    var actionSelected by remember { mutableStateOf(false) }
     val selectionScale by animateFloatAsState(
         targetValue = if (actionSelected) 1.08f else 1f,
         animationSpec = tween(durationMillis = 140),
