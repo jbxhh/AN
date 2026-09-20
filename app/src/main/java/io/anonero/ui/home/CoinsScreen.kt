@@ -326,7 +326,10 @@ private fun OutputDetailScreen(
                 val freezeSelected = selectedAction == "freeze"
                 OutlinedButton(
                     onClick = {
-                        if (freezeSelected) onFreeze()
+                        if (freezeSelected) {
+                            onFreeze()
+                            selectedAction = "unfreeze"
+                        }
                     },
                     border = BorderStroke(
                         1.dp,
@@ -344,7 +347,10 @@ private fun OutputDetailScreen(
                 val unfreezeSelected = selectedAction == "unfreeze"
                 OutlinedButton(
                     onClick = {
-                        if (unfreezeSelected) onUnfreeze()
+                        if (unfreezeSelected) {
+                            onUnfreeze()
+                            selectedAction = "freeze"
+                        }
                     },
                     border = BorderStroke(
                         1.dp,
@@ -405,7 +411,7 @@ private fun OutputDetailScreen(
                             )
 
                             Checkbox(
-                                checked = selectedAction == "freeze",
+                                checked = isFrozen,
                                 onCheckedChange = {
                                     selectedAction = if (it) "freeze" else "unfreeze"
                                 },
