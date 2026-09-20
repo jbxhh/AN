@@ -294,6 +294,7 @@ private fun OutputDetailScreen(
     BackHandler(onBack = onBackPress)
 
     var selectedAction by remember { mutableStateOf(if (isFrozen) "unfreeze" else "freeze") }
+    var detailSelected by remember { mutableStateOf(false) }
     val selectionScale by animateFloatAsState(
         targetValue = 1f,
         animationSpec = tween(durationMillis = 140),
@@ -385,10 +386,14 @@ private fun OutputDetailScreen(
                 val selectedScale = selectionScale
 
                 ListItem(
-                    modifier = Modifier.padding(
-                        horizontal = 4.dp,
-                        vertical = 6.dp
-                    ),
+                    modifier = Modifier
+                        .padding(
+                            horizontal = 4.dp,
+                            vertical = 6.dp
+                        )
+                        .clickable {
+                            detailSelected = !detailSelected
+                        },
                     headlineContent = {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -416,8 +421,10 @@ private fun OutputDetailScreen(
                             )
 
                             Checkbox(
-                                checked = isFrozen,
-                                onCheckedChange = { },
+                                checked = detailSelected,
+                                onCheckedChange = {
+                                    detailSelected = it
+                                },
                                 modifier = Modifier.scale(selectedScale)
                             )
                         }
