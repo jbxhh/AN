@@ -271,20 +271,40 @@ fun TransactionDetailScreen(
             ) {
                 item {
                     with(sharedTransitionScope) {
-                        TransactionItem(
-                            tx = transactionInfo!!,
-                            amountCenter = true,
+                        Row(
                             modifier = Modifier
-                                .clickable {
-
-                                }
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp, vertical = 12.dp)
+                                .clickable { }
                                 .sharedElement(
                                     sharedTransitionScope.rememberSharedContentState(
                                         key = "${transactionInfo!!.hash}",
                                     ),
                                     animatedVisibilityScope = animatedContentScope
+                                ),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                val isIncoming = transactionInfo!!.direction == TransactionInfo.Direction.Direction_In.value
+                                Icon(
+                                    if (isIncoming) AnonIcons.ArrowDownLeft else AnonIcons.ArrowUpRight,
+                                    modifier = Modifier.size(28.dp),
+                                    tint = if (isIncoming) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                                    contentDescription = null
                                 )
-                        )
+                                Text(
+                                    Formats.getDisplayAmount(transactionInfo!!.amount),
+                                    modifier = Modifier.padding(start = 10.dp),
+                                    style = MaterialTheme.typography.titleLarge
+                                )
+                            }
+                            Text(
+                                Formats.formatTransactionTime(transactionInfo!!.timestamp, "HH:mm\nMM/dd"),
+                                textAlign = TextAlign.End,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
                     }
                 }
                 item {
