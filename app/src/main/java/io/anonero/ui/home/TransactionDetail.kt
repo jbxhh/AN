@@ -267,18 +267,6 @@ fun TransactionDetailScreen(
                 title = { Text("交易详情") }
             )
         },
-        bottomBar = {
-            if (transactionInfo != null) {
-                DetailItem(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    title = stringResource(R.string.time),
-                    subtitle = Formats.formatTransactionTime(
-                        transactionInfo!!.timestamp,
-                        "yyyy/MM/dd HH:mm:ss"
-                    )
-                )
-            }
-        }
     ) { paddingValues ->
         if (transactionInfo != null) {
             LazyColumn(
@@ -301,6 +289,15 @@ fun TransactionDetailScreen(
                                 )
                         )
                     }
+                }
+                item {
+                    DetailItem(
+                        title = stringResource(R.string.time),
+                        subtitle = Formats.formatTransactionTime(
+                            transactionInfo!!.timestamp,
+                            "yyyy/MM/dd HH:mm:ss"
+                        )
+                    )
                 }
                 item {
                     DetailItem(
@@ -353,16 +350,6 @@ fun TransactionDetailScreen(
                     DetailItem(
                         title = stringResource(R.string.confirmation_block),
                         subtitle = "${transactionInfo?.blockheight ?: "____"}"
-                    )
-                }
-                item {
-                    DetailItem(
-                        modifier = Modifier.padding(bottom = 24.dp),
-                        title = stringResource(R.string.time),
-                        subtitle = Formats.formatTransactionTime(
-                            transactionInfo!!.timestamp,
-                            "yyyy/MM/dd HH:mm:ss"
-                        )
                     )
                 }
                 item { Spacer(Modifier.height(44.dp)) }
