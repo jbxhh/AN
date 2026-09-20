@@ -81,7 +81,7 @@ android {
             buildConfigField("boolean", "VIEW_ONLY", "true")
         }
     }
-    buildToolsVersion = "36.0.0"
+    externalNativeBuild {\n        cmake {\n            path = file("CMakeLists.txt")\n        }\n    }\n    buildToolsVersion = "36.0.0"
 }
 dependencies {
     implementation(libs.androidx.core.ktx)
