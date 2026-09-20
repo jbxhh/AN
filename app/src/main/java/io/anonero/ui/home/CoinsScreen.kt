@@ -329,8 +329,11 @@ private fun OutputDetailScreen(
 
                 OutlinedButton(
                     onClick = {
-                        onFreeze()
-                        selectedAction = "freeze"
+                        if (selectedAction == "freeze") {
+                            onFreeze()
+                        } else {
+                            selectedAction = "freeze"
+                        }
                     },
                     enabled = true,
                     border = BorderStroke(
@@ -353,8 +356,11 @@ private fun OutputDetailScreen(
 
                 OutlinedButton(
                     onClick = {
-                        onUnfreeze()
-                        selectedAction = "unfreeze"
+                        if (selectedAction == "unfreeze") {
+                            onUnfreeze()
+                        } else {
+                            selectedAction = "unfreeze"
+                        }
                     },
                     enabled = true,
                     border = BorderStroke(
