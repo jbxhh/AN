@@ -663,15 +663,13 @@ fun TransactionScreen(
                           .fillParentMaxWidth()
                     ) {
                         Column(
-                            modifier = Modifier.fillParentMaxWidth(),
-                            horizontalAlignment = Alignment.End
+                            modifier = Modifier.fillParentMaxWidth()
                         ) {
                             Text(
                                 "XMR",
                                 style = MaterialTheme.typography.displayLarge,
                                 fontFamily = xqzpFontFamily(),
-                                modifier = Modifier.fillMaxWidth().padding(end = 28.dp, bottom = 8.dp),
-                                textAlign = TextAlign.End
+                                modifier = Modifier.padding(start = 28.dp, bottom = 8.dp)
                             )
                             Text(
                                 if (hideAmounts) Formats.maskAmount(balance ?: 0)
@@ -680,8 +678,9 @@ fun TransactionScreen(
                                     .displaySmall,
                                 maxLines = 1,
                                 modifier = Modifier
-                                    .fillMaxWidth(),
-                                textAlign = TextAlign.Center
+                                    .fillMaxWidth()
+                                    .padding(end = 28.dp),
+                                textAlign = TextAlign.End
                             )
                         }
                     }
