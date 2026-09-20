@@ -206,10 +206,10 @@ fun CoinsScreen(
                         ) {
                             Text(
                                 stringResource(R.string.output_number, index + 1),
-                                color = if (selectedAction != null) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
+                                color = if (isFrozen) {
                                     MaterialTheme.colorScheme.onSurfaceVariant
+                                } else {
+                                    MaterialTheme.colorScheme.primary
                                 },
                             )
                             Text(
@@ -411,9 +411,9 @@ private fun OutputDetailScreen(
                             )
 
                             Checkbox(
-                                checked = isFrozen,
+                                checked = isFrozen || selectedAction == "freeze",
                                 onCheckedChange = {
-                                    selectedAction = if (it) "freeze" else null
+                                    selectedAction = if (it) "freeze" else if (isFrozen) "unfreeze" else null
                                 },
                                 modifier = Modifier.scale(selectedScale)
                             )
