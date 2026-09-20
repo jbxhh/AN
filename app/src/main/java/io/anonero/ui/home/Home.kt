@@ -41,6 +41,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import kotlinx.coroutines.delay
 import io.anonero.R
 import io.anonero.model.Subaddress
 import io.anonero.ui.components.MainBottomNavigation
@@ -116,7 +117,7 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
         if (currentRoute.contains("CoinsScreenRoute")) {
             showBottomNavigation = false
         } else if (getRoutes().find { it.getRouteAsString == currentRoute } != null) {
-            kotlinx.coroutines.delay(340)
+            delay(340)
             showBottomNavigation = true
         }
     }
