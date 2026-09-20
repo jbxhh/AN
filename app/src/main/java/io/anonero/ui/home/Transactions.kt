@@ -758,7 +758,7 @@ fun TransactionScreen(
 
 
 @Composable
-fun TransactionItem(tx: TransactionInfo, hideAmounts: Boolean = false, amountCenter: Boolean = false, modifier: Modifier = Modifier) {
+fun TransactionItem(tx: TransactionInfo, hideAmounts: Boolean = false, amountCenter: Boolean = false, showTime: Boolean = false, modifier: Modifier = Modifier) {
     val isIncoming = tx.direction == TransactionInfo.Direction.Direction_In
     val amount = tx.amount
     Row(
@@ -766,23 +766,34 @@ fun TransactionItem(tx: TransactionInfo, hideAmounts: Boolean = false, amountCen
             .fillMaxWidth()
             .padding(start = 24.dp, end = 28.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.End
+        horizontalArrangement = if (showTime) Arrangement.SpaceBetween else Arrangement.End
     ) {
-        Icon(
-            if (isIncoming) AnonIcons.ArrowDownLeft else AnonIcons.ArrowUpRight,
-            modifier = Modifier.size(if (amountCenter) 28.dp else 18.dp),
-            tint = if (isIncoming) MaterialTheme.colorScheme.primary else LocalContentColor.current,
-            contentDescription = null
-        )
-        Text(
-            if (hideAmounts) Formats.maskAmount(amount)
-            else Formats.getDisplayAmount(amount),
-            textAlign = if (amountCenter) TextAlign.Center else TextAlign.End,
-            modifier = Modifier
-                .padding(start = 10.dp)
-                .then(if (amountCenter) Modifier.weight(1f) else Modifier),
-            style = MaterialTheme.typography.titleLarge
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                if (isIncoming) AnonIcons.ArrowDownLeft else AnonIcons.ArrowUpRight,
+                modifier = Modifier.size(if (amountCenter) 28.dp else 18.dp),
+                tint = if (isIncoming) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                contentDescription = null
+            )
+            Text(
+                if (hideAmounts) Formats.maskAmount(amount)
+                else Formats.getDisplayAmount(amount),
+                textAlign = if (amountCenter) TextAlign.Center else TextAlign.End,
+                modifier = Modifier
+                    .padding(start = 10.dp)
+                    .then(if (amountCenter) Modifier.weight(1f) else Modifier),
+                style = MaterialTheme.typography.titleLarge
+            )
+        }
+        if (showTime) {
+            Text(
+                Formats.formatTransactionTime(tx.timestamp, "HH:mm\nMM/dd"),
+                style = MaterialTheme.typography.labelSmall,
+                textAlign = TextAlign.End
+            )
+        }
     }
 }
 
