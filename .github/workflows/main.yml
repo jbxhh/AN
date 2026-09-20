@@ -48,7 +48,7 @@ jobs:
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: |
           rm -rf external-libs/monero
-          git clone --depth 1 --branch v0.18.3.4 https://github.com/monero-project/monero.git external-libs/monero
+          git clone --depth 1 --branch v0.18.5.0 https://github.com/monero-project/monero.git external-libs/monero
           git -C external-libs/monero submodule update --init --recursive
       - name: Build Monero native libraries
         if: steps.native-cache.outputs.cache-hit != 'true'
