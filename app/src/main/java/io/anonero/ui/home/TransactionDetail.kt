@@ -253,17 +253,33 @@ fun TransactionDetailScreen(
         )
 
 
-    Scaffold(topBar = {
-        TopAppBar(navigationIcon = {
-            IconButton(
-                onClick = onBackPress
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                navigationIcon = {
+                    IconButton(onClick = onBackPress) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = null
+                        )
+                    }
+                },
+                title = { Text("") }
+            )
+        },
+        bottomBar = {
+            if (transactionInfo != null) {
+                DetailItem(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    title = stringResource(R.string.time),
+                    subtitle = Formats.formatTransactionTime(
+                        transactionInfo!!.timestamp,
+                        "yyyy/MM/dd HH:mm:ss"
+                    )
+                )
             }
-        }, title = {
-            Text("")
-        })
-    }) { paddingValues ->
+        }
+    ) { paddingValues ->
         if (transactionInfo != null) {
             LazyColumn(
                 contentPadding = paddingValues,
