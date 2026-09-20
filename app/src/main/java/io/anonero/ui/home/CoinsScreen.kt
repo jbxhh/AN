@@ -317,25 +317,47 @@ private fun OutputDetailScreen(
             )
         },
         bottomBar = {
-            val buttonText = if (selectedAction == "freeze") "冻结" else "解冻"
-
-            OutlinedButton(
-                onClick = {
-                    if (selectedAction == "freeze") {
-                        onFreeze()
-                    } else {
-                        onUnfreeze()
-                    }
-                },
-                border = BorderStroke(1.dp, orange),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = orange
-                ),
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(buttonText)
+                val freezeSelected = selectedAction == "freeze"
+                OutlinedButton(
+                    onClick = {
+                        if (freezeSelected) onFreeze()
+                    },
+                    border = BorderStroke(
+                        1.dp,
+                        if (freezeSelected) orange else MaterialTheme.colorScheme.outline
+                    ),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = if (freezeSelected) orange
+                        else MaterialTheme.colorScheme.onSurface
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("冻结")
+                }
+
+                val unfreezeSelected = selectedAction == "unfreeze"
+                OutlinedButton(
+                    onClick = {
+                        if (unfreezeSelected) onUnfreeze()
+                    },
+                    border = BorderStroke(
+                        1.dp,
+                        if (unfreezeSelected) orange else MaterialTheme.colorScheme.outline
+                    ),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = if (unfreezeSelected) orange
+                        else MaterialTheme.colorScheme.onSurface
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("解冻")
+                }
             }
         }
     ) { padding ->
