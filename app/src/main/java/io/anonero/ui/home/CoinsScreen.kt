@@ -2,9 +2,11 @@ package io.anonero.ui.home
 
 import io.anonero.ui.theme.AnonNeroTheme
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ButtonDefaults
@@ -39,12 +40,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.asLiveData
 import io.anonero.R
 import io.anonero.model.CoinsInfo
@@ -289,6 +290,15 @@ private fun OutputDetailScreen(
     onFreeze: () -> Unit,
     onUnfreeze: () -> Unit,
 ) {
+    var actionSelected by remember(isFrozen) { mutableStateOf(false) }
+    val selectionScale by animateFloatAsState(
+        targetValue = if (actionSelected) 1.08f else 1f,
+        animationSpec = tween(durationMillis = 140),
+        label = "freezeSelectionScale"
+    )
+
+    val orange = MaterialTheme.colorScheme.primary
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -311,9 +321,25 @@ private fun OutputDetailScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val buttonSelected = actionSelected && !isFrozen
+
                 OutlinedButton(
-                    onClick = onFreeze,
-                    enabled = !isFrozen,
+                    onClick = {
+                        if (!isFrozen) {
+                            onFreeze()
+                            actionSelected = false
+                        }
+                    },
+                    enabled = !isFrozen && actionSelected,
+                    border = BorderStroke(
+                        1.dp,
+                        if (buttonSelected) orange
+                        else MaterialTheme.colorScheme.outline
+                    ),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = if (buttonSelected) orange
+                        else MaterialTheme.colorScheme.onSurface
+                    ),
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("冻结")
@@ -321,9 +347,25 @@ private fun OutputDetailScreen(
 
                 Spacer(modifier = Modifier.padding(horizontal = 8.dp))
 
+                val unfreezeSelected = actionSelected && isFrozen
+
                 OutlinedButton(
-                    onClick = onUnfreeze,
-                    enabled = isFrozen,
+                    onClick = {
+                        if (isFrozen) {
+                            onUnfreeze()
+                            actionSelected = false
+                        }
+                    },
+                    enabled = isFrozen && actionSelected,
+                    border = BorderStroke(
+                        1.dp,
+                        if (unfreezeSelected) orange
+                        else MaterialTheme.colorScheme.outline
+                    ),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = if (unfreezeSelected) orange
+                        else MaterialTheme.colorScheme.onSurface
+                    ),
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("解冻")
@@ -337,6 +379,8 @@ private fun OutputDetailScreen(
                 .fillMaxWidth()
         ) {
             item {
+                val selectedScale = selectionScale
+
                 ListItem(
                     modifier = Modifier.padding(
                         horizontal = 4.dp,
@@ -368,11 +412,33 @@ private fun OutputDetailScreen(
                                 modifier = Modifier.weight(1f)
                             )
 
-                            if (isFrozen) {
+                            Row(
+                                modifier = Modifier
+                                    .scale(selectedScale)
+                                    .clickable {
+                                        actionSelected = !actionSelected
+                                    },
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Text(
-                                    "已冻结",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontWeight = FontWeight.Medium
+                                    if (isFrozen) "解冻选择" else "冻结选择",
+                                    color = if (actionSelected) {
+                                        orange
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    },
+                                    fontWeight = if (actionSelected) {
+                                        FontWeight.SemiBold
+                                    } else {
+                                        FontWeight.Normal
+                                    }
+                                )
+
+                                Checkbox(
+                                    checked = actionSelected,
+                                    onCheckedChange = {
+                                        actionSelected = it
+                                    }
                                 )
                             }
                         }
