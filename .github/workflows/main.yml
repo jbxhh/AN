@@ -71,7 +71,7 @@ jobs:
           def ai_fix(fp,log):
               k=os.environ.get("GEMINI_API_KEY","")
               if not k: return False
-              fc=open(fp,encoding='utf-8').read()[-8000:]
+              fc=open(fp,encoding='utf-8').read()
               pr="You are an expert Kotlin/Android developer. Fix ALL compilation errors. Error:\n"+log[-3000:]+"\n\nFile "+fp+":\n```kotlin\n"+fc+"\n```\nReturn ONLY the complete corrected file in ```kotlin ... ```. No explanation."
               u="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key="+k
               r=urllib.request.Request(u,data=json.dumps({"contents":[{"parts":[{"text":pr}]}]}).encode(),headers={"Content-Type":"application/json"})
