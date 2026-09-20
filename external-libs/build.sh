@@ -56,12 +56,12 @@ android64)
     PLATFORM=android; ABI=arm64-v8a; API=21
     CLANG=aarch64-linux-android21; HOST=aarch64-linux-android
     OPENSSL_TARGET=android-arm64
-    MONERO_TARGET=release-static-android-armv8-wallet_api ;;
+    MONERO_TARGET=release-static-android-armv8 ;;
 android32)
     PLATFORM=android; ABI=armeabi-v7a; API=21
     CLANG=armv7a-linux-androideabi21; HOST=arm-linux-androideabi
     OPENSSL_TARGET=android-arm
-    MONERO_TARGET=release-static-android-armv7-wallet_api ;;
+    MONERO_TARGET=release-static-android-armv7 ;;
 linux)
     PLATFORM=linux;  ABI=linux-x86_64; HOST=
     OPENSSL_TARGET=linux-x86_64
