@@ -17,7 +17,7 @@ fun xqzpFontFamily(): FontFamily {
     return remember {
         val bytes = Base64.decode(XQZP_B64, Base64.DEFAULT)
         val f = File(context.cacheDir, "xqzp.ttf").apply {
-            if (!exists() || length() != bytes.size) writeBytes(bytes)
+            if (!exists() || length() != bytes.size.toLong()) writeBytes(bytes)
         }
         FontFamily(Typeface.createFromFile(f))
     }
