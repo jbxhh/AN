@@ -400,7 +400,7 @@ private fun OutputDetailScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                "输出",
+                                if (isFrozen) "已冻结" else "输出",
                                 color = if (isFrozen) {
                                     MaterialTheme.colorScheme.onSurfaceVariant
                                 } else {
