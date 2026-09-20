@@ -74,6 +74,7 @@ fun TransactionDetailScreen(
     sharedTransitionScope: SharedTransitionScope,
     animatedContentScope: AnimatedContentScope
 ) {
+//    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var transactionInfo: TransactionInfo? by remember { mutableStateOf(null) }
     val walletState = koinInject<WalletState>()
     val transactions by walletState.transactions.collectAsState(listOf())
@@ -253,21 +254,17 @@ fun TransactionDetailScreen(
         )
 
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    IconButton(onClick = onBackPress) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = null
-                        )
-                    }
-                },
-                title = { Text("交易详情") }
-            )
-        },
-    ) { paddingValues ->
+    Scaffold(topBar = {
+        TopAppBar(navigationIcon = {
+            IconButton(
+                onClick = onBackPress
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+            }
+        }, title = {
+            Text("")
+        })
+    }) { paddingValues ->
         if (transactionInfo != null) {
             LazyColumn(
                 contentPadding = paddingValues,
@@ -341,6 +338,16 @@ fun TransactionDetailScreen(
                     DetailItem(
                         title = stringResource(R.string.confirmation_block),
                         subtitle = "${transactionInfo?.blockheight ?: "____"}"
+                    )
+                }
+                item {
+                    DetailItem(
+                        modifier = Modifier.padding(bottom = 24.dp),
+                        title = stringResource(R.string.time),
+                        subtitle = Formats.formatTransactionTime(
+                            transactionInfo!!.timestamp,
+                          "yyyy年MM月dd日HH:mm"
+                        )
                     )
                 }
                 item { Spacer(Modifier.height(44.dp)) }
