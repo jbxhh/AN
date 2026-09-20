@@ -627,9 +627,17 @@ fun TransactionScreen(
             ) {
                 stickyHeader(key = "progress") {
                     Column {
-                        WalletProgressIndicator(
-                            refreshIndicatorProgress = refreshState.distanceFraction
-                        )
+                        AnimatedVisibility(
+                            visible = refreshState.distanceFraction > 0f || showIndefiniteLoading,
+                            enter = androidx.compose.animation.fadeIn(),
+                            exit = androidx.compose.animation.fadeOut(
+                                animationSpec = androidx.compose.animation.core.tween(300)
+                            )
+                        ) {
+                            WalletProgressIndicator(
+                                refreshIndicatorProgress = refreshState.distanceFraction
+                            )
+                        }
                         AnimatedVisibility(
                             visible = refreshState.distanceFraction > .2f && !showIndefiniteLoading,
                             modifier = Modifier.fillMaxWidth()
