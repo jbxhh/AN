@@ -412,35 +412,17 @@ private fun OutputDetailScreen(
                                 modifier = Modifier.weight(1f)
                             )
 
-                            Row(
+                            Checkbox(
+                                checked = actionSelected,
+                                onCheckedChange = {
+                                    actionSelected = it
+                                },
                                 modifier = Modifier
                                     .scale(selectedScale)
                                     .clickable {
                                         actionSelected = !actionSelected
-                                    },
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    if (isFrozen) "解冻选择" else "冻结选择",
-                                    color = if (actionSelected) {
-                                        orange
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurface
-                                    },
-                                    fontWeight = if (actionSelected) {
-                                        FontWeight.SemiBold
-                                    } else {
-                                        FontWeight.Normal
                                     }
-                                )
-
-                                Checkbox(
-                                    checked = actionSelected,
-                                    onCheckedChange = {
-                                        actionSelected = it
-                                    }
-                                )
-                            }
+                            )
                         }
                     }
                 )
