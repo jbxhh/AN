@@ -222,22 +222,22 @@ fun CoinsScreen(
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.weight(1f)
                             )
-                        }
-                    },
-                    trailingContent = {
-                        if (isFrozen) {
-                            Text(
-                                "已冻结",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontWeight = FontWeight.Medium
-                            )
-                        } else {
-                            Checkbox(
-                                checked = selectedCoins.contains(coin.pub_key),
-                                onCheckedChange = {
-                                    selectCoin(coin)
-                                }
-                            )
+
+                            if (isFrozen) {
+                                Text(
+                                    "已冻结",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Medium,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            } else {
+                                Checkbox(
+                                    checked = selectedCoins.contains(coin.pub_key),
+                                    onCheckedChange = {
+                                        selectCoin(coin)
+                                    }
+                                )
+                            }
                         }
                     }
                 )
