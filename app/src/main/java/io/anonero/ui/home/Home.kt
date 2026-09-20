@@ -356,11 +356,9 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                     composable<CoinsScreenRoute> {
                         CoinsScreen(
                             onBackPress = {
-                                showBottomNavigation = true
                                 bottomNavController.popBackStack()
                             },
                             navigateToSpend = {
-                                showBottomNavigation = true
                                 bottomNavController.navigate(it)
                             }
                         )
