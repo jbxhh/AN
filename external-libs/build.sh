@@ -27,7 +27,7 @@ CMAKE_SHA256=0dc2e9a6860f06bf10bd8fadc03e35d9eeb4df46e33763a7e480e987758f385c
 NDK_REVISION=r27c      # https://developer.android.com/ndk/downloads  (r27c == 27.2.12479018)
 NDK_SHA1=090e8083a715fdb1a3e402d0763c388abb03fb4e
 
-BOOST_VERSION=1.90.0    # https://github.com/boostorg/boost/releases
+BOOST_VERSION=1.86.0    # https://github.com/boostorg/boost/releases
 BOOST_SHA256=e848446c6fec62d8a96b44ed7352238b3de040b8b9facd4d6963b32f541e00f5
 ICONV_VERSION=1.15      # https://ftp.gnu.org/pub/gnu/libiconv/
 ICONV_SHA256=ccf536620a45458d26ba83887a983b96827001e92a13847b45e4925cc8913178
