@@ -101,7 +101,27 @@ fun TransactionDetailScreen(
 
     LaunchedEffect(true) {
         scope.launch {
-            transactionInfo = transactions.find { it.hash == transactionId }
+            val demoTransaction = when (transactionId) {
+                "demo-incoming-123456789012-1",
+                "demo-incoming-123456789012-2" -> TransactionInfo(
+                    direction = TransactionInfo.Direction.Direction_In.value,
+                    isPending = false,
+                    isFailed = false,
+                    amount = 123456789012L,
+                    fee = 0L,
+                    blockheight = 0L,
+                    hash = transactionId,
+                    timestamp = if (transactionId.endsWith("-1")) 2L else 1L,
+                    paymentId = null,
+                    accountIndex = 0,
+                    addressIndex = 0,
+                    confirmations = 10L,
+                    subaddressLabel = null,
+                    transfers = listOf()
+                )
+                else -> null
+            }
+            transactionInfo = transactions.find { it.hash == transactionId } ?: demoTransaction
             val wallet = WalletManager.instance?.wallet ?: return@launch
             if (transactionInfo != null) {
                 var destination = ""
