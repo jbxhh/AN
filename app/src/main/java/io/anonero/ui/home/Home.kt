@@ -186,17 +186,7 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
             contentWindowInsets = WindowInsets(
                 top = 0.dp, bottom = 0.dp
             ), bottomBar = {
-                AnimatedVisibility(
-                    visible = showBottomNavigation,
-                    enter = slideInVertically(
-                        initialOffsetY = { it }, // Slide in from the bottom
-                        animationSpec = tween(durationMillis = 500)
-                    ),
-                    exit = slideOutVertically(
-                        targetOffsetY = { it }, // Slide out to the bottom
-                        animationSpec = tween(durationMillis = 500)
-                    )
-                ) {
+                if (showBottomNavigation) {
                     MainBottomNavigation(
                         currentRoute = currentRoute,
                         onTabSelected = {
@@ -207,7 +197,6 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                         }
                     )
                 }
-
             }) { paddingValues ->
             Box(modifier = modifier.padding(0.dp)) {
                 NavHost(bottomNavController, startDestination = startDestination, exitTransition = {
