@@ -40,7 +40,7 @@ jobs:
       - name: Prepare Monero native source
         run: |
           rm -rf external-libs/monero
-          git clone --depth 1 --branch v0.18.3.4 https://github.com/monero-project/monero.git external-libs/monero
+          git clone --depth 1 --branch release-v0.18.0.0-monerujo https://gitea.com/anonero/monero.git external-libs/monero
           git -C external-libs/monero submodule update --init --recursive
       - name: Build Monero native libraries
         run: |
