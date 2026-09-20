@@ -38,6 +38,7 @@ RUN set -x && apt-get update && apt-get install -y --no-install-recommends \
 FROM base AS sources
 WORKDIR /external-libs
 COPY build.sh /external-libs/
+RUN chmod +x /external-libs/build.sh
 RUN ./build.sh fetch
 
 FROM sources
