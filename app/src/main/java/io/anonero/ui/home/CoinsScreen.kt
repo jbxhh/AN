@@ -1,11 +1,8 @@
 package io.anonero.ui.home
 
 import io.anonero.ui.theme.AnonNeroTheme
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -66,32 +63,14 @@ fun CoinsScreen(
     modifier: Modifier = Modifier,
     navigateToSpend: (route: SendScreenRoute) -> Unit = {},
     onBackPress: () -> Unit = {},
+    onOpenDetail: (pubKey: String) -> Unit = {},
     selected: Set<String> = setOf(),
 ) {
     val walletState: WalletState by inject(WalletState::class.java)
     val coins by walletState.coins.collectAsState(arrayListOf())
+
     var selectedCoins by remember { mutableStateOf(selected) }
-
-    // UI/UX prototype state only. No real wallet freeze/unfreeze is performed.
     var frozenCoins by remember { mutableStateOf(setOf<String>()) }
-    var detailCoin by remember { mutableStateOf<CoinsInfo?>(null) }
-
-    if (detailCoin != null) {
-        val coin = detailCoin!!
-        OutputDetailScreen(
-            coin = coin,
-            isFrozen = frozenCoins.contains(coin.pub_key),
-            onBackPress = { detailCoin = null },
-            onFreeze = {
-                frozenCoins = frozenCoins + coin.pub_key
-                selectedCoins = selectedCoins - coin.pub_key
-            },
-            onUnfreeze = {
-                frozenCoins = frozenCoins - coin.pub_key
-            }
-        )
-        return
-    }
 
     val connectionStatus by walletState.walletConnectionStatus.asLiveData().observeAsState(
         Wallet.ConnectionStatus.ConnectionStatus_Disconnected
@@ -186,7 +165,7 @@ fun CoinsScreen(
                         )
                         .clickable {
                             selectedCoins = emptySet()
-                            detailCoin = coin
+                            onOpenDetail(coin.pub_key)
                         },
                     headlineContent = {
                         Row(
@@ -261,6 +240,32 @@ fun CoinsScreen(
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CoinDetailScreen(
+    pubKey: String,
+    onBackPress: () -> Unit = {},
+) {
+    val walletState: WalletState by inject(WalletState::class.java)
+    val coins by walletState.coins.collectAsState(arrayListOf())
+    val coin = coins.find { it.pub_key == pubKey } ?: return
+
+    var frozenCoins by remember { mutableStateOf(setOf<String>()) }
+    val isFrozen = frozenCoins.contains(coin.pub_key)
+
+    OutputDetailScreen(
+        coin = coin,
+        isFrozen = isFrozen,
+        onBackPress = onBackPress,
+        onFreeze = {
+            frozenCoins = frozenCoins + coin.pub_key
+        },
+        onUnfreeze = {
+            frozenCoins = frozenCoins - coin.pub_key
+        }
+    )
 }
 
 @Preview(device = "id:pixel")
