@@ -197,6 +197,7 @@ fun CoinsScreen(
                             vertical = 6.dp
                         )
                         .clickable {
+                            selectedCoins = emptySet()
                             detailCoin = coin
                         },
                     headlineContent = {
