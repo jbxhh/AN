@@ -48,8 +48,6 @@ import io.anonero.ui.components.MainBottomNavigation
 import io.anonero.ui.home.addresses.SubAddressDetailScreen
 import io.anonero.ui.home.addresses.SubAddressesScreen
 import io.anonero.ui.home.graph.routes.CoinsScreenRoute
-import io.anonero.ui.home.graph.routes.OutputDetailRoute
-import io.anonero.ui.home.CoinDetailScreen
 import io.anonero.ui.home.graph.routes.HomeScreenRoute
 import io.anonero.ui.home.graph.routes.ProxySettingsRoute
 import io.anonero.ui.home.graph.routes.ReceiveRoute
