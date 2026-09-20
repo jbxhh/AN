@@ -774,27 +774,15 @@ fun TransactionItem(tx: TransactionInfo, hideAmounts: Boolean = false, amountCen
             tint = if (isIncoming) MaterialTheme.colorScheme.primary else LocalContentColor.current,
             contentDescription = null
         )
-        Column(
+        Text(
+            if (hideAmounts) Formats.maskAmount(amount)
+            else Formats.getDisplayAmount(amount),
+            textAlign = if (amountCenter) TextAlign.Center else TextAlign.End,
             modifier = Modifier
                 .padding(start = 10.dp)
                 .then(if (amountCenter) Modifier.weight(1f) else Modifier),
-            horizontalAlignment = if (amountCenter) Alignment.CenterHorizontally else Alignment.End
-        ) {
-            Text(
-                if (hideAmounts) Formats.maskAmount(amount)
-                else Formats.getDisplayAmount(amount),
-                textAlign = if (amountCenter) TextAlign.Center else TextAlign.End,
-                style = MaterialTheme.typography.titleLarge
-            )
-            Text(
-                Formats.formatTransactionTime(tx.timestamp),
-                textAlign = if (amountCenter) TextAlign.Center else TextAlign.End,
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 11.sp
-                ),
-                modifier = Modifier.padding(top = 2.dp)
-            )
-        }
+            style = MaterialTheme.typography.titleLarge
+        )
     }
 }
 
