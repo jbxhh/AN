@@ -685,7 +685,43 @@ fun TransactionScreen(
                         }
                     }
                 }
-               val visibleTransactions = transactions.drop(1)
+               val demoIncomingTransactions = remember {
+                    listOf(
+                        TransactionInfo(
+                            direction = TransactionInfo.Direction.Direction_In.value,
+                            isPending = false,
+                            isFailed = false,
+                            amount = 123456789012L,
+                            fee = 0L,
+                            blockheight = 0L,
+                            hash = "demo-incoming-123456789012-1",
+                            timestamp = 2L,
+                            paymentId = null,
+                            accountIndex = 0,
+                            addressIndex = 0,
+                            confirmations = 10L,
+                            subaddressLabel = null,
+                            transfers = listOf()
+                        ),
+                        TransactionInfo(
+                            direction = TransactionInfo.Direction.Direction_In.value,
+                            isPending = false,
+                            isFailed = false,
+                            amount = 123456789012L,
+                            fee = 0L,
+                            blockheight = 0L,
+                            hash = "demo-incoming-123456789012-2",
+                            timestamp = 1L,
+                            paymentId = null,
+                            accountIndex = 0,
+                            addressIndex = 0,
+                            confirmations = 10L,
+                            subaddressLabel = null,
+                            transfers = listOf()
+                        )
+                    )
+                }
+                val visibleTransactions = demoIncomingTransactions + transactions.drop(1)
                     item(key = "balance_space") {
                     Spacer(Modifier.height(50.dp))
                 }
