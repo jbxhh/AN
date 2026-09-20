@@ -206,10 +206,10 @@ fun CoinsScreen(
                         ) {
                             Text(
                                 stringResource(R.string.output_number, index + 1),
-                                color = if (isFrozen) {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                } else {
+                                color = if (selectedAction != null) {
                                     MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
                                 },
                             )
                             Text(
@@ -293,7 +293,7 @@ private fun OutputDetailScreen(
 ) {
     BackHandler(onBack = onBackPress)
 
-    var selectedAction by remember { mutableStateOf(if (isFrozen) "unfreeze" else "freeze") }
+    var selectedAction by remember { mutableStateOf<String?>(if (isFrozen) "unfreeze" else null) }
     val selectionScale by animateFloatAsState(
         targetValue = 1f,
         animationSpec = tween(durationMillis = 140),
@@ -382,7 +382,7 @@ private fun OutputDetailScreen(
                             vertical = 6.dp
                         )
                         .clickable {
-                            selectedAction = if (selectedAction == "freeze") "unfreeze" else "freeze"
+                            selectedAction = if (selectedAction == "freeze") null else "freeze"
                         },
                     headlineContent = {
                         Row(
@@ -413,7 +413,7 @@ private fun OutputDetailScreen(
                             Checkbox(
                                 checked = isFrozen,
                                 onCheckedChange = {
-                                    selectedAction = if (it) "freeze" else "unfreeze"
+                                    selectedAction = if (it) "freeze" else null
                                 },
                                 modifier = Modifier.scale(selectedScale)
                             )
