@@ -274,6 +274,8 @@ fun TransactionDetailScreen(
                         TransactionItem(
                             tx = transactionInfo!!,
                             amountCenter = true,
+                            showTime = true,
+                            timePattern = "HH:mm\nMM/dd",
                             modifier = Modifier
                                 .clickable {
 
