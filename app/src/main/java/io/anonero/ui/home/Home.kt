@@ -114,7 +114,7 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
     }
     
     LaunchedEffect(currentRoute) {
-        if (currentRoute.contains("CoinsScreenRoute")) {
+        if (currentRoute.toString().contains("CoinsScreenRoute")) {
             showBottomNavigation = false
         } else if (getRoutes().find { it.getRouteAsString == currentRoute } != null) {
             delay(340)
