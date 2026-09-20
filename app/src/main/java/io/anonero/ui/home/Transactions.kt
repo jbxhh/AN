@@ -758,7 +758,7 @@ fun TransactionScreen(
 
 
 @Composable
-fun TransactionItem(tx: TransactionInfo, hideAmounts: Boolean = false, amountCenter: Boolean = false, showTime: Boolean = false, modifier: Modifier = Modifier) {
+fun TransactionItem(tx: TransactionInfo, hideAmounts: Boolean = false, amountCenter: Boolean = false, modifier: Modifier = Modifier) {
     val isIncoming = tx.direction == TransactionInfo.Direction.Direction_In
     val amount = tx.amount
     Row(
@@ -766,7 +766,7 @@ fun TransactionItem(tx: TransactionInfo, hideAmounts: Boolean = false, amountCen
             .fillMaxWidth()
             .padding(start = 24.dp, end = 28.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = if (showTime) Arrangement.SpaceBetween else Arrangement.End
+        horizontalArrangement = Arrangement.End
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically
