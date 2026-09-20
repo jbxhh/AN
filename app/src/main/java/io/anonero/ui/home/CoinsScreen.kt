@@ -293,7 +293,7 @@ private fun OutputDetailScreen(
 ) {
     BackHandler(onBack = onBackPress)
 
-    var selectedAction by remember { mutableStateOf<String?>(if (isFrozen) "unfreeze" else null) }
+    var selectedAction by remember { mutableStateOf<String?>(if (isFrozen) "unfreeze" else "freeze") }
     val selectionScale by animateFloatAsState(
         targetValue = 1f,
         animationSpec = tween(durationMillis = 140),
