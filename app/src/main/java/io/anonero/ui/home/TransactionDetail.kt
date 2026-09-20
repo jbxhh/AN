@@ -74,7 +74,6 @@ fun TransactionDetailScreen(
     sharedTransitionScope: SharedTransitionScope,
     animatedContentScope: AnimatedContentScope
 ) {
-//    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var transactionInfo: TransactionInfo? by remember { mutableStateOf(null) }
     val walletState = koinInject<WalletState>()
     val transactions by walletState.transactions.collectAsState(listOf())
@@ -346,7 +345,7 @@ fun TransactionDetailScreen(
                         title = stringResource(R.string.time),
                         subtitle = Formats.formatTransactionTime(
                             transactionInfo!!.timestamp,
-                          "yyyy年MM月dd日HH:mm"
+                            "yyyy/MM/dd HH:mm:ss"
                         )
                     )
                 }
