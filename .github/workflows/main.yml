@@ -1,29 +1,27 @@
-name: Build ANON APK (full auto-fix)
+name: Build ANON APK
 "on":
   push:
     branches: [ main ]
   workflow_dispatch:
 env:
   JAVA_VERSION: '17'
-  MAX_FIX_ATTEMPTS: '3'
 permissions:
-  contents: write
+  contents: read
 jobs:
   build:
-    name: Build with auto-fix
+    name: Build APK
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
-      - name: Setup Android SDK (built-in)
+      - name: Setup Android SDK
         run: |
           echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
           echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
@@ -37,109 +35,36 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties', '**/settings.gradle*', '**/build.gradle*', '**/libs.versions.toml') }}
           restore-keys: ${{ runner.os }}-gradle-
+      - name: Cache native libraries
+        id: native-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            external-libs/arm64-v8a
+            external-libs/armeabi-v7a
+            external-libs/include
+          key: anon-native-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
       - name: Prepare Monero native source
+        if: steps.native-cache.outputs.cache-hit != 'true'
         run: |
           rm -rf external-libs/monero
           git clone --depth 1 --branch release-v0.18.0.0-monerujo https://gitea.com/anonero/monero.git external-libs/monero
           git -C external-libs/monero submodule update --init --recursive
       - name: Build Monero native libraries
+        if: steps.native-cache.outputs.cache-hit != 'true'
         run: |
-          make -C external-libs android NPROC=2
+          make -C external-libs android NPROC=4
       - run: chmod +x ./gradlew
-      - name: Write fix script
+      - name: Build APK
+        id: build
         run: |
-          cat > fix.py << 'PYEOF'
-          import sys,re,os,json,urllib.request
-          def simple_fix(fp):
-              if not os.path.isfile(fp): return False
-              L=open(fp,encoding='utf-8').read().split('\n'); c=False
-              n=[];p=None
-              for l in L:
-                  s=l.strip()
-                  if s.startswith('import '):
-                      if s==p: c=True; continue
-                      p=s
-                  else: p=None
-                  n.append(l)
-              L=n;n=[];i=0
-              while i<len(L):
-                  s=L[i].strip()
-                  if s in('@Composable','@OptIn','@Preview') and i+1<len(L):
-                      ns=L[i+1].strip()
-                      if not(ns.startswith('fun ')or ns.startswith('private fun ')or ns.startswith('class ')or ns.startswith('@')or ns==''or ns.startswith('override ')):
-                          c=True;i+=1;continue
-                  n.append(L[i]);i+=1
-              L=n;t='\n'.join(L)
-              if t.count('{')-t.count('}')==1: L.append('}');c=True
-              elif t.count('}')-t.count('{')==1:
-                  for j in range(len(L)-1,-1,-1):
-                      if L[j].strip()=='}': del L[j];c=True;break
-              if c: open(fp,'w',encoding='utf-8').write('\n'.join(L));return True
-              return False
-          def ai_fix(fp,log):
-              k=os.environ.get("GEMINI_API_KEY","")
-              if not k: return False
-              fc=open(fp,encoding='utf-8').read()
-              pr="You are an expert Kotlin/Android developer. Fix ALL compilation errors. Error:\n"+log[-3000:]+"\n\nFile "+fp+":\n```kotlin\n"+fc+"\n```\nReturn ONLY the complete corrected file in ```kotlin ... ```. No explanation."
-              u="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key="+k
-              r=urllib.request.Request(u,data=json.dumps({"contents":[{"parts":[{"text":pr}]}]}).encode(),headers={"Content-Type":"application/json"})
-              try:
-                  d=json.loads(urllib.request.urlopen(r,timeout=120).read())
-                  c=d["candidates"][0]["content"]["parts"][0]["text"]
-                  m=re.search(r"```kotlin\s*(.*?)\s*```",c,re.DOTALL)
-                  fx=m.group(1) if m else c
-                  if fx.count("{")!=fx.count("}") or fx.count("(")!=fx.count(")"): return False
-                  open(fp,'w',encoding='utf-8').write(fx);return True
-              except: return False
-          log=open(sys.argv[1],encoding='utf-8',errors='replace').read()
-          fs=list(dict.fromkeys(re.findall(r'([a-zA-Z0-9_./-]+\.kt):\d+',log)))
-          if not fs: sys.exit(1)
-          for f in fs[:2]:
-              if simple_fix(f): print("simple-fixed:",f); sys.exit(0)
-          if ai_fix(fs[0],log): print("AI-fixed:",fs[0]); sys.exit(0)
-          print("no fix applicable"); sys.exit(1)
-          PYEOF
-          echo "fix.py ready"
-      - name: Build + auto-fix loop
-        id: build-loop
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          set +e
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          ATTEMPT=1
-          while [ $ATTEMPT -le ${{ env.MAX_FIX_ATTEMPTS }} ]; do
-            echo "=== Build attempt $ATTEMPT ==="
-            ./gradlew :app:assembleAnonDebug --no-daemon --stacktrace 2>&1 | tee build.log
-            if [ ${PIPESTATUS[0]} -eq 0 ]; then
-              echo "BUILD_STATUS=success" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-            if [ $ATTEMPT -ge ${{ env.MAX_FIX_ATTEMPTS }} ]; then
-              echo "BUILD_STATUS=failure" >> $GITHUB_OUTPUT
-              exit 1
-            fi
-            python3 fix.py build.log
-            if [ $? -eq 0 ]; then
-              git add -A
-              git commit -m "auto-fix attempt $ATTEMPT" || true
-              git push || true
-              ATTEMPT=$((ATTEMPT+1))
-              sleep 10
-            else
-              echo "BUILD_STATUS=failure" >> $GITHUB_OUTPUT
-              exit 1
-            fi
-          done
+          ./gradlew :app:assembleAnonDebug --no-daemon --stacktrace 2>&1 | tee build.log
       - name: Upload APK
-        if: steps.build-loop.outputs.BUILD_STATUS == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: ANON-APK
           path: |
             app/build/outputs/apk/**/*.apk
-            app/build/outputs/**/*.apk
           if-no-files-found: error
       - name: Upload logs
         if: failure()
