@@ -79,8 +79,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dokar.sonner.ToastType
-import com.dokar.sonner.Toaster
-import com.dokar.sonner.rememberToasterState
+import com.dokar.sonner.ToasterState
 import dev.chrisbanes.haze.HazeDefaults
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
@@ -143,6 +142,7 @@ fun TransactionScreen(
     onItemClick: (TransactionInfo) -> Unit = {},
     navigateTo: (route: Any) -> Unit = {},
     navigateToShortCut: (shortcut: LockScreenShortCut) -> Unit = {},
+    toastState: ToasterState,
     animatedContentScope: AnimatedContentScope,
     sharedTransitionScope: SharedTransitionScope,
 ) {
@@ -166,7 +166,6 @@ fun TransactionScreen(
     val showLockScreen by walletState.backgroundSyncFlow.asLiveData().observeAsState(walletState.backgroundSync)
     val hideAmounts by walletState.hideAmountsFlow.asLiveData().observeAsState(false)
     val scope = rememberCoroutineScope()
-    val toastState = rememberToasterState()
     val activity = LocalActivity.current;
 
     if (broadcastSignedTxPath != null) {
@@ -473,16 +472,6 @@ fun TransactionScreen(
         }
     }
 
-    Toaster(
-        state = toastState,
-        maxVisibleToasts = 4,
-        alignment = Alignment.BottomCenter,
-        darkTheme = true,
-        richColors = true,
-        containerPadding = PaddingValues(
-            bottom = 84.dp,
-        ),
-    )
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
