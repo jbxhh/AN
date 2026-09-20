@@ -66,42 +66,46 @@ fun CoinsScreen(
     val walletState: WalletState by inject(WalletState::class.java)
     val coins by walletState.coins.collectAsState(arrayListOf())
     var selectedCoins by remember { mutableStateOf(selected) }
-    var showOutputDetail by remember { mutableStateOf(false) }
 
-    if (showOutputDetail) {
+    // UI/UX prototype state only. No real wallet freeze/unfreeze is performed.
+    var frozenCoins by remember { mutableStateOf(setOf<String>()) }
+    var detailCoin by remember { mutableStateOf<CoinsInfo?>(null) }
+
+    if (detailCoin != null) {
+        val coin = detailCoin!!
         OutputDetailScreen(
-            coins = coins,
-            selectedCoins = selectedCoins,
-            onSelectCoin = { coin ->
-                selectedCoins = if (selectedCoins.contains(coin.pub_key)) {
-                    selectedCoins - coin.pub_key
-                } else {
-                    selectedCoins + coin.pub_key
-                }
+            coin = coin,
+            isFrozen = frozenCoins.contains(coin.pub_key),
+            onBackPress = { detailCoin = null },
+            onFreeze = {
+                frozenCoins = frozenCoins + coin.pub_key
+                selectedCoins = selectedCoins - coin.pub_key
             },
-            onBackPress = { showOutputDetail = false },
-            onFreeze = { },
-            onUnfreeze = { }
+            onUnfreeze = {
+                frozenCoins = frozenCoins - coin.pub_key
+            }
         )
         return
     }
+
     val connectionStatus by walletState.walletConnectionStatus.asLiveData().observeAsState(
         Wallet.ConnectionStatus.ConnectionStatus_Disconnected
     )
     val loading by walletState.isLoading.asLiveData().observeAsState(false)
     val nodeConnected = connectionStatus == Wallet.ConnectionStatus.ConnectionStatus_Connected
 
-
-    var message: String? = null;
+    var message: String? = null
     if (loading) {
         message = stringResource(R.string.wallet_loading)
     } else if (!nodeConnected) {
         message = stringResource(R.string.node_disconnected)
-    } else if(coins.isEmpty()) {
+    } else if (coins.isEmpty()) {
         message = stringResource(R.string.no_coins_available)
     }
 
     fun selectCoin(coin: CoinsInfo) {
+        if (frozenCoins.contains(coin.pub_key)) return
+
         selectedCoins = if (selectedCoins.contains(coin.pub_key)) {
             selectedCoins - coin.pub_key
         } else {
@@ -121,11 +125,11 @@ fun CoinsScreen(
                     ),
                 visible = selectedCoins.isNotEmpty(),
                 enter = slideInVertically(
-                    initialOffsetY = { it }, // Slide in from the bottom
+                    initialOffsetY = { it },
                     animationSpec = tween(durationMillis = 220)
                 ),
                 exit = slideOutVertically(
-                    targetOffsetY = { it }, // Slide out to the bottom
+                    targetOffsetY = { it },
                     animationSpec = tween(durationMillis = 220)
                 )
             ) {
@@ -144,14 +148,17 @@ fun CoinsScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(
-                            horizontal = 12.dp
-                        ),
-
+                        .padding(horizontal = 12.dp),
                     shape = MaterialTheme.shapes.medium,
                     contentPadding = PaddingValues(12.dp)
                 ) {
-                    Text(if (selected.size != 0) stringResource(R.string.confirm) else stringResource(R.string.spend))
+                    Text(
+                        if (selected.size != 0) {
+                            stringResource(R.string.confirm)
+                        } else {
+                            stringResource(R.string.spend)
+                        }
+                    )
                 }
             }
         },
@@ -161,22 +168,26 @@ fun CoinsScreen(
                     Text("输出")
                 },
                 navigationIcon = {
-                    IconButton(
-                        onClick = onBackPress
-                    ) {
+                    IconButton(onClick = onBackPress) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                     }
                 },
             )
-        }) {
-        LazyColumn(modifier = Modifier.padding(it).padding(
-            bottom = 44.dp
-        )) {
+        }
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .padding(it)
+                .padding(bottom = 44.dp)
+        ) {
             item {
                 WalletProgressIndicator()
             }
+
             items(coins.size) { index ->
                 val coin = coins[index]
+                val isFrozen = frozenCoins.contains(coin.pub_key)
+
                 ListItem(
                     modifier = Modifier
                         .padding(
@@ -184,37 +195,53 @@ fun CoinsScreen(
                             vertical = 6.dp
                         )
                         .clickable {
-                            showOutputDetail = true
+                            detailCoin = coin
                         },
                     headlineContent = {
-                                                Row(
+                        Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
                                 stringResource(R.string.output_number, index + 1),
-                                color = MaterialTheme.colorScheme.primary,
+                                color = if (isFrozen) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                },
                             )
                             Text(
                                 Formats.getDisplayAmount(coin.amount),
-                                color = MaterialTheme.colorScheme.primary,
+                                color = if (isFrozen) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                },
                                 fontWeight = FontWeight.SemiBold,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.weight(1f)
                             )
                         }
                     },
-                
                     trailingContent = {
-                        Checkbox(
-                            checked = selectedCoins.contains(coin.pub_key),
-                            onCheckedChange = { checked ->
-                                selectCoin(coin)
-                            }
-                        )
+                        if (isFrozen) {
+                            Text(
+                                "已冻结",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Medium
+                            )
+                        } else {
+                            Checkbox(
+                                checked = selectedCoins.contains(coin.pub_key),
+                                onCheckedChange = {
+                                    selectCoin(coin)
+                                }
+                            )
+                        }
                     }
                 )
             }
+
             if (message != null) {
                 item {
                     Box(
@@ -229,9 +256,7 @@ fun CoinsScreen(
                                     horizontal = 16.dp,
                                     vertical = 8.dp
                                 )
-                                .align(
-                                    Alignment.Center
-                                ),
+                                .align(Alignment.Center),
                             textAlign = TextAlign.Center,
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.surfaceVariant
@@ -239,6 +264,7 @@ fun CoinsScreen(
                     }
                 }
             }
+
             item {
                 Spacer(Modifier.height(18.dp))
             }
@@ -257,9 +283,8 @@ private fun ReceiveScreenPreview() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun OutputDetailScreen(
-    coins: List<CoinsInfo>,
-    selectedCoins: Set<String>,
-    onSelectCoin: (CoinsInfo) -> Unit,
+    coin: CoinsInfo,
+    isFrozen: Boolean,
     onBackPress: () -> Unit,
     onFreeze: () -> Unit,
     onUnfreeze: () -> Unit,
@@ -288,6 +313,7 @@ private fun OutputDetailScreen(
             ) {
                 OutlinedButton(
                     onClick = onFreeze,
+                    enabled = !isFrozen,
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("冻结")
@@ -297,6 +323,7 @@ private fun OutputDetailScreen(
 
                 OutlinedButton(
                     onClick = onUnfreeze,
+                    enabled = isFrozen,
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("解冻")
@@ -309,9 +336,7 @@ private fun OutputDetailScreen(
                 .padding(padding)
                 .fillMaxWidth()
         ) {
-            items(coins.size) { index ->
-                val coin = coins[index]
-
+            item {
                 ListItem(
                     modifier = Modifier.padding(
                         horizontal = 4.dp,
@@ -323,26 +348,34 @@ private fun OutputDetailScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                "输出" + (index + 1),
-                                color = MaterialTheme.colorScheme.primary
+                                "输出",
+                                color = if (isFrozen) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                }
                             )
 
                             Text(
                                 Formats.getDisplayAmount(coin.amount),
-                                color = MaterialTheme.colorScheme.primary,
+                                color = if (isFrozen) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                },
                                 fontWeight = FontWeight.SemiBold,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.weight(1f)
                             )
-                        }
-                    },
-                    trailingContent = {
-                        Checkbox(
-                            checked = selectedCoins.contains(coin.pub_key),
-                            onCheckedChange = {
-                                onSelectCoin(coin)
+
+                            if (isFrozen) {
+                                Text(
+                                    "已冻结",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Medium
+                                )
                             }
-                        )
+                        }
                     }
                 )
             }
