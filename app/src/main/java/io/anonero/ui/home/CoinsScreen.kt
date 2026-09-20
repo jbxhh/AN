@@ -330,8 +330,6 @@ private fun OutputDetailScreen(
                     onClick = {
                         if (selectedAction == "freeze") {
                             onFreeze()
-                        } else {
-                            selectedAction = "freeze"
                         }
                     },
                     enabled = true,
@@ -357,8 +355,6 @@ private fun OutputDetailScreen(
                     onClick = {
                         if (selectedAction == "unfreeze") {
                             onUnfreeze()
-                        } else {
-                            selectedAction = "unfreeze"
                         }
                     },
                     enabled = true,
@@ -391,7 +387,10 @@ private fun OutputDetailScreen(
                         .padding(
                             horizontal = 4.dp,
                             vertical = 6.dp
-                        ),
+                        )
+                        .clickable {
+                            selectedAction = if (selectedAction == "freeze") "unfreeze" else "freeze"
+                        },
                     headlineContent = {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -419,9 +418,9 @@ private fun OutputDetailScreen(
                             )
 
                             Checkbox(
-                                checked = isFrozen,
+                                checked = selectedAction == "freeze",
                                 onCheckedChange = {
-                                    selectedAction = if (it) "unfreeze" else "freeze"
+                                    selectedAction = if (it) "freeze" else "unfreeze"
                                 },
                                 modifier = Modifier.scale(selectedScale)
                             )
