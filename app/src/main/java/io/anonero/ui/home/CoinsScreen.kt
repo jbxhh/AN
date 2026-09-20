@@ -64,13 +64,13 @@ fun CoinsScreen(
     navigateToSpend: (route: SendScreenRoute) -> Unit = {},
     onBackPress: () -> Unit = {},
     onOpenDetail: (pubKey: String) -> Unit = {},
+    frozenCoins: Set<String> = emptySet(),
     selected: Set<String> = setOf(),
 ) {
     val walletState: WalletState by inject(WalletState::class.java)
     val coins by walletState.coins.collectAsState(arrayListOf())
 
     var selectedCoins by remember { mutableStateOf(selected) }
-    var frozenCoins by remember { mutableStateOf(setOf<String>()) }
 
     val connectionStatus by walletState.walletConnectionStatus.asLiveData().observeAsState(
         Wallet.ConnectionStatus.ConnectionStatus_Disconnected
@@ -246,13 +246,14 @@ fun CoinsScreen(
 @Composable
 fun CoinDetailScreen(
     pubKey: String,
+    frozenCoins: Set<String> = emptySet(),
+    onToggleFreeze: (pubKey: String, freeze: Boolean) -> Unit = { _, _ -> },
     onBackPress: () -> Unit = {},
 ) {
     val walletState: WalletState by inject(WalletState::class.java)
     val coins by walletState.coins.collectAsState(arrayListOf())
     val coin = coins.find { it.pub_key == pubKey } ?: return
 
-    var frozenCoins by remember { mutableStateOf(setOf<String>()) }
     val isFrozen = frozenCoins.contains(coin.pub_key)
 
     OutputDetailScreen(
@@ -260,10 +261,10 @@ fun CoinDetailScreen(
         isFrozen = isFrozen,
         onBackPress = onBackPress,
         onFreeze = {
-            frozenCoins = frozenCoins + coin.pub_key
+            onToggleFreeze(coin.pub_key, true)
         },
         onUnfreeze = {
-            frozenCoins = frozenCoins - coin.pub_key
+            onToggleFreeze(coin.pub_key, false)
         }
     )
 }

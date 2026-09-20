@@ -93,6 +93,7 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
     var showBatteryManagerDialog by remember { mutableStateOf(false) }
     val walletState = koinInject<WalletState>()
     val toastState = rememberToasterState()
+    var frozenCoins by remember { mutableStateOf(setOf<String>()) }
 
     // SharedPreferences for storing which wallet we've already shown prompts for
     val prefs = context.getSharedPreferences("anonero_prefs", android.content.Context.MODE_PRIVATE)
@@ -359,6 +360,7 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                             navigateToSpend = {
                                 bottomNavController.navigate(it)
                             },
+                            frozenCoins = frozenCoins,
                             onOpenDetail = { pubKey ->
                                 bottomNavController.navigate(OutputDetailRoute(pubKey))
                             }
@@ -368,6 +370,10 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                         val detailRoute = backStackEntry.toRoute<OutputDetailRoute>()
                         CoinDetailScreen(
                             pubKey = detailRoute.pubKey,
+                            frozenCoins = frozenCoins,
+                            onToggleFreeze = { key, freeze ->
+                                frozenCoins = if (freeze) frozenCoins + key else frozenCoins - key
+                            },
                             onBackPress = {
                                 bottomNavController.popBackStack()
                             }
