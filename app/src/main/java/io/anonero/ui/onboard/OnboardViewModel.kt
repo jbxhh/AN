@@ -48,6 +48,9 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
         if (AnonConfig.context == null) return
         withContext(Dispatchers.IO) {
             val context = AnonConfig.context!!.applicationContext
+            if (WalletManager.instance?.wallet != null) {
+                throw CancellationException("Close the current wallet before creating another wallet")
+            }
             val walletFile = AnonConfig.getDefaultWalletFile(context)
             AnonConfig.getDefaultWalletDir(context).deleteRecursively()
             AnonConfig.getDefaultWalletDir(context).mkdirs()
@@ -58,10 +61,12 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
                 "English",
                 1,
             )
-            anonWallet?.store()
+            val walletStored = runCatching { anonWallet?.store() == true }.getOrDefault(false)
             delay(100)
-            if (anonWallet?.status?.isOk != true) {
-                walletFile.delete()
+            val walletStatusOk = runCatching { anonWallet?.status?.isOk == true }.getOrDefault(false)
+            if (!walletStored || !walletStatusOk) {
+                val closed = anonWallet == null || runCatching { anonWallet.close() }.getOrDefault(false)
+                if (closed) AnonConfig.getDefaultWalletDir(context).deleteRecursively()
                 throw CancellationException(context.getString(R.string.unable_to_create_wallet))
             }
             val crazyPass: String = KeyStoreHelper.getCrazyPass(context, passPhrase)
@@ -80,6 +85,9 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
         if (AnonConfig.context == null) return
         withContext(Dispatchers.IO) {
             val context = AnonConfig.context!!.applicationContext
+            if (WalletManager.instance?.wallet != null) {
+                throw CancellationException("Close the current wallet before creating another wallet")
+            }
             val walletFile = AnonConfig.getDefaultWalletFile(context)
             AnonConfig.getDefaultWalletDir(context).deleteRecursively()
             AnonConfig.getDefaultWalletDir(context).mkdirs()
@@ -92,10 +100,12 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
                 addressString = neroKeyPayload!!.primaryAddress,
                 spendKeyString = ""
             )
-            anonWallet?.store()
+            val walletStored = runCatching { anonWallet?.store() == true }.getOrDefault(false)
             delay(100)
-            if (anonWallet?.status?.isOk != true) {
-                walletFile.delete()
+            val walletStatusOk = runCatching { anonWallet?.status?.isOk == true }.getOrDefault(false)
+            if (!walletStored || !walletStatusOk) {
+                val closed = anonWallet == null || runCatching { anonWallet.close() }.getOrDefault(false)
+                if (closed) AnonConfig.getDefaultWalletDir(context).deleteRecursively()
                 throw CancellationException(context.getString(R.string.unable_to_create_wallet))
             }
             val crazyPass: String = KeyStoreHelper.getCrazyPass(context, passPhrase)
