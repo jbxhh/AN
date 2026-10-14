@@ -17,10 +17,6 @@ on:
       - 'gradle.properties'
       - '.github/workflows/main.yml'
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
-
 permissions:
   contents: read
 
@@ -29,7 +25,49 @@ env:
   MONERO_COMMIT: 22578c3f7d7b4b6dd85ff7daa42a827d97cc53d0
 
 jobs:
+  source-check:
+    name: Validate wallet Kotlin/Java sources
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Android SDK
+        run: |
+          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1 || true
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;36.0.0" >/dev/null
+          echo "Android SDK ready for source check"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties', '**/settings.gradle*', '**/build.gradle*', '**/libs.versions.toml') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
+      - name: Compile wallet Kotlin/Java before native work
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:compileAnonDebugKotlin :app:compileAnonDebugJavaWithJavac --no-daemon --stacktrace
+
   build:
+    needs: source-check
+    concurrency:
+      # Share the former workflow-level group so native/APK builds stay serialized,
+      # while the quick source-check job can run immediately.
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: false
     name: Build native libraries and APK
     runs-on: ubuntu-latest
     timeout-minutes: 360
@@ -51,21 +89,6 @@ jobs:
           yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1 || true
           /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1" >/dev/null
           echo "Android SDK ready"
-
-      # Compile wallet Kotlin/Java sources before native builds so source errors
-      # surface immediately instead of being hidden behind a long C++ build.
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties', '**/settings.gradle*', '**/build.gradle*', '**/libs.versions.toml') }}
-          restore-keys: ${{ runner.os }}-gradle-
-
-      - name: Fast wallet source compile
-        run: |
-          chmod +x ./gradlew
-          ./gradlew :app:compileAnonDebugKotlin :app:compileAnonDebugJavaWithJavac --no-daemon --stacktrace
 
 
       # Keep each ABI in its own immutable cache. If one ABI fails, the other
