@@ -1,4 +1,4 @@
-name: Probe Monero API patches
+name: Probe API migration hunks
 
 on:
   push:
@@ -11,11 +11,11 @@ permissions:
   contents: read
 
 jobs:
-  probe-patches:
+  probe-migration:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Check patch compatibility against pinned Monero source
+      - name: Inspect coin-control migration rejects
         shell: bash
         run: |
           set -euo pipefail
@@ -25,20 +25,20 @@ jobs:
           git -C monero remote add origin https://github.com/monero-project/monero.git
           git -C monero fetch --depth 1 origin "$MONERO_COMMIT"
           git -C monero checkout --detach FETCH_HEAD
-          echo "=== Current Polyseed API ==="
-          grep -nE 'getPolyseed\(|hasUnknownKeyImages|viewOnlyBalance|struct Coins|class Coins|createTransaction\(' monero/src/wallet/api/wallet2_api.h | head -40 || true
           mkdir -p "$RUNNER_TEMP/patches"
-          curl -fsSL "https://raw.githubusercontent.com/MrCyjaneK/monero_c/$PATCH_BASE/patches/monero/0005-UR-functions.patch" -o "$RUNNER_TEMP/patches/0005.patch"
           curl -fsSL "https://raw.githubusercontent.com/MrCyjaneK/monero_c/$PATCH_BASE/patches/monero/0008-coin-control.patch" -o "$RUNNER_TEMP/patches/0008.patch"
-          echo "=== UR-functions patch check ==="
-          if git -C monero apply --check "$RUNNER_TEMP/patches/0005.patch"; then
-            echo "PATCH_0005_CHECK=PASS"
-          else
-            echo "PATCH_0005_CHECK=FAIL"
-          fi
-          echo "=== Coin-control patch check ==="
-          if git -C monero apply --check "$RUNNER_TEMP/patches/0008.patch"; then
-            echo "PATCH_0008_CHECK=PASS"
-          else
-            echo "PATCH_0008_CHECK=FAIL"
-          fi
+          curl -fsSL "https://raw.githubusercontent.com/MrCyjaneK/monero_c/$PATCH_BASE/patches/monero/0005-UR-functions.patch" -o "$RUNNER_TEMP/patches/0005.patch"
+          set +e
+          git -C monero apply --reject "$RUNNER_TEMP/patches/0008.patch" 2>&1 | tee "$RUNNER_TEMP/apply.log"
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "APPLY_RC=$rc"
+          echo "=== Changed files ==="
+          git -C monero status --short | head -100
+          echo "=== Reject count and hunk headers ==="
+          find monero -name '*.rej' -print
+          grep -H -E '^(---|\+\+\+|@@)' $(find monero -name '*.rej' -print) 2>/dev/null | head -300 || true
+          echo "=== Relevant UR API patch fragments ==="
+          grep -n -B5 -A18 -E 'hasUnknownKeyImages|viewOnlyBalance' "$RUNNER_TEMP/patches/0005.patch" | head -180 || true
+          echo "=== Coin API public interface excerpt ==="
+          grep -n -B3 -A45 -E 'struct CoinsInfo|struct Coins|preferred_inputs|coins\(\)' "$RUNNER_TEMP/patches/0008.patch" | head -300 || true
