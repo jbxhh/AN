@@ -44,7 +44,9 @@ android {
             versionNameSuffix = "-debug"
         }
         release {
-            isMinifyEnabled = false
+            // R8 removes unused Kotlin/Compose/dependency code from distributable builds.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -95,6 +97,16 @@ android {
             buildConfigField("String", "FLAVOR", "\"nero\"")
             buildConfigField("boolean", "VIEW_ONLY", "true")
             buildConfigField("boolean", "NATIVE_ENABLED", if (nativeLibsReady) "true" else "false")
+        }
+    }
+    // Each downloadable APK contains only one native ABI. This avoids shipping
+    // both large Monero JNI binaries to every device while keeping ARMv7 support.
+    splits {
+        abi {
+            isEnable = nativeLibsReady
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = false
         }
     }
     buildToolsVersion = "36.0.0"
