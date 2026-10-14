@@ -43,6 +43,16 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
 
     fun getSeed() = walllet?.getSeed(passPhrase) ?: ""
 
+    private fun walletArtifacts(walletFile: File): List<File> {
+        return walletFile.parentFile?.listFiles()
+            ?.filter { it.name == walletFile.name || it.name.startsWith("${walletFile.name}.") }
+            .orEmpty()
+    }
+
+    private fun deleteWalletArtifacts(walletFile: File) {
+        walletArtifacts(walletFile).forEach { it.deleteRecursively() }
+    }
+
 
     suspend fun create(pin: String) {
         if (AnonConfig.context == null) return
@@ -52,8 +62,13 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
                 throw CancellationException("Close the current wallet before creating another wallet")
             }
             val walletFile = AnonConfig.getDefaultWalletFile(context)
-            AnonConfig.getDefaultWalletDir(context).deleteRecursively()
-            AnonConfig.getDefaultWalletDir(context).mkdirs()
+            if (walletArtifacts(walletFile).isNotEmpty()) {
+                throw CancellationException("Wallet files already exist; refusing to overwrite the existing wallet")
+            }
+            val walletDir = AnonConfig.getDefaultWalletDir(context)
+            if (!walletDir.exists() && !walletDir.mkdirs()) {
+                throw IOException("Unable to create the wallet directory")
+            }
             val anonWallet = WalletManager.instance?.createWallet(
                 walletFile,
                 pin,
@@ -66,7 +81,7 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
             val walletStatusOk = runCatching { anonWallet?.status?.isOk == true }.getOrDefault(false)
             if (!walletStored || !walletStatusOk) {
                 val closed = anonWallet == null || runCatching { anonWallet.close() }.getOrDefault(false)
-                if (closed) AnonConfig.getDefaultWalletDir(context).deleteRecursively()
+                if (closed) deleteWalletArtifacts(walletFile)
                 throw CancellationException(context.getString(R.string.unable_to_create_wallet))
             }
             val crazyPass: String = KeyStoreHelper.getCrazyPass(context, passPhrase)
@@ -89,8 +104,13 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
                 throw CancellationException("Close the current wallet before creating another wallet")
             }
             val walletFile = AnonConfig.getDefaultWalletFile(context)
-            AnonConfig.getDefaultWalletDir(context).deleteRecursively()
-            AnonConfig.getDefaultWalletDir(context).mkdirs()
+            if (walletArtifacts(walletFile).isNotEmpty()) {
+                throw CancellationException("Wallet files already exist; refusing to overwrite the existing wallet")
+            }
+            val walletDir = AnonConfig.getDefaultWalletDir(context)
+            if (!walletDir.exists() && !walletDir.mkdirs()) {
+                throw IOException("Unable to create the wallet directory")
+            }
             val anonWallet = WalletManager.instance?.createWalletWithKeys(
                 walletFile,
                 pin,
@@ -105,7 +125,7 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
             val walletStatusOk = runCatching { anonWallet?.status?.isOk == true }.getOrDefault(false)
             if (!walletStored || !walletStatusOk) {
                 val closed = anonWallet == null || runCatching { anonWallet.close() }.getOrDefault(false)
-                if (closed) AnonConfig.getDefaultWalletDir(context).deleteRecursively()
+                if (closed) deleteWalletArtifacts(walletFile)
                 throw CancellationException(context.getString(R.string.unable_to_create_wallet))
             }
             val crazyPass: String = KeyStoreHelper.getCrazyPass(context, passPhrase)
