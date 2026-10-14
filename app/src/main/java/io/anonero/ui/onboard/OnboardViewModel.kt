@@ -12,7 +12,6 @@ import io.anonero.util.CrazyPassEncoder
 import io.anonero.util.KeyStoreHelper
 import io.anonero.util.PREFS_PASSPHRASE_HASH
 import io.anonero.util.PREFS_PIN_HASH
-import io.anonero.util.RESTORE_HEIGHT
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -101,7 +100,6 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
                 addressString = neroKeyPayload!!.primaryAddress,
                 spendKeyString = ""
             )
-            anonWallet?.setRestoreHeight(3460000);
             anonWallet?.store()
             delay(100)
             if (anonWallet?.status?.isOk != true) {
@@ -134,28 +132,36 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
     }
 
     suspend fun restoreFromSeed(pin: String) {
-        if (restorePayload == null) return
-
-        val context = AnonConfig.context!!.applicationContext
+        val payload = restorePayload
+            ?: throw IllegalStateException("Restore data is missing")
+        val seedWords = payload.seed.map { it.trim() }.filter { it.isNotEmpty() }
+        require(seedWords.size == 16 || seedWords.size == 25) {
+            "Seed must contain 16 or 25 words"
+        }
+        require(seedWords.size != 25 || payload.restoreHeight != null) {
+            "Restore height is required for a 25-word seed"
+        }
+        val context = AnonConfig.context?.applicationContext
+            ?: throw IllegalStateException("Application context unavailable")
         val walletFile = AnonConfig.getDefaultWalletFile(context)
         AnonConfig.getDefaultWalletDir(context).deleteRecursively()
         AnonConfig.getDefaultWalletDir(context).mkdirs()
         delay(100)
-                // UI-MOCK：不是 25/16 词也走恢复，假钱包直接返回句柄，不再因 invalid seed length 闪退
-        val anonWallet = when (restorePayload!!.seed.size) {
+        val anonWallet = when (seedWords.size) {
             16 -> WalletManager.instance?.recoveryWalletPolyseed(
                 walletFile,
                 pin,
-                restorePayload!!.seed.joinToString(" "),
+                seedWords.joinToString(" "),
                 passPhrase,
             )
-            else -> WalletManager.instance?.recoveryWallet(
+            25 -> WalletManager.instance?.recoveryWallet(
                 walletFile,
                 pin,
-                restorePayload!!.seed.joinToString(" ").ifBlank { "abandon" },
+                seedWords.joinToString(" "),
                 passPhrase,
-                restorePayload!!.restoreHeight ?: 0
+                payload.restoreHeight!!
             )
+            else -> throw IllegalArgumentException("Unsupported seed length")
         }
         if (anonWallet == null) {
             throw Exception("unable to create wallet from seed, invalid seed length ${restorePayload!!.seed.size}")
@@ -174,9 +180,6 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
         val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
         prefs.edit(commit = true) {
             putString(PREFS_PASSPHRASE_HASH, crazyPass)
-            restorePayload?.restoreHeight?.let {
-                putLong(RESTORE_HEIGHT, it)
-            }
         }
         try {
             anonWallet.close()
