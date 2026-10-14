@@ -107,6 +107,7 @@ class WalletManager {
         )
         val wallet = Wallet(walletHandle)
         manageWallet(wallet)
+        if (wallet.status.isOk) wallet.setPassword(password)
         return wallet
     }
 
@@ -127,6 +128,7 @@ class WalletManager {
         )
         val wallet = Wallet(walletHandle)
         manageWallet(wallet)
+        if (wallet.status.isOk) wallet.setPassword(password)
         return wallet
     }
 
@@ -147,6 +149,7 @@ class WalletManager {
         )
         val wallet = Wallet(walletHandle)
         manageWallet(wallet)
+        if (wallet.status.isOk) wallet.setPassword(password)
         return wallet
     }
 
@@ -171,6 +174,7 @@ class WalletManager {
         )
         val wallet = Wallet(walletHandle)
         manageWallet(wallet)
+        if (wallet.status.isOk) wallet.setPassword(password)
         return wallet
     }
 
