@@ -58,6 +58,8 @@ jobs:
 
       # JNI changes should relink libanonero.so, not rebuild Monero's large
       # dependency graph. Its key still includes the exact native input versions.
+      # Kotlin-only fixes do not invalidate this cache; run this workflow after
+      # native source/CMake changes so the APK workflow can restore the matching JNI binaries.
       - name: Restore JNI library cache
         id: cache-jni
         uses: actions/cache/restore@v4
