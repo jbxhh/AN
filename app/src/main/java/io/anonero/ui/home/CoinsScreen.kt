@@ -94,7 +94,7 @@ fun CoinsScreen(
     }
 
     fun selectCoin(coin: CoinsInfo) {
-        if (coin.frozen) return
+        if (coin.frozen || !coin.unlocked) return
 
         selectedCoins = if (selectedCoins.contains(coin.pub_key)) {
             selectedCoins - coin.pub_key
@@ -272,6 +272,13 @@ fun CoinsScreen(
                                     if (isFrozen) {
                                         Text(
                                             "已冻结",
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontWeight = FontWeight.Medium,
+                                            style = MaterialTheme.typography.bodyLarge
+                                        )
+                                    } else if (!coin.unlocked) {
+                                        Text(
+                                            "未解锁",
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             fontWeight = FontWeight.Medium,
                                             style = MaterialTheme.typography.bodyLarge

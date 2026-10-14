@@ -301,7 +301,10 @@ class Wallet {
     ): PendingTransaction {
     	disposePendingTransaction()
         val priority: Int = priority.ordinal
-    	val preferredInputs = selectedUtxos.map { it.key }.toCollection(ArrayList())
+    	if (selectedUtxos.any { it.spent || it.frozen || !it.unlocked }) {
+            throw java.lang.Exception("Selected outputs must be unspent, unlocked, and unfrozen")
+    	}
+    		val preferredInputs = selectedUtxos.map { it.key }.toCollection(ArrayList())
     	if (selectedUtxos.isNotEmpty() && !sweepAll) {
             checkSelectedAmounts(preferredInputs, amount, false)
     	}
