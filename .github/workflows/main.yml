@@ -127,13 +127,20 @@ jobs:
           rm -rf external-libs/monero "$RUNNER_TEMP/monero_c"
           git init external-libs/monero
           git -C external-libs/monero remote add origin https://github.com/monero-project/monero.git
-          git -C external-libs/monero fetch --depth 1 origin "${MONERO_COMMIT}"
+          git -C external-libs/monero fetch --depth 1 origin "refs/tags/${MONERO_REF}"
           git -C external-libs/monero checkout --detach FETCH_HEAD
           actual="$(git -C external-libs/monero rev-parse HEAD)"
-          echo "Monero base HEAD: $actual"
-          echo "Expected base:    ${MONERO_COMMIT}"
+          tag="$(git -C external-libs/monero describe --tags --exact-match HEAD)"
+          echo "Monero official tag: $tag"
+          echo "Monero base HEAD:    $actual"
+          echo "Expected tag:        ${MONERO_REF}"
+          echo "Expected commit:     ${MONERO_COMMIT}"
+          test "$tag" = "${MONERO_REF}" || {
+            echo "::error::Checked-out Monero tag does not match the requested official release."
+            exit 1
+          }
           test "$actual" = "${MONERO_COMMIT}" || {
-            echo "::error::Monero base does not match the pinned API-patch base."
+            echo "::error::Official Monero release tag resolves to an unexpected commit."
             exit 1
           }
 
