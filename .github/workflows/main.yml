@@ -121,7 +121,7 @@ jobs:
           valid=false
           if [[ "${{ steps.cache-arm64.outputs.cache-hit }}" == "true" ]] &&
              test -s external-libs/arm64-v8a/monero/libwallet_api.a &&
-             test -s external-libs/arm64-v8a/libpolyseed_wrapper.a &&
+             test -s external-libs/arm64-v8a/monero/libpolyseed_wrapper.a &&
              test -s external-libs/arm64-v8a/libpolyseed.a &&
              test -s external-libs/include/wallet2_api.h &&
              test "$(find external-libs/arm64-v8a -type f -name '*.a' | wc -l)" -ge 20; then
@@ -138,7 +138,7 @@ jobs:
           valid=false
           if [[ "${{ steps.cache-armv7.outputs.cache-hit }}" == "true" ]] &&
              test -s external-libs/armeabi-v7a/monero/libwallet_api.a &&
-             test -s external-libs/armeabi-v7a/libpolyseed_wrapper.a &&
+             test -s external-libs/armeabi-v7a/monero/libpolyseed_wrapper.a &&
              test -s external-libs/armeabi-v7a/libpolyseed.a &&
              test -s external-libs/include/wallet2_api.h &&
              test "$(find external-libs/armeabi-v7a -type f -name '*.a' | wc -l)" -ge 20; then
