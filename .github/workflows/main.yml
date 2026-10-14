@@ -1,7 +1,7 @@
 name: Build ANON APK
 "on":
   push:
-    branches: [ main ]
+    branches: [ main, fix/native-api-compatible-base ]
     # Native C++/CMake/dependency changes are built by native-libs first.
     # Build the APK from push events only for app/Gradle sources that can
     # reuse an existing native cache; native workflow success triggers APK.
@@ -22,6 +22,7 @@ name: Build ANON APK
       - 'gradlew'
       - 'gradlew.bat'
       - 'gradle/libs.versions.toml'
+      - '.github/workflows/main.yml'
   workflow_dispatch:
   workflow_run:
     workflows: ["Native Monero Libs (Polyseed support)"]
@@ -65,26 +66,23 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties', '**/settings.gradle*', '**/build.gradle*', '**/libs.versions.toml') }}
           restore-keys: ${{ runner.os }}-gradle-
-      - name: Restore prebuilt Monero native libraries
-        id: native-cache
-        uses: actions/cache@v4
+      - name: Download verified cached Monero native libraries
+        uses: actions/download-artifact@v4
         with:
-          path: |
-            external-libs/arm64-v8a
-            external-libs/armeabi-v7a
-            external-libs/include
-            external-libs/prebuilt
-            external-libs/VERSION
-          key: anon-native-polyseed-support-2026-09-20-43c31c2aacdd789404d16cfda0c5456e0a090b86-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile', 'app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
+          name: monero-android-libs-monero-api-compatible-33671871
+          run-id: 38553652140
+          github-token: ${{ github.token }}
+          path: external-libs
       - name: Verify cached Monero Polyseed-support libraries
         run: |
           set -euo pipefail
-          if [ "${{ steps.native-cache.outputs.cache-hit }}" != "true" ]; then
-            echo "::error::Monero native-library cache miss. Run 'Native Monero Libs (Polyseed support)' to build and cache libraries first; APK workflow intentionally does not compile Monero C++ sources."
-            exit 1
-          fi
           test -s external-libs/include/wallet2_api.h
-          grep -Fq "monero polyseed-support-2026-09-20 (43c31c2aacdd789404d16cfda0c5456e0a090b86)" external-libs/VERSION
+          test -s external-libs/VERSION
+          grep -Fq "getPolyseed(std::string &seed, std::string &passphrase)" external-libs/include/wallet2_api.h
+          grep -Fq "hasUnknownKeyImages() const" external-libs/include/wallet2_api.h
+          grep -Fq "viewOnlyBalance" external-libs/include/wallet2_api.h
+          grep -Fq "struct CoinsInfo" external-libs/include/wallet2_api.h
+          grep -Fq "preferred_inputs" external-libs/include/wallet2_api.h
           for abi in arm64-v8a armeabi-v7a; do
             test -s "external-libs/prebuilt/$abi/libanonero.so"
             test -s "external-libs/prebuilt/$abi/libc++_shared.so"
