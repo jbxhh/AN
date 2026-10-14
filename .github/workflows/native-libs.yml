@@ -53,8 +53,13 @@ jobs:
           git clone --depth 1 --branch "${MONERO_TAG}" \
             https://github.com/monero-project/monero.git external-libs/monero
           git -C external-libs/monero submodule update --init --recursive --depth 1
-          echo "Monero HEAD: $(git -C external-libs/monero rev-parse HEAD)"
+          actual="$(git -C external-libs/monero rev-parse HEAD)"
+          echo "Monero HEAD: $actual"
           echo "Expected:    ${MONERO_COMMIT}"
+          test "$actual" = "${MONERO_COMMIT}" || {
+            echo "::error::Monero tag does not match the pinned release commit."
+            exit 1
+          }
 
       - name: Build Android native libs (Docker)
         if: steps.native-cache.outputs.cache-hit != 'true'
