@@ -5,9 +5,6 @@ import io.anonero.model.NetworkType
 import io.matthewnelson.kmp.tor.resource.exec.tor.ResourceLoaderTorExec
 import io.matthewnelson.kmp.tor.runtime.TorRuntime
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import java.io.File
 import kotlin.math.pow
@@ -92,9 +89,10 @@ object AnonConfig {
     }
 
     fun initWalletState() {
-        MainScope().launch(Dispatchers.IO) {
-            walletFound = getDefaultWalletFile(context!!).exists()
-        }
+        // Application startup checks this immediately to choose the initial route.
+        // Do not defer it to a new coroutine or the UI can observe a false "no wallet".
+        val appContext = context?.applicationContext
+        walletFound = appContext?.let { getDefaultWalletFile(it).isFile } ?: false
     }
 
     fun clearSpendCacheFiles(context: Context) {
