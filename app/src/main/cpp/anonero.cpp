@@ -352,6 +352,11 @@ Java_io_anonero_model_WalletManager_createWalletJ(JNIEnv *env, jobject instance,
     bool _polyseedCreate = Monero::Wallet::createPolyseed(seed_words, err);
     if (!_polyseedCreate) {
         LOGE("Failed to polyseedCreate");
+        jclass exceptionClass = env->FindClass("java/lang/IllegalStateException");
+        if (exceptionClass != nullptr) {
+            env->ThrowNew(exceptionClass, err.empty() ? "Failed to generate a Polyseed" : err.c_str());
+        }
+        return 0;
     }
 
 //     wallet->createPolyseed(seed_words, err);
@@ -379,6 +384,7 @@ Java_io_anonero_model_WalletManager_createWalletJ(JNIEnv *env, jobject instance,
 
     env->ReleaseStringUTFChars(path, _path);
     env->ReleaseStringUTFChars(password, _password);
+    env->ReleaseStringUTFChars(passpharse, _passpharse);
     env->ReleaseStringUTFChars(language, _language);
     return reinterpret_cast<jlong>(wallet);
 }

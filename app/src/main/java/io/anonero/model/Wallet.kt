@@ -157,43 +157,22 @@ class Wallet {
     external fun getFilename(): String
 
     fun init(upperTransactionSizeLimit: Long): Boolean {
-        var daemonAddress = WalletManager.instance?.getDaemonAddress()
-        var daemonUsername = WalletManager.instance?.daemonUsername
-        var daemonPassword = WalletManager.instance?.daemonPassword
-        var proxyAddress = WalletManager.instance?.proxy
-        var message = "init("
-        if (daemonAddress != null) {
-            message = "${message}\n$daemonAddress"
-        } else {
-            Timber.tag(TAG).i("")
-            message = "${message}\ndaemon_address == null"
-            daemonAddress = ""
-        }
-        message = "${message}\nupper_transaction_size_limit = 0 (probably)"
-        if (daemonUsername != null) {
-            Timber.tag(TAG).i(daemonUsername)
-        } else {
-            message = "${message}\ndaemon_username == null"
-            daemonUsername = ""
-        }
-        if (daemonPassword != null) {
-            Timber.tag(TAG).i(daemonPassword)
-        } else {
-            message = "${message}daemon_password == null"
-            daemonPassword = ""
-        }
-        if (proxyAddress != null) {
-            message = "${message}\nproxy : $proxyAddress"
-        } else {
-            message = "${message}\nproxy_address = null"
-            proxyAddress = ""
-        }
-        Timber.tag(TAG).i("${message}\n);")
+        val daemonAddress = WalletManager.instance?.getDaemonAddress().orEmpty()
+        val daemonUsername = WalletManager.instance?.daemonUsername.orEmpty()
+        val daemonPassword = WalletManager.instance?.daemonPassword.orEmpty()
+        val proxyAddress = WalletManager.instance?.proxy.orEmpty()
 
         isInitialized = initJ(
             daemonAddress, upperTransactionSizeLimit,
             daemonUsername, daemonPassword,
             proxyAddress
+        )
+        // Do not place node credentials or endpoint details in persistent app logs.
+        Timber.tag(TAG).d(
+            "Wallet init completed (initialized=%s, daemonConfigured=%s, proxyConfigured=%s)",
+            isInitialized,
+            daemonAddress.isNotBlank(),
+            proxyAddress.isNotBlank()
         )
         return isInitialized
     }

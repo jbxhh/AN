@@ -46,6 +46,7 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
         val daemonHeight = wallet.getDaemonBlockChainHeight()
         val left = daemonHeight - syncHeight
         if (syncHeight <= 0L || daemonHeight <= 0L || left < 0L) {
+            walletState.clearSyncProgress()
             return
         }
         val targetHeight = wallet.getDaemonBlockChainTargetHeight()
@@ -78,11 +79,13 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
             when {
                 daemonHeight <= 0L || chainHeight <= 0L -> {
                     // Do not treat missing height data as a completed initial sync.
+                    walletState.clearSyncProgress()
                     walletState.setLoading(false)
                 }
                 heightDiff >= 2L -> tryRestartConnection()
                 heightDiff < 0L -> {
                     // A daemon behind the wallet cannot establish that the wallet is synced.
+                    walletState.clearSyncProgress()
                     walletState.setLoading(false)
                 }
                 heightDiff == 1L -> {

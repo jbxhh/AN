@@ -188,6 +188,9 @@ class WalletState {
     fun setConnectionStatus(status: Wallet.ConnectionStatus) {
         val previous = _previousConnectionStatus.getAndSet(status)
         _connectionStatus.update { status }
+        if (status == Wallet.ConnectionStatus.ConnectionStatus_Disconnected) {
+            clearSyncProgress()
+        }
         if (previous == Wallet.ConnectionStatus.ConnectionStatus_Disconnected &&
             status == Wallet.ConnectionStatus.ConnectionStatus_Connected) {
             setLoading(true)
@@ -196,13 +199,24 @@ class WalletState {
     }
 
     fun updateDaemon(daemonInfo: DaemonInfo) {
+        if (_connectedDaemon.value?.daemon != daemonInfo.daemon) {
+            clearSyncProgress()
+        }
         this._connectedDaemon.update { daemonInfo }
+    }
+
+    fun clearSyncProgress() {
+        _syncProgress.value = null
+        _isSyncing.set(false)
     }
 
     fun syncUpdate(syncProgress: SyncProgress) {
         // The remaining-block count is authoritative. A rounded progress fraction
         // can reach 100% before the wallet has actually caught up with the daemon.
-        if (syncProgress.left < 0L) return
+        if (syncProgress.left < 0L) {
+            clearSyncProgress()
+            return
+        }
         val done = syncProgress.left == 0L
         val safeProgress = if (done) 1f else syncProgress.progress.coerceIn(0f, 0.999f)
         val safeProgressState = syncProgress.copy(progress = safeProgress)
