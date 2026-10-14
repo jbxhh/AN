@@ -175,8 +175,15 @@ fun PinSetup(
                                             currentPin.removeAt(currentPin.size - 1)
                                         } else if (key == ConfirmKey) {
                                             if (confirming) {
-                                                // bypass confirm-match check — always proceed
-                                                onNext.invoke(currentPin.joinToString(separator = ""))
+                                                val confirmedPin = currentPin.joinToString(separator = "")
+                                                val firstPin = pinEntered.joinToString(separator = "")
+                                                if (confirmedPin == firstPin) {
+                                                    pinNotMatch = false
+                                                    onNext.invoke(confirmedPin)
+                                                } else {
+                                                    pinNotMatch = true
+                                                    currentPin.clear()
+                                                }
                                             } else {
                                                 pinEntered.clear()
                                                 pinEntered.addAll(currentPin)
@@ -184,6 +191,7 @@ fun PinSetup(
                                                 confirming = true
                                             }
                                         } else {
+                                            pinNotMatch = false
                                             if (currentPin.size < 12) {
                                                 currentPin.add(key)
                                             }
