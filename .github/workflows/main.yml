@@ -367,13 +367,6 @@ jobs:
           path: app/build/outputs/apk/anon/release/*arm64-v8a*.apk
           if-no-files-found: error
 
-      - name: Upload ARMv7 APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: ANON-APK-armv7
-          path: app/build/outputs/apk/anon/release/*armeabi-v7a*.apk
-          if-no-files-found: error
-
       - name: Summary
         run: |
           echo "### ANON APK build (native cache + wallet source)" >> "$GITHUB_STEP_SUMMARY"
@@ -382,7 +375,7 @@ jobs:
           echo "- armv7 cache hit: ${{ steps.cache-armv7.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- JNI cache hit: ${{ steps.cache-jni.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Monero official release: ${MONERO_REF} (${MONERO_COMMIT})" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Artifacts: ANON-APK-arm64 and ANON-APK-armv7 (stripped JNI + R8/resource shrink)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Artifact: ANON-APK-arm64 only (stripped JNI + R8/resource shrink)" >> "$GITHUB_STEP_SUMMARY"
           if [ -f external-libs/VERSION ]; then cat external-libs/VERSION >> "$GITHUB_STEP_SUMMARY"; fi
           find external-libs/arm64-v8a external-libs/armeabi-v7a -name '*.a' 2>/dev/null | wc -l \
             | xargs -I{} echo "- Static archives: {}" >> "$GITHUB_STEP_SUMMARY"
