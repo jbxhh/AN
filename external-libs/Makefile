@@ -25,14 +25,16 @@ help:
 
 # CI restores these directories only on an exact source/config cache-key match.
 # Reuse complete archives on that exact hit; otherwise rebuild the ABI from source.
+# A cache is reusable only when all key libraries and the expected archive
+# count are present. Partial C++ caches must trigger a full ABI rebuild.
 arm64-v8a:
-	@if test -s $@/monero/libwallet_api.a && test -s $@/libcrypto.a && test -s $@/libsodium.a && test -s $@/libpolyseed.a; then \
-	    echo "==> Reusing exact-cache native artifacts for $@"; \
-	  else $(MAKE) --no-print-directory image TARGET=android64 ABI=$@; fi
+	@if test -s $@/monero/libwallet_api.a && test -s $@/libcrypto.a && test -s $@/libsodium.a && test -s $@/libpolyseed.a && test "$(find $@ -type f -name '*.a' | wc -l)" -ge 20; then \
+	    echo "==> Reusing complete exact-key C++ cache for $@"; \
+	  else echo "==> Native cache incomplete for $@; rebuilding"; $(MAKE) --no-print-directory image TARGET=android64 ABI=$@; fi
 armeabi-v7a:
-	@if test -s $@/monero/libwallet_api.a && test -s $@/libcrypto.a && test -s $@/libsodium.a && test -s $@/libpolyseed.a; then \
-	    echo "==> Reusing exact-cache native artifacts for $@"; \
-	  else $(MAKE) --no-print-directory image TARGET=android32 ABI=$@; fi
+	@if test -s $@/monero/libwallet_api.a && test -s $@/libcrypto.a && test -s $@/libsodium.a && test -s $@/libpolyseed.a && test "$(find $@ -type f -name '*.a' | wc -l)" -ge 20; then \
+	    echo "==> Reusing complete exact-key C++ cache for $@"; \
+	  else echo "==> Native cache incomplete for $@; rebuilding"; $(MAKE) --no-print-directory image TARGET=android32 ABI=$@; fi
 linux-x86_64: ; @$(MAKE) --no-print-directory image TARGET=linux     ABI=$@
 
 arm64-v8a armeabi-v7a linux-x86_64: monero build.sh Containerfile
