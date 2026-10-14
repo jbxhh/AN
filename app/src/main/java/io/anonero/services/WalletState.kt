@@ -84,8 +84,9 @@ class WalletState {
                 _unLockedBalance.update {
                     if (AnonConfig.viewOnly) {
                         wallet.viewOnlyBalance()
+                    } else {
+                        wallet.unlockedBalance
                     }
-                    wallet.unlockedBalance
                 }
                 _walletStatus.update { wallet.fullStatus }
                 if (wallet.status.errorString.isNotEmpty()) {
@@ -268,18 +269,21 @@ class WalletState {
     }
 
     fun resyncBlockchain(): Result<Boolean> {
-        setLoading(true);
-        try {
-            if (getWallet?.fullStatus?.connectionStatus != Wallet.ConnectionStatus.ConnectionStatus_Connected) {
-                return Result.failure(Exception("Please connect to daemon for resync"))
-            }
-            getWallet?.rescanBlockchainAsync()
-            return Result.success(true)
+        val wallet = getWallet
+        if (wallet?.fullStatus?.connectionStatus != Wallet.ConnectionStatus.ConnectionStatus_Connected) {
+            setLoading(false)
+            return Result.failure(Exception("Please connect to daemon for resync"))
+        }
+
+        setLoading(true)
+        return try {
+            wallet.rescanBlockchainAsync()
+            // Keep loading active until the wallet listener reports completion.
+            Result.success(true)
         } catch (e: Exception) {
             Timber.tag(TAG).e(e)
-            return Result.failure(e)
-        } finally {
-            setLoading(false);
+            setLoading(false)
+            Result.failure(e)
         }
     }
 
