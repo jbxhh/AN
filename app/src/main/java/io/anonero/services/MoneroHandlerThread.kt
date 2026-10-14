@@ -85,10 +85,16 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
                     // A daemon behind the wallet cannot establish that the wallet is synced.
                     walletState.setLoading(false)
                 }
+                heightDiff == 1L -> {
+                    // Keep the final outstanding block visible; do not mark the wallet
+                    // synchronized while the remaining-block count is still non-zero.
+                    updateSyncProgress(chainHeight)
+                    walletState.setLoading(false)
+                }
                 else -> {
-                    if (!wallet.isSynchronized) {
-                        updateSyncProgress(chainHeight)
-                    }
+                    // Always emit the zero-remaining update, even if the wallet had
+                    // previously been marked synchronized, so an old progress state clears.
+                    updateSyncProgress(chainHeight)
                     wallet.setSynchronized()
                     wallet.store()
                     refresh(true)
