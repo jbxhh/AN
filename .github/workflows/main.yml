@@ -4,7 +4,7 @@ name: Build ANON APK
     branches: [ main ]
   workflow_dispatch:
   workflow_run:
-    workflows: ["Native Monero Libs v0.18.5.3"]
+    workflows: ["Native Monero Libs (Polyseed support)"]
     types: [completed]
     branches: [main]
 env:
@@ -53,16 +53,17 @@ jobs:
             external-libs/armeabi-v7a
             external-libs/include
             external-libs/prebuilt
-          key: anon-native-v0.18.5.3-22578c3f7d7b4b6dd85ff7daa42a827d97cc53d-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile', 'app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
-      - name: Verify cached Monero v0.18.5.3 libraries
+            external-libs/VERSION
+          key: anon-native-polyseed-support-2026-09-20-43c31c2aacdd789404d16cfda0c5456e0a090b86-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile', 'app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
+      - name: Verify cached Monero Polyseed-support libraries
         run: |
           set -euo pipefail
           if [ "${{ steps.native-cache.outputs.cache-hit }}" != "true" ]; then
-            echo "::error::Monero native-library cache miss. Run 'Native Monero Libs v0.18.5.3' to build and cache libraries first; APK workflow intentionally does not compile Monero C++ sources."
+            echo "::error::Monero native-library cache miss. Run 'Native Monero Libs (Polyseed support)' to build and cache libraries first; APK workflow intentionally does not compile Monero C++ sources."
             exit 1
           fi
           test -s external-libs/include/wallet2_api.h
-          grep -Fq "monero v0.18.5.3 (22578c3f7d7b4b6dd85ff7daa42a827d97cc53d0)" external-libs/VERSION
+          grep -Fq "monero polyseed-support-2026-09-20 (43c31c2aacdd789404d16cfda0c5456e0a090b86)" external-libs/VERSION
           for abi in arm64-v8a armeabi-v7a; do
             test -s "external-libs/prebuilt/$abi/libanonero.so"
             test -s "external-libs/prebuilt/$abi/libc++_shared.so"
