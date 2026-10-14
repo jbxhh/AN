@@ -147,6 +147,15 @@ jobs:
           echo "valid=$valid" >> "$GITHUB_OUTPUT"
           echo "armv7 native cache valid: $valid"
 
+      # JNI changes should relink libanonero.so, not rebuild Monero's large
+      # dependency graph. Its key still includes the exact native input versions.
+      - name: Restore JNI library cache
+        id: cache-jni
+        uses: actions/cache/restore@v4
+        with:
+          path: external-libs/prebuilt
+          key: anon-jni-${{ env.NATIVE_CACHE_SCHEMA }}-ndk27.2.12479018-cmake3.22.1-api26-${{ env.MONERO_COMMIT }}-${{ env.MONERO_PATCH_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}-${{ hashFiles('app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
+
       - name: Validate restored JNI cache
         id: validate-jni-cache
         shell: bash
@@ -162,15 +171,6 @@ jobs:
           fi
           echo "valid=$valid" >> "$GITHUB_OUTPUT"
           echo "JNI cache valid: $valid"
-
-      # JNI changes should relink libanonero.so, not rebuild Monero's large
-      # dependency graph. Its key still includes the exact native input versions.
-      - name: Restore JNI library cache
-        id: cache-jni
-        uses: actions/cache/restore@v4
-        with:
-          path: external-libs/prebuilt
-          key: anon-jni-${{ env.NATIVE_CACHE_SCHEMA }}-ndk27.2.12479018-cmake3.22.1-api26-${{ env.MONERO_COMMIT }}-${{ env.MONERO_PATCH_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}-${{ hashFiles('app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
 
       - name: Checkout Monero source and apply matching ANONERO API patch series
         if: steps.validate-arm64-cache.outputs.valid != 'true' || steps.validate-armv7-cache.outputs.valid != 'true'
