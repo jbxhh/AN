@@ -243,6 +243,10 @@ endif()
 
 target_link_libraries(  anonero
 
+                        # Monero and bc-ur are static archives with transitive/cyclic
+                        # references. Rescan the full archive set so UR symbols and
+                        # wallet symbols resolve regardless of archive order.
+                        "-Wl,--start-group"
                         wallet_api
                         bc_ur
                         wallet
@@ -290,5 +294,6 @@ target_link_libraries(  anonero
                         sodium
 
                        ${PLATFORM_LIBS}
+                       "-Wl,--end-group"
                        )
 target_link_options( anonero PRIVATE "-Wl,--exclude-libs,ALL" ${PLATFORM_LINK_OPTS} )
