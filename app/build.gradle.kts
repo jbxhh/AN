@@ -8,8 +8,8 @@ plugins {
 // Real wallet needs libanonero.so. Enable when prebuilt static libs exist or -Panon.native=true.
 // UI-only CI (no external-libs/*.a) stays fast and skips NDK/CMake.
 val nativeLibsReady =
-    file("../external-libs/arm64-v8a/monero/libwallet_api.a").exists() ||
-        (project.findProperty("anon.native")?.toString() == "true")
+    file("../external-libs/prebuilt/arm64-v8a/libanonero.so").isFile &&
+        file("../external-libs/prebuilt/armeabi-v7a/libanonero.so").isFile
 
 android {
     namespace = "io.anonero"
@@ -31,22 +31,11 @@ android {
             ndk {
                 abiFilters += listOf("arm64-v8a", "armeabi-v7a")
             }
-            externalNativeBuild {
-                cmake {
-                    arguments(
-                        "-DANDROID_STL=c++_shared",
-                        "-DCMAKE_BUILD_PARALLEL_LEVEL=${Runtime.getRuntime().availableProcessors()}"
-                    )
-                    cppFlags("-std=c++17", "-fexceptions", "-frtti")
-                }
-            }
         }
     }
-    if (nativeLibsReady) {
-        externalNativeBuild {
-            cmake {
-                path = file("CMakeLists.txt")
-            }
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDir("../external-libs/prebuilt")
         }
     }
     buildTypes {
