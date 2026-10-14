@@ -73,6 +73,7 @@ import io.anonero.icons.AnonIcons
 import io.anonero.util.Formats
 import io.anonero.util.KeyStoreHelper
 import io.anonero.util.PREFS_PASSPHRASE_HASH
+import io.anonero.util.isWalletPassphraseValid
 import io.anonero.util.ShakeConfig
 import io.anonero.util.WALLET_PREFERENCES
 import io.anonero.util.backup.BackupHelper
@@ -127,7 +128,12 @@ fun ExportBackUp(onBackPress: () -> Unit = {}) {
 
     fun createBackUp() {
         scope.launch(Dispatchers.IO) {
-            // bypass passphrase hash check — always export
+            if (!AnonConfig.viewOnly && !isWalletPassphraseValid(context, prefs, passPhrase)) {
+                scope.launch {
+                    errorShake.shake(ShakeConfig(iterations = 4, translateX = 12f))
+                }
+                return@launch
+            }
             passPhraseDialog = false
             exportViewModel.createBackUp(passPhrase)
         }

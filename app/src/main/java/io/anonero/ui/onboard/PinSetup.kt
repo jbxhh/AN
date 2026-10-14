@@ -175,15 +175,23 @@ fun PinSetup(
                                             currentPin.removeAt(currentPin.size - 1)
                                         } else if (key == ConfirmKey) {
                                             if (confirming) {
-                                                // bypass confirm-match check — always proceed
-                                                onNext.invoke(currentPin.joinToString(separator = ""))
+                                                if (pinEntered.toList() == currentPin.toList()) {
+                                                    pinNotMatch = false
+                                                    onNext.invoke(currentPin.joinToString(separator = ""))
+                                                } else {
+                                                    pinNotMatch = true
+                                                    currentPin.clear()
+                                                    errorShake.shake(ShakeConfig(iterations = 4, translateX = 12f))
+                                                }
                                             } else {
+                                                pinNotMatch = false
                                                 pinEntered.clear()
                                                 pinEntered.addAll(currentPin)
                                                 currentPin.clear()
                                                 confirming = true
                                             }
                                         } else {
+                                            pinNotMatch = false
                                             if (currentPin.size < 12) {
                                                 currentPin.add(key)
                                             }

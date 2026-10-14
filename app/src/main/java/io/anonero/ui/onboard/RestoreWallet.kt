@@ -110,27 +110,31 @@ fun RestoreWallet(
     }
 
     fun validateSeed() {
-        invalidSeed = false
-        scope.launch {
-            seedList = seed.split(" ")
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
+        val words = seed.trim()
+            .split(Regex("\\s+"))
+            .filter { it.isNotEmpty() }
 
-            if (seedList.size != 16 || seedList.size != 24) {
-                invalidSeed = false
-            } else {
-                seedList
-                    .forEach {
-                        if (!wordsList.contains(it.trim())) {
-                            invalidSeed = true
-                            return@forEach
-                        }
-                    }
-            }
-            if (invalidSeed) {
-                seedList = listOf()
-            }
+        if (words.isEmpty()) {
+            seedList = emptyList()
+            invalidSeed = false
+            return
         }
+
+        // Polyseed uses 16 words; the standard Monero seed uses 25 words.
+        if (words.size != 16 && words.size != 25) {
+            seedList = emptyList()
+            invalidSeed = words.size >= 16
+            return
+        }
+
+        if (wordsList.isEmpty()) {
+            seedList = emptyList()
+            invalidSeed = false
+            return
+        }
+
+        invalidSeed = words.any { it !in wordsList }
+        seedList = if (invalidSeed) emptyList() else words
     }
 
     Scaffold { paddingValues ->
@@ -248,6 +252,7 @@ fun RestoreWallet(
                             shape = MaterialTheme.shapes.medium,
                             onValueChange = {
                                 restoreHeight = it
+                                restoreHeightError = null
                             },
                             keyboardOptions = KeyboardOptions(
                                 imeAction = ImeAction.Done,

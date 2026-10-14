@@ -76,6 +76,7 @@ import io.anonero.ui.components.qr.QrCodeColors
 import io.anonero.ui.components.qr.QrCodeView
 import io.anonero.util.KeyStoreHelper
 import io.anonero.util.PREFS_PASSPHRASE_HASH
+import io.anonero.util.isWalletPassphraseValid
 import io.anonero.util.ShakeConfig
 import io.anonero.util.WALLET_PREFERENCES
 import io.anonero.util.rememberShakeController
@@ -154,12 +155,22 @@ fun SeedSettingsPage(onBackPress: () -> Unit = {}) {
     }
     fun getSeed() {
         scope.launch(Dispatchers.IO) {
-            // bypass passphrase hash check — always proceed
+            val context = AnonConfig.context
+            if (context == null || !isWalletPassphraseValid(context, prefs, passPhrase)) {
+                scope.launch {
+                    errorShake.shake(ShakeConfig(iterations = 4, translateX = 12f))
+                }
+                return@launch
+            }
             val seed = getWalletSeed(passPhrase)?.split(" ")
             val legacy = getLegacySeed(passPhrase)?.split(" ")
             if (seed != null) {
                 seedWords = seed
                 passPhraseDialog = false
+            } else {
+                scope.launch {
+                    errorShake.shake(ShakeConfig(iterations = 4, translateX = 12f))
+                }
             }
             if (legacy != null) {
                 legacySeed = legacy
