@@ -9,6 +9,10 @@ name: Build ANON APK
     branches: [main]
 env:
   JAVA_VERSION: '17'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 jobs:
