@@ -66,6 +66,9 @@ jobs:
 
       - name: Build and cache JNI shared libraries (C++ stays out of APK workflow)
         if: steps.native-cache.outputs.cache-hit != 'true'
+        env:
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+          ANDROID_HOME: /usr/local/lib/android/sdk
         run: |
           set -euo pipefail
           yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
