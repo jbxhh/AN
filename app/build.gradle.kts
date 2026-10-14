@@ -27,16 +27,6 @@ android {
         packaging {
             jniLibs.useLegacyPackaging = true
         }
-    // Emit one installable APK per ABI instead of bundling both native runtimes.
-    // This keeps each device download limited to its own native libraries.
-    splits {
-        abi {
-            isEnable = nativeLibsReady
-            reset()
-            include("arm64-v8a", "armeabi-v7a")
-            isUniversalApk = false
-        }
-    }
         if (nativeLibsReady) {
             ndk {
                 abiFilters += listOf("arm64-v8a", "armeabi-v7a")
