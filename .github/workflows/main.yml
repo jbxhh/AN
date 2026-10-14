@@ -2,6 +2,26 @@ name: Build ANON APK
 "on":
   push:
     branches: [ main ]
+    # Native C++/CMake/dependency changes are built by native-libs first.
+    # Build the APK from push events only for app/Gradle sources that can
+    # reuse an existing native cache; native workflow success triggers APK.
+    paths:
+      - 'app/src/main/java/**'
+      - 'app/src/main/kotlin/**'
+      - 'app/src/main/res/**'
+      - 'app/src/main/assets/**'
+      - 'app/src/main/AndroidManifest.xml'
+      - 'app/build.gradle'
+      - 'app/build.gradle.kts'
+      - 'build.gradle'
+      - 'build.gradle.kts'
+      - 'settings.gradle'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'gradle/libs.versions.toml'
   workflow_dispatch:
   workflow_run:
     workflows: ["Native Monero Libs (Polyseed support)"]
