@@ -52,15 +52,22 @@ class AnonWalletHandler(
     }
 
     fun openWallet(pin: String): Boolean {
-        val walletFile = AnonConfig.getDefaultWalletFile(AnonConfig.context!!)
-        val anonWallet = WalletManager.instance?.openWallet(
-            walletFile.path,
-            pin,
+        val walletFile = AnonConfig.getDefaultWalletFile(
+            AnonConfig.context?.applicationContext ?: throw InvalidPin()
         )
-        if (anonWallet?.status?.isOk != true) {
-            Timber.tag(TAG).e("openWallet error: %s", anonWallet?.status?.errorString)
+        val walletManager = WalletManager.instance ?: throw InvalidPin()
+        val anonWallet = walletManager.openWallet(walletFile.path, pin)
+        if (!anonWallet.status.isOk) {
+            Timber.tag(TAG).e("openWallet error: %s", anonWallet.status.errorString)
+            try {
+                walletManager.close(anonWallet)
+            } catch (e: Exception) {
+                Timber.tag(TAG).w(e, "Unable to close wallet after failed PIN verification")
+            }
+            return false
         }
-        return anonWallet?.status?.isOk ?: throw InvalidPin()
+        anonWallet.setPassword(pin)
+        return true
     }
 
     // 连接超时后保持真实连接状态，不伪造节点或同步高度。
