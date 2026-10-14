@@ -1,7 +1,5 @@
 <resources>
-    <!-- Do not translate the app name. The app_name will be modified by the Gradle build system based on the build variants (Nero/Anon). -->
     <string name="app_name">anonnero</string>
-    <!---->
      <string name="hint_optional">(Optional)</string>
      <string name="disconnect">Disconnect</string>
      <string name="edit">Edit</string>
@@ -128,6 +126,7 @@
      <string name="settings_proxy_settings">Proxy Settings</string>
      <string name="settings_security">Security</string>
      <string name="settings_wallet_section">Wallet</string>
+     <string name="settings_trade_section">Trade</string>
      <string name="settings_data_section">Data</string>
      <string name="settings_seed">Seed</string>
      <string name="settings_change_pin">Change PIN</string>
