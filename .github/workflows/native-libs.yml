@@ -21,7 +21,7 @@ permissions:
 
 env:
   MONERO_REF: polyseed-support-2026-09-20
-  MONERO_COMMIT: 22578c3f7d7b4b6dd85ff7daa42a827d97cc53d0
+  MONERO_COMMIT: 43c31c2aacdd789404d16cfda0c5456e0a090b86
 
 jobs:
   build-native:
