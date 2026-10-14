@@ -64,21 +64,10 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
                 walletFile.delete()
                 throw CancellationException(context.getString(R.string.unable_to_create_wallet))
             }
-            val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
-            prefs.edit {
+            val crazyPass: String = KeyStoreHelper.getCrazyPass(context, passPhrase)
+            prefs.edit(commit = true) {
                 putString(PREFS_PASSPHRASE_HASH, crazyPass)
-            }
-
-            //adds padding to the pin if it's less than 32 bytes
-            val pinHash = CrazyPassEncoder.encode(
-                pin.toByteArray().let { bytes ->
-                    if (bytes.size < 32) {
-                        bytes + ByteArray(32 - bytes.size)
-                    } else bytes
-                }
-            )
-            prefs.edit {
-                putString(PREFS_PIN_HASH, pinHash)
+                putString(PREFS_PIN_HASH, encodePinHash(pin))
             }
             walllet = anonWallet
             delay(500)
@@ -109,9 +98,10 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
                 walletFile.delete()
                 throw CancellationException(context.getString(R.string.unable_to_create_wallet))
             }
-            val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
-            prefs.edit {
+            val crazyPass: String = KeyStoreHelper.getCrazyPass(context, passPhrase)
+            prefs.edit(commit = true) {
                 putString(PREFS_PASSPHRASE_HASH, crazyPass)
+                putString(PREFS_PIN_HASH, encodePinHash(pin))
             }
             walllet = anonWallet
             delay(500)
@@ -132,6 +122,17 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
 
     fun getRestorePayload(): RestorePayload? {
         return restorePayload
+    }
+
+    private fun encodePinHash(pin: String): String {
+        // Keep this byte-level encoding identical for newly created and restored wallets.
+        val bytes = pin.toByteArray(Charsets.UTF_8)
+        val paddedBytes = if (bytes.size < 32) {
+            bytes + ByteArray(32 - bytes.size)
+        } else {
+            bytes
+        }
+        return CrazyPassEncoder.encode(paddedBytes)
     }
 
     suspend fun restoreFromSeed(pin: String) {
@@ -214,6 +215,7 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
             val crazyPass = KeyStoreHelper.getCrazyPass(context, passPhrase)
             prefs.edit(commit = true) {
                 putString(PREFS_PASSPHRASE_HASH, crazyPass)
+                putString(PREFS_PIN_HASH, encodePinHash(pin))
                 if (payload.restoreHeight != null) {
                     putLong(RESTORE_HEIGHT, payload.restoreHeight)
                 } else {
