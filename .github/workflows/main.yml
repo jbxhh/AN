@@ -348,14 +348,12 @@ jobs:
           done
 
 
-      - name: Strip unused JNI symbols and build optimized split APKs
+      - name: Strip ARM64 JNI symbols and build ARM64 install APK
         run: |
           set -euo pipefail
           NDK="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
           STRIP="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
-          for abi in arm64-v8a armeabi-v7a; do
-            "$STRIP" --strip-unneeded "external-libs/prebuilt/$abi/libanonero.so"
-          done
+          "$STRIP" --strip-unneeded "external-libs/prebuilt/arm64-v8a/libanonero.so"
           ./gradlew :app:assembleAnonRelease --build-cache --parallel --configuration-cache --no-daemon --stacktrace
           echo "APK output sizes:"
           du -h app/build/outputs/apk/anon/release/*.apk
