@@ -336,7 +336,6 @@ fun SendScreen(
         scope.launch {
             try {
                 preparingTx = true
-                delay(2000) // UI-MOCK：构建交易页停留 2 秒，方便查看
                 val pendingTx =
                     sendViewModel.prepareTransaction(addressField, amountField)
                 if (pendingTx != null) {
