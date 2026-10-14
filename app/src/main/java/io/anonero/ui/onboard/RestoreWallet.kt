@@ -102,35 +102,39 @@ fun RestoreWallet(
 
     LaunchedEffect(true) {
         scope.launch {
-            val inputStream = resources.openRawResource(R.raw.words)
-            val reader = inputStream.bufferedReader()
-            val lines = reader.readText().split("\n")
-            wordsList = lines
+            resources.openRawResource(R.raw.words).bufferedReader().use { reader ->
+                wordsList = reader.readText().split("\n")
+            }
         }
     }
 
-    fun validateSeed() {
-        invalidSeed = false
-        scope.launch {
-            seedList = seed.split(" ")
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
+    // Revalidate prefilled phrases after the word list is loaded, including when
+    // the user returns to this screen from a later onboarding step.
+    LaunchedEffect(seed, wordsList) {
+        if (wordsList.isNotEmpty()) validateSeed()
+    }
 
-            if (seedList.size != 16 || seedList.size != 24) {
-                invalidSeed = false
-            } else {
-                seedList
-                    .forEach {
-                        if (!wordsList.contains(it.trim())) {
-                            invalidSeed = true
-                            return@forEach
-                        }
-                    }
-            }
-            if (invalidSeed) {
-                seedList = listOf()
-            }
+    fun validateSeed() {
+        val parsedWords = seed.split(Regex("\\s+"))
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+        // ANONERO restore supports 16-word Polyseed and 25-word Monero mnemonics.
+        // An incomplete phrase is not an error yet, but cannot enable Restore.
+        if (parsedWords.size != 16 && parsedWords.size != 25) {
+            invalidSeed = false
+            seedList = emptyList()
+            return
         }
+
+        if (wordsList.isEmpty()) {
+            invalidSeed = false
+            seedList = emptyList()
+            return
+        }
+
+        invalidSeed = parsedWords.any { it !in wordsList }
+        seedList = if (invalidSeed) emptyList() else parsedWords
     }
 
     Scaffold { paddingValues ->
