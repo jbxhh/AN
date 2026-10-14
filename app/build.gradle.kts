@@ -8,12 +8,11 @@ android {
     namespace = "io.anonero"
     compileSdk = 35
     defaultConfig {
-        // UI版独立包名，可与正式版(io.anonero.anon)共存安装
-        applicationId = "io.anonero.ui"
+        applicationId = "io.anonero"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.0.3-ui"
+        versionCode = 7
+        versionName = "1.0.4-ui"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -24,7 +23,9 @@ android {
     }
     buildTypes {
         debug {
+            // debug 与 release 共存
             applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
         }
         release {
             isMinifyEnabled = false
@@ -37,6 +38,7 @@ android {
         create("stageNet") {
             isMinifyEnabled = false
             isDebuggable = true
+            // stagenet 与其他共存
             applicationIdSuffix = ".stagenet"
             versionNameSuffix = "-stagenet"
             signingConfig = signingConfigs.getByName("debug")
@@ -63,15 +65,17 @@ android {
     }
     flavorDimensions += "anon_mode"
     productFlavors {
+        // 各 flavor + buildType 组合包名全部不同，任意版本可并存
+        // 例: io.anonero.anon.ui / io.anonero.anon.ui.debug / io.anonero.nero.ui.debug
         create("anon") {
-            // 不再加 .anon，包名已是 io.anonero.ui
+            applicationIdSuffix = ".anon.ui"
             resValue("string", "app_name", "ANON UI")
             dimension = "anon_mode"
             buildConfigField("String", "FLAVOR", "\"anon\"")
             buildConfigField("boolean", "VIEW_ONLY", "false")
         }
         create("nero") {
-            applicationIdSuffix = ".nero"
+            applicationIdSuffix = ".nero.ui"
             resValue("string", "app_name", "NERO UI")
             dimension = "anon_mode"
             buildConfigField("String", "FLAVOR", "\"nero\"")
