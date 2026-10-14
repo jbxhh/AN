@@ -31,7 +31,7 @@ jobs:
           echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
           echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
           yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
-          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;36.0.0" "ndk;26.1.10909125" > /dev/null 2>&1
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;36.0.0" > /dev/null 2>&1
           echo "Android SDK ready"
       - uses: actions/cache@v4
         with:
@@ -48,7 +48,8 @@ jobs:
             external-libs/arm64-v8a
             external-libs/armeabi-v7a
             external-libs/include
-          key: anon-native-v0.18.5.3-22578c3f7d7b4b6dd85ff7daa42a827d97cc53d-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
+            external-libs/prebuilt
+          key: anon-native-v0.18.5.3-22578c3f7d7b4b6dd85ff7daa42a827d97cc53d-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile', 'app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
       - name: Verify cached Monero v0.18.5.3 libraries
         run: |
           set -euo pipefail
@@ -58,6 +59,8 @@ jobs:
           fi
           test -s external-libs/include/wallet2_api.h
           for abi in arm64-v8a armeabi-v7a; do
+            test -s "external-libs/prebuilt/$abi/libanonero.so"
+            test -s "external-libs/prebuilt/$abi/libc++_shared.so"
             test -s "external-libs/$abi/monero/libwallet_api.a"
             test -s "external-libs/$abi/monero/libpolyseed_wrapper.a"
             test -s "external-libs/$abi/libpolyseed.a"
