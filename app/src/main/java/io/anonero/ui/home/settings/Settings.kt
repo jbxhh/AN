@@ -36,6 +36,7 @@ import io.anonero.ui.home.graph.routes.SecureWipeRoute
 import io.anonero.ui.home.graph.routes.SettingsDataRoute
 import io.anonero.ui.home.graph.routes.SettingsLogs
 import io.anonero.ui.home.graph.routes.SettingsNodeRoute
+import io.anonero.ui.home.graph.routes.SettingsTradeRoute
 import io.anonero.ui.home.graph.routes.SettingsViewSeedRoute
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -82,7 +83,7 @@ fun SettingsPage(
                     item {
                         SectionHeader(stringResource(R.string.settings_security))
                     }
-                    // 钱包 → 全新助记词页面
+                    // 钱包 → 助记词全新页面
                     if (!AnonConfig.viewOnly) {
                         item {
                             MenuItem(stringResource(R.string.settings_wallet_section)) {
@@ -91,14 +92,21 @@ fun SettingsPage(
                             HorizontalDivider(thickness = 2.5.dp)
                         }
                     }
-                    // 数据 → 全新数据页面（修改PIN + 导出备份）
+                    // 交易 → 全新页面
+                    item {
+                        MenuItem(stringResource(R.string.settings_trade_section)) {
+                            navigateTo(SettingsTradeRoute)
+                        }
+                        HorizontalDivider(thickness = 2.5.dp)
+                    }
+                    // 数据 → 修改PIN + 导出备份 全新页面
                     item {
                         MenuItem(stringResource(R.string.settings_data_section)) {
                             navigateTo(SettingsDataRoute)
                         }
                         HorizontalDivider(thickness = 2.5.dp)
                     }
-                    // 删除 → 全新安全删除页面
+                    // 删除 → 安全删除全新页面
                     item {
                         MenuItem(stringResource(R.string.settings_secure_wipe)) {
                             navigateTo(SecureWipeRoute)
