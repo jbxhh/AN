@@ -1,56 +1,47 @@
 name: Build ANON APK
+
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: ["Native Monero Libs (Polyseed support)"]
-    types: [completed]
+  push:
     branches: [main, fix/native-api-compatible-base]
-env:
-  JAVA_VERSION: '17'
-  MONERO_COMMIT: 22578c3f7d7b4b6dd85ff7daa42a827d97cc53d0
+
 concurrency:
-  # Do not queue or cancel separate APK builds behind one another.
-  group: ${{ github.workflow }}-${{ github.run_id }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
   contents: read
-  actions: read
+
+env:
+  MONERO_REF: monero-api-compatible-33671871
+  MONERO_COMMIT: 22578c3f7d7b4b6dd85ff7daa42a827d97cc53d0
+
 jobs:
   build:
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
-    name: Build APK
+    name: Build native libraries and APK
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
         with:
-          # Build the latest commit on the branch. Java-only fixes may be pushed
-          # while the native workflow is running; pinning workflow_run.head_sha
-          # would silently omit those fixes from the resulting APK.
-          ref: ${{ github.event.workflow_run.head_branch || github.ref_name }}
           fetch-depth: 1
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
+          java-version: '17'
+
       - name: Setup Android SDK
         run: |
-          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
-          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
-          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
-          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;36.0.0" > /dev/null 2>&1
+          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1 || true
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1" >/dev/null
           echo "Android SDK ready"
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties', '**/settings.gradle*', '**/build.gradle*', '**/libs.versions.toml') }}
-          restore-keys: ${{ runner.os }}-gradle-
-      # Reuse the native-library caches directly. The wallet APK build does not
-      # need to wait for a separate native workflow or a successful-run artifact.
+
+      # Keep each ABI in its own immutable cache. If one ABI fails, the other
+      # ABI's completed cache is still available to later runs.
       - name: Restore arm64 native library cache
         id: cache-arm64
         uses: actions/cache/restore@v4
@@ -71,6 +62,8 @@ jobs:
             external-libs/VERSION
           key: anon-native-armv7-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
 
+      # JNI changes should relink libanonero.so, not rebuild Monero's large
+      # dependency graph. Its key still includes the exact native input versions.
       - name: Restore JNI library cache
         id: cache-jni
         uses: actions/cache/restore@v4
@@ -78,11 +71,141 @@ jobs:
           path: external-libs/prebuilt
           key: anon-jni-ndk27.2.12479018-cmake3.22.1-api26-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}-${{ hashFiles('app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
 
-      - name: Verify cached Monero Polyseed-support libraries
+      - name: Checkout Monero source and apply matching ANONERO API patch series
+        if: steps.cache-arm64.outputs.cache-hit != 'true' || steps.cache-armv7.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          rm -rf external-libs/monero "$RUNNER_TEMP/monero_c"
+          git init external-libs/monero
+          git -C external-libs/monero remote add origin https://github.com/monero-project/monero.git
+          git -C external-libs/monero fetch --depth 1 origin "${MONERO_COMMIT}"
+          git -C external-libs/monero checkout --detach FETCH_HEAD
+          actual="$(git -C external-libs/monero rev-parse HEAD)"
+          echo "Monero base HEAD: $actual"
+          echo "Expected base:    ${MONERO_COMMIT}"
+          test "$actual" = "${MONERO_COMMIT}" || {
+            echo "::error::Monero base does not match the pinned API-patch base."
+            exit 1
+          }
+
+          # ANONERO calls custom wallet APIs (encrypted Polyseed passphrase, coin
+          # selection, Coins/CoinsInfo). Upstream Monero's 2026 Polyseed API does
+          # not provide these methods. Apply the matching, version-pinned patch
+          # series rather than compiling against a mismatched header.
+          git clone --filter=blob:none --no-checkout https://github.com/MrCyjaneK/monero_c.git "$RUNNER_TEMP/monero_c"
+          git -C "$RUNNER_TEMP/monero_c" fetch --depth 1 origin 33671871de3d51696b66ffb3bd94f744e26974f6
+          git -C "$RUNNER_TEMP/monero_c" checkout --detach 33671871de3d51696b66ffb3bd94f744e26974f6
+          test "$(git -C "$RUNNER_TEMP/monero_c" rev-parse HEAD)" = "33671871de3d51696b66ffb3bd94f744e26974f6"
+          git -C external-libs/monero -c user.name="AN Native Build" -c user.email="actions@users.noreply.github.com" am --3way --whitespace=fix "$RUNNER_TEMP"/monero_c/patches/monero/*.patch
+          git -C external-libs/monero submodule update --init --recursive --depth 1
+
+          api="external-libs/monero/src/wallet/api/wallet2_api.h"
+          grep -Fq "getPolyseed(std::string &seed, std::string &passphrase)" "$api"
+          grep -Fq "hasUnknownKeyImages() const" "$api"
+          grep -Fq "viewOnlyBalance" "$api"
+          grep -Fq "struct CoinsInfo" "$api"
+          grep -Fq "preferred_inputs" "$api"
+          echo "Verified custom wallet API: Polyseed + coin control + CoinsInfo"
+
+      - name: Prepare cached Monero header and version
+        if: steps.cache-arm64.outputs.cache-hit != 'true' || steps.cache-armv7.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          cd external-libs
+          make include/wallet2_api.h VERSION
+          test -s include/wallet2_api.h
+          test -s VERSION
+          cat VERSION
+
+      - name: Build arm64 native libraries
+        if: steps.cache-arm64.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          cd external-libs
+          make arm64-v8a NPROC="$(nproc)"
+          test -s arm64-v8a/monero/libwallet_api.a
+          test -s arm64-v8a/libpolyseed.a
+          echo "arm64-v8a static archives: $(find arm64-v8a -name '*.a' | wc -l)"
+
+      - name: Save arm64 native library cache
+        if: steps.cache-arm64.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            external-libs/arm64-v8a
+            external-libs/include
+            external-libs/VERSION
+          key: anon-native-arm64-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
+
+      - name: Build armv7 native libraries
+        if: steps.cache-armv7.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          cd external-libs
+          make armeabi-v7a NPROC="$(nproc)"
+          test -s armeabi-v7a/monero/libwallet_api.a
+          test -s armeabi-v7a/libpolyseed.a
+          echo "armeabi-v7a static archives: $(find armeabi-v7a -name '*.a' | wc -l)"
+
+      - name: Save armv7 native library cache
+        if: steps.cache-armv7.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            external-libs/armeabi-v7a
+            external-libs/include
+            external-libs/VERSION
+          key: anon-native-armv7-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
+
+      - name: Build and cache JNI shared libraries
+        if: steps.cache-jni.outputs.cache-hit != 'true'
+        env:
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+          ANDROID_HOME: /usr/local/lib/android/sdk
+        run: |
+          set -euo pipefail
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "ndk;27.2.12479018" "cmake;3.22.1" >/dev/null
+          NDK="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
+          for abi in arm64-v8a armeabi-v7a; do
+            build_dir="$RUNNER_TEMP/anonero-$abi"
+            cmake -S app -B "$build_dir" \
+              -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+              -DANDROID_ABI="$abi" \
+              -DANDROID_PLATFORM=android-26 \
+              -DANDROID_STL=c++_shared \
+              -DCMAKE_BUILD_TYPE=Release
+            cmake --build "$build_dir" --target anonero --parallel "$(nproc)"
+            mkdir -p "external-libs/prebuilt/$abi"
+            install -m 0644 "$build_dir/libanonero.so" "external-libs/prebuilt/$abi/libanonero.so"
+            case "$abi" in
+              arm64-v8a) libcxx_triple=aarch64-linux-android ;;
+              armeabi-v7a) libcxx_triple=arm-linux-androideabi ;;
+              *) echo "::error::Unsupported Android ABI: $abi"; exit 1 ;;
+            esac
+            # NDK r27 stores the runtime in sysroot/usr/lib/<triple>.
+            libcxx="$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/$libcxx_triple/libc++_shared.so"
+            if [ ! -s "$libcxx" ]; then
+              echo "::error::Missing libc++_shared.so at $libcxx"
+              exit 1
+            fi
+            install -m 0644 "$libcxx" "external-libs/prebuilt/$abi/libc++_shared.so"
+            test -s "external-libs/prebuilt/$abi/libanonero.so"
+            test -s "external-libs/prebuilt/$abi/libc++_shared.so"
+            echo "$abi: libanonero.so + libc++_shared.so ready"
+          done
+
+      - name: Save JNI library cache
+        if: steps.cache-jni.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: external-libs/prebuilt
+          key: anon-jni-ndk27.2.12479018-cmake3.22.1-api26-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}-${{ hashFiles('app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
+
+      - name: Verify native libraries
         run: |
           set -euo pipefail
           test -s external-libs/include/wallet2_api.h
-          test -s external-libs/VERSION
           grep -Fq "getPolyseed(std::string &seed, std::string &passphrase)" external-libs/include/wallet2_api.h
           grep -Fq "hasUnknownKeyImages() const" external-libs/include/wallet2_api.h
           grep -Fq "viewOnlyBalance" external-libs/include/wallet2_api.h
@@ -95,29 +218,41 @@ jobs:
             test -s "external-libs/$abi/monero/libpolyseed_wrapper.a"
             test -s "external-libs/$abi/libpolyseed.a"
             count=$(find "external-libs/$abi" -type f -name '*.a' | wc -l)
-            if [ "$count" -lt 20 ]; then
-              echo "::error::Incomplete Monero static-library cache for $abi ($count archives found)."
-              exit 1
-            fi
+            test "$count" -ge 20 || { echo "::error::Incomplete $abi libraries ($count archives)"; exit 1; }
             echo "$abi: $count static archives verified"
           done
-      - run: chmod +x ./gradlew
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties', '**/settings.gradle*', '**/build.gradle*', '**/libs.versions.toml') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
       - name: Run ANON unit tests
-        run: ./gradlew :app:testAnonDebugUnitTest --no-daemon --stacktrace
-      - name: Build APK
-        id: build
         run: |
-          set -euo pipefail
-          ./gradlew :app:assembleAnonDebug --no-daemon --stacktrace 2>&1 | tee build.log
+          chmod +x ./gradlew
+          ./gradlew :app:testAnonDebugUnitTest --no-daemon --stacktrace
+
+      - name: Build APK
+        run: ./gradlew :app:assembleAnonDebug --no-daemon --stacktrace
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ANON-APK
           path: app/build/outputs/apk/**/*.apk
           if-no-files-found: error
-      - name: Upload logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-logs
-          path: build.log
+
+      - name: Summary
+        run: |
+          echo "### ANON APK build (native cache + wallet source)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- APK build runs in this same workflow after native cache restore/build." >> "$GITHUB_STEP_SUMMARY"
+          echo "- arm64 cache hit: ${{ steps.cache-arm64.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- armv7 cache hit: ${{ steps.cache-armv7.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- JNI cache hit: ${{ steps.cache-jni.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Artifact: monero-android-libs-${MONERO_REF}" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f external-libs/VERSION ]; then cat external-libs/VERSION >> "$GITHUB_STEP_SUMMARY"; fi
+          find external-libs/arm64-v8a external-libs/armeabi-v7a -name '*.a' 2>/dev/null | wc -l \
+            | xargs -I{} echo "- Static archives: {}" >> "$GITHUB_STEP_SUMMARY"
