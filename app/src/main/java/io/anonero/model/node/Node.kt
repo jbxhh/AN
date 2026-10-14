@@ -81,7 +81,8 @@ open class Node {
 
 
         this.networkType = if (daParts.size == 1) {
-            NetworkType.NetworkType_Mainnet
+            // A node string without an explicit network belongs to the app's active network.
+            AnonConfig.getNetworkType()
         } else {
             when (daParts[1]) {
                 MAINNET -> NetworkType.NetworkType_Mainnet
