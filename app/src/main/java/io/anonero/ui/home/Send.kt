@@ -389,7 +389,7 @@ fun SendScreen(
             }
         ) {
             CoinsScreen(
-                selected = coins.map { it.key }.toSet(),
+                selected = coins.map { it.pub_key }.toSet(),
                 onBackPress = {
                     showCoinSelection = false
                 },

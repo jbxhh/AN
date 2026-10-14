@@ -377,6 +377,14 @@ jobject cpp2java(JNIEnv *env, const std::vector<std::string> &vector) {
 
 /// end helpers
 
+static void throwWalletCreationError(JNIEnv *env, const char *message) {
+    jclass exceptionClass = env->FindClass("java/lang/IllegalStateException");
+    if (exceptionClass != nullptr) {
+        env->ThrowNew(exceptionClass, message);
+        env->DeleteLocalRef(exceptionClass);
+    }
+}
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -420,6 +428,14 @@ Java_io_anonero_model_WalletManager_createWalletJ(JNIEnv *env, jobject instance,
                     seed_words,
                     std::string(_passpharse), true);
 
+    if (wallet == nullptr) {
+        env->ReleaseStringUTFChars(path, _path);
+        env->ReleaseStringUTFChars(password, _password);
+        env->ReleaseStringUTFChars(passpharse, _passpharse);
+        env->ReleaseStringUTFChars(language, _language);
+        throwWalletCreationError(env, "Native wallet creation returned null");
+        return 0;
+    }
     bool setupStatus = wallet->setupBackgroundSync(Monero::Wallet::BackgroundSync_ReusePassword,
                                                    std::string(_password), {});
     if (setupStatus == true) {
@@ -449,6 +465,12 @@ Java_io_anonero_model_WalletManager_openWalletJ(JNIEnv *env, jobject instance,
                     std::string(_password),
                     _networkType);
 
+    if (wallet == nullptr) {
+        env->ReleaseStringUTFChars(path, _path);
+        env->ReleaseStringUTFChars(password, _password);
+        throwWalletCreationError(env, "Unable to open wallet");
+        return 0;
+    }
     if (!viewOnly) {
         // setup background sync
         bool setupStatus = wallet->setupBackgroundSync(Monero::Wallet::BackgroundSync_ReusePassword,
@@ -485,6 +507,14 @@ Java_io_anonero_model_WalletManager_recoveryWalletJ(JNIEnv *env, jobject instanc
                     (uint64_t) restoreHeight,
                     1, // kdf_rounds
                     std::string(_offset));
+    if (wallet == nullptr) {
+        env->ReleaseStringUTFChars(path, _path);
+        env->ReleaseStringUTFChars(password, _password);
+        env->ReleaseStringUTFChars(mnemonic, _mnemonic);
+        env->ReleaseStringUTFChars(offset, _offset);
+        throwWalletCreationError(env, "Unable to restore wallet from Monero seed");
+        return 0;
+    }
     bool setupStatus = wallet->setupBackgroundSync(Monero::Wallet::BackgroundSync_ReusePassword,
                                                    std::string(_password), {});
     if (setupStatus == true) {
@@ -517,6 +547,14 @@ Java_io_anonero_model_WalletManager_recoveryWalletPolyseedJ(JNIEnv *env, jobject
                     _networkType,
                     std::string(_mnemonic),
                     std::string(_offset), false);
+    if (wallet == nullptr) {
+        env->ReleaseStringUTFChars(path, _path);
+        env->ReleaseStringUTFChars(password, _password);
+        env->ReleaseStringUTFChars(mnemonic, _mnemonic);
+        env->ReleaseStringUTFChars(offset, _offset);
+        throwWalletCreationError(env, "Unable to restore wallet from Polyseed");
+        return 0;
+    }
     bool setupStatus = wallet->setupBackgroundSync(Monero::Wallet::BackgroundSync_ReusePassword,
                                                    std::string(_password), {});
     if (setupStatus == true) {
@@ -558,6 +596,16 @@ Java_io_anonero_model_WalletManager_createWalletFromKeysJ(JNIEnv *env, jobject i
                     std::string(_addressString),
                     std::string(_viewKeyString),
                     std::string(_spendKeyString));
+    if (wallet == nullptr) {
+        env->ReleaseStringUTFChars(path, _path);
+        env->ReleaseStringUTFChars(password, _password);
+        env->ReleaseStringUTFChars(language, _language);
+        env->ReleaseStringUTFChars(addressString, _addressString);
+        env->ReleaseStringUTFChars(viewKeyString, _viewKeyString);
+        env->ReleaseStringUTFChars(spendKeyString, _spendKeyString);
+        throwWalletCreationError(env, "Unable to create wallet from keys");
+        return 0;
+    }
     bool setupStatus = wallet->setupBackgroundSync(Monero::Wallet::BackgroundSync_ReusePassword,
                                                    std::string(_password), {});
     if (setupStatus == true) {
@@ -599,6 +647,14 @@ Java_io_anonero_model_WalletManager_createWalletFromDeviceJ(JNIEnv *env, jobject
                     std::string(_deviceName),
                     (uint64_t) restoreHeight,
                     std::string(_subaddressLookahead));
+    if (wallet == nullptr) {
+        env->ReleaseStringUTFChars(path, _path);
+        env->ReleaseStringUTFChars(password, _password);
+        env->ReleaseStringUTFChars(deviceName, _deviceName);
+        env->ReleaseStringUTFChars(subaddressLookahead, _subaddressLookahead);
+        throwWalletCreationError(env, "Unable to create wallet from device");
+        return 0;
+    }
     bool setupStatus = wallet->setupBackgroundSync(Monero::Wallet::BackgroundSync_ReusePassword,
                                                    std::string(_password), {});
     if (setupStatus == true) {

@@ -167,7 +167,7 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
         val candidateFile = File(stagingDir, "anon")
         var candidateWallet: Wallet? = null
         try {
-            candidateWallet = when (payload.seed.size) {
+            val restoredWallet = when (payload.seed.size) {
                 16 -> WalletManager.instance?.recoveryWalletPolyseed(
                     candidateFile,
                     pin,
@@ -183,17 +183,17 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
                 )
                 else -> null
             } ?: throw CancellationException("Unable to create wallet from recovery phrase")
+            candidateWallet = restoredWallet
 
-            payload.restoreHeight?.let { candidateWallet.setRestoreHeight(it) }
-            if (!candidateWallet.store() || !candidateWallet.store(candidateFile.path)) {
+            payload.restoreHeight?.let { restoredWallet.setRestoreHeight(it) }
+            if (!restoredWallet.store() || !restoredWallet.store(candidateFile.path)) {
                 throw CancellationException("Unable to save the restored wallet")
             }
-            val status = candidateWallet.status
+            val status = restoredWallet.status
             if (!status.isOk) {
                 throw CancellationException("Unable to restore wallet: ${status.errorString}")
             }
-            if (!candidateWallet.close()) {
-                candidateWallet = null
+            if (!restoredWallet.close()) {
                 throw CancellationException("Unable to close the temporary restored wallet")
             }
             candidateWallet = null
@@ -214,7 +214,11 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
             val crazyPass = KeyStoreHelper.getCrazyPass(context, passPhrase)
             prefs.edit(commit = true) {
                 putString(PREFS_PASSPHRASE_HASH, crazyPass)
-                payload.restoreHeight?.let { putLong(RESTORE_HEIGHT, it) }
+                if (payload.restoreHeight != null) {
+                    putLong(RESTORE_HEIGHT, payload.restoreHeight)
+                } else {
+                    remove(RESTORE_HEIGHT)
+                }
             }
         } catch (e: Exception) {
             candidateWallet?.let { runCatching { it.close() } }
