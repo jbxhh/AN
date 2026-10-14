@@ -11,16 +11,16 @@ android {
         applicationId = "io.anonero"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.0.1-ui"
+        versionCode = 4
+        versionName = "1.0.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
-        // ndk {
-        //     //noinspection ChromeOsAbiSupport
-        //     abiFilters += listOf("armeabi-v7a", "arm64-v8a")
-        // }
+        ndk {
+            //noinspection ChromeOsAbiSupport
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+        }
         packaging {
             jniLibs.useLegacyPackaging = true
         }
@@ -81,11 +81,11 @@ android {
             buildConfigField("boolean", "VIEW_ONLY", "true")
         }
     }
-    // externalNativeBuild {
-    //     cmake {
-    //         path = file("CMakeLists.txt")
-    //     }
-    // }
+    externalNativeBuild {
+        cmake {
+            path = file("CMakeLists.txt")
+        }
+    }
     buildToolsVersion = "36.0.0"
 }
 dependencies {
