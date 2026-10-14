@@ -1,4 +1,4 @@
-name: Probe ANONERO Monero API
+name: Probe Monero API patches
 
 on:
   push:
@@ -11,31 +11,34 @@ permissions:
   contents: read
 
 jobs:
-  probe-source:
+  probe-patches:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - name: Probe public ANONERO Monero source
+      - name: Check patch compatibility against pinned Monero source
         shell: bash
         run: |
-          set -uo pipefail
-          SOURCE_URL="https://gitea.com/anonero/monero.git"
-          echo "Remote refs from $SOURCE_URL"
-          if ! git ls-remote --heads "$SOURCE_URL" | tee "$RUNNER_TEMP/refs.txt"; then
-            echo "::error::Could not read ANONERO Monero refs."
-            exit 1
+          set -euo pipefail
+          MONERO_COMMIT=43c31c2aacdd789404d16cfda0c5456e0a090b86
+          PATCH_BASE=33671871de3d51696b66ffb3bd94f744e26974f6
+          git init monero
+          git -C monero remote add origin https://github.com/monero-project/monero.git
+          git -C monero fetch --depth 1 origin "$MONERO_COMMIT"
+          git -C monero checkout --detach FETCH_HEAD
+          echo "=== Current Polyseed API ==="
+          grep -nE 'getPolyseed\(|hasUnknownKeyImages|viewOnlyBalance|struct Coins|class Coins|createTransaction\(' monero/src/wallet/api/wallet2_api.h | head -40 || true
+          mkdir -p "$RUNNER_TEMP/patches"
+          curl -fsSL "https://raw.githubusercontent.com/MrCyjaneK/monero_c/$PATCH_BASE/patches/monero/0005-UR-functions.patch" -o "$RUNNER_TEMP/patches/0005.patch"
+          curl -fsSL "https://raw.githubusercontent.com/MrCyjaneK/monero_c/$PATCH_BASE/patches/monero/0008-coin-control.patch" -o "$RUNNER_TEMP/patches/0008.patch"
+          echo "=== UR-functions patch check ==="
+          if git -C monero apply --check "$RUNNER_TEMP/patches/0005.patch"; then
+            echo "PATCH_0005_CHECK=PASS"
+          else
+            echo "PATCH_0005_CHECK=FAIL"
           fi
-          for ref in refs/heads/release-v0.18.3.1-anonero refs/heads/release-v0.18.0.0-monerujo; do
-            if grep -q " $ref$" "$RUNNER_TEMP/refs.txt"; then
-              echo "=== Inspecting $ref ==="
-              rm -rf "$RUNNER_TEMP/monero-probe"
-              git init "$RUNNER_TEMP/monero-probe"
-              git -C "$RUNNER_TEMP/monero-probe" remote add origin "$SOURCE_URL"
-              git -C "$RUNNER_TEMP/monero-probe" fetch --depth 1 origin "$ref"
-              git -C "$RUNNER_TEMP/monero-probe" checkout --detach FETCH_HEAD
-              echo "COMMIT=$(git -C "$RUNNER_TEMP/monero-probe" rev-parse HEAD)"
-              HEADER="$RUNNER_TEMP/monero-probe/src/wallet/api/wallet2_api.h"
-              test -s "$HEADER" || { echo "::error::wallet2_api.h missing"; exit 1; }
-              grep -nE 'getPolyseed|hasUnknownKeyImages|viewOnlyBalance|CoinsInfo|struct Coins|class Coins|createTransaction\(' "$HEADER" || true
-            fi
-          done
+          echo "=== Coin-control patch check ==="
+          if git -C monero apply --check "$RUNNER_TEMP/patches/0008.patch"; then
+            echo "PATCH_0008_CHECK=PASS"
+          else
+            echo "PATCH_0008_CHECK=FAIL"
+          fi
