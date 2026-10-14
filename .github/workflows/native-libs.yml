@@ -1,4 +1,4 @@
-name: Native Monero Libs v0.18.5.3
+name: Native Monero Libs (Polyseed support)
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 env:
-  MONERO_TAG: v0.18.5.3
+  MONERO_REF: polyseed-support-2026-09-20
   MONERO_COMMIT: 22578c3f7d7b4b6dd85ff7daa42a827d97cc53d0
 
 jobs:
@@ -43,23 +43,27 @@ jobs:
             external-libs/include
             external-libs/prebuilt
             external-libs/VERSION
-          key: anon-native-${{ env.MONERO_TAG }}-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile', 'app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
+          key: anon-native-${{ env.MONERO_REF }}-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile', 'app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
 
-      - name: Checkout Monero ${{ env.MONERO_TAG }}
+      - name: Checkout Monero Polyseed-support revision
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           rm -rf external-libs/monero
-          git clone --depth 1 --branch "${MONERO_TAG}" \
-            https://github.com/monero-project/monero.git external-libs/monero
+          git init external-libs/monero
+          git -C external-libs/monero remote add origin https://github.com/monero-project/monero.git
+          git -C external-libs/monero fetch --depth 1 origin "${MONERO_COMMIT}"
+          git -C external-libs/monero checkout --detach FETCH_HEAD
           git -C external-libs/monero submodule update --init --recursive --depth 1
           actual="$(git -C external-libs/monero rev-parse HEAD)"
           echo "Monero HEAD: $actual"
           echo "Expected:    ${MONERO_COMMIT}"
           test "$actual" = "${MONERO_COMMIT}" || {
-            echo "::error::Monero tag does not match the pinned release commit."
+            echo "::error::Monero checkout does not match the pinned Polyseed-support commit."
             exit 1
           }
+          grep -Fq "createWalletFromPolyseed" external-libs/monero/src/wallet/api/wallet2_api.h
+          grep -Fq "monero_add_library(polyseed_wrapper" external-libs/monero/src/mnemonics/polyseed/CMakeLists.txt
 
       - name: Build Android native libs (Docker)
         if: steps.native-cache.outputs.cache-hit != 'true'
@@ -106,14 +110,14 @@ jobs:
       - name: Write VERSION stamp
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: |
-          echo "ANONERO monero ${MONERO_TAG} (${MONERO_COMMIT}) built $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          echo "ANONERO monero ${MONERO_REF} (${MONERO_COMMIT}) built $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             > external-libs/VERSION
           cat external-libs/VERSION
 
       - name: Upload native libs artifact
         uses: actions/upload-artifact@v4
         with:
-          name: monero-android-libs-${{ env.MONERO_TAG }}
+          name: monero-android-libs-${{ env.MONERO_REF }}
           path: |
             external-libs/arm64-v8a
             external-libs/armeabi-v7a
@@ -125,9 +129,9 @@ jobs:
 
       - name: Summary
         run: |
-          echo "### Monero ${MONERO_TAG} native libs" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Monero Polyseed-support native libs" >> "$GITHUB_STEP_SUMMARY"
           echo "- Cache hit: ${{ steps.native-cache.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Artifact: monero-android-libs-${MONERO_TAG}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Artifact: monero-android-libs-${MONERO_REF}" >> "$GITHUB_STEP_SUMMARY"
           if [ -f external-libs/VERSION ]; then cat external-libs/VERSION >> "$GITHUB_STEP_SUMMARY"; fi
           find external-libs/arm64-v8a external-libs/armeabi-v7a -name '*.a' 2>/dev/null | wc -l \
             | xargs -I{} echo "- Static archives: {}" >> "$GITHUB_STEP_SUMMARY"
