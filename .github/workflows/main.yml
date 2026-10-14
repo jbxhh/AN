@@ -26,7 +26,7 @@ jobs:
           echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
           echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
           yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
-          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;36.0.0" > /dev/null 2>&1
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;36.0.0" "ndk;26.1.10909125" > /dev/null 2>&1
           echo "Android SDK ready"
       - uses: actions/cache@v4
         with:
@@ -43,12 +43,12 @@ jobs:
             external-libs/arm64-v8a
             external-libs/armeabi-v7a
             external-libs/include
-          key: anon-native-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
+          key: anon-native-v0.18.5.3-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
       - name: Prepare Monero native source
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: |
           rm -rf external-libs/monero
-          git clone --depth 1 --branch v0.18.5.0 https://github.com/monero-project/monero.git external-libs/monero
+          git clone --depth 1 --branch v0.18.5.3 https://github.com/monero-project/monero.git external-libs/monero
           git -C external-libs/monero submodule update --init --recursive
       - name: Build Monero native libraries
         if: steps.native-cache.outputs.cache-hit != 'true'
