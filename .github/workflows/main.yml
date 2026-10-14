@@ -31,9 +31,9 @@ name: Build ANON APK
 env:
   JAVA_VERSION: '17'
 concurrency:
-  # Do not discard a valid APK build when another commit arrives.
+  # Keep only the newest APK build for this branch; cancel superseded runs.
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: read
