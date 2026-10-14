@@ -32,7 +32,7 @@ env:
   JAVA_VERSION: '17'
 concurrency:
   # Keep only the newest APK build for this branch; cancel superseded runs.
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref_name }}
   cancel-in-progress: true
 
 permissions:
