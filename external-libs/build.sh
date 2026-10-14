@@ -121,6 +121,12 @@ cc() {
         export TC=$TC_DIR
         export CC=$CLANG-clang CXX=$CLANG-clang++
         export AR=$TC/bin/llvm-ar RANLIB=$TC/bin/llvm-ranlib STRIP=$TC/bin/llvm-strip
+        # Cargo builds Monero's fcmp++ Rust static library as part of CMake.
+        # Pin Rust's target linker to this ABI's NDK clang (including API level).
+        case "$ABI" in
+            arm64-v8a) export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CC" ;;
+            armeabi-v7a) export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER="$CC" ;;
+        esac
         export PATH=$TC/bin:$PATH
     fi
 }
