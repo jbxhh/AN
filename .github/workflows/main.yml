@@ -27,7 +27,7 @@ name: Build ANON APK
   workflow_run:
     workflows: ["Native Monero Libs (Polyseed support)"]
     types: [completed]
-    branches: [main]
+    branches: [main, fix/native-api-compatible-base]
 env:
   JAVA_VERSION: '17'
 concurrency:
@@ -37,6 +37,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 jobs:
   build:
     name: Build APK
@@ -46,6 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 1
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -66,11 +68,28 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties', '**/settings.gradle*', '**/build.gradle*', '**/libs.versions.toml') }}
           restore-keys: ${{ runner.os }}-gradle-
+      - name: Select native library artifact run
+        id: native-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
+            native_run_id="${{ github.event.workflow_run.id }}"
+          else
+            native_run_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/native-libs.yml/runs?branch=${GITHUB_REF_NAME}&status=success&per_page=50" --jq '.workflow_runs[0].id // empty')"
+          fi
+          if [[ ! "${native_run_id}" =~ ^[0-9]+$ ]]; then
+            echo "::error::No successful native-libraries run found for branch ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+          echo "Using native library workflow run: ${native_run_id}"
+          echo "run_id=${native_run_id}" >> "${GITHUB_OUTPUT}"
       - name: Download verified cached Monero native libraries
         uses: actions/download-artifact@v4
         with:
           name: monero-android-libs-monero-api-compatible-33671871
-          run-id: 38553652140
+          run-id: ${{ steps.native-run.outputs.run_id }}
           github-token: ${{ github.token }}
           path: external-libs
       - name: Verify cached Monero Polyseed-support libraries
