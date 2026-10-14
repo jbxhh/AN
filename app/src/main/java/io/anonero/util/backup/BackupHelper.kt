@@ -170,7 +170,7 @@ object BackupHelper {
             val entries = zip.entries()
             while (entries.hasMoreElements()) {
                 val entry = entries.nextElement()
-                val entryName = entry.name.replace('\\\\', '/')
+                val entryName = entry.name.replace('\\', '/')
                 if (entryName.isBlank() || entryName.startsWith("/") ||
                     entryName.startsWith("//") ||
                     entryName.matches(Regex("^[A-Za-z]:.*"))
