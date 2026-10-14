@@ -73,6 +73,7 @@ fun SettingsPage(
     val toastState = rememberToasterState()
     var showLockScreen by remember { mutableStateOf(false) }
     var newPinDialog by remember { mutableStateOf(false) }
+    var showDataMenu by remember { mutableStateOf(false) }
 
     if (showLockScreen) {
         Dialog(
@@ -130,6 +131,40 @@ fun SettingsPage(
         }
     }
 
+    // 数据子菜单弹层
+    if (showDataMenu) {
+        Dialog(
+            properties = DialogProperties(
+                usePlatformDefaultWidth = true,
+                dismissOnClickOutside = true,
+                dismissOnBackPress = true
+            ),
+            onDismissRequest = { showDataMenu = false }
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+            ) {
+                Text(
+                    stringResource(R.string.settings_data_section),
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        color = MaterialTheme.colorScheme.primary
+                    ),
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                MenuItem(stringResource(R.string.settings_change_pin)) {
+                    showDataMenu = false
+                    showLockScreen = true
+                }
+                HorizontalDivider(thickness = 1.dp)
+                MenuItem(stringResource(R.string.settings_export_backup)) {
+                    showDataMenu = false
+                    navigateTo(SettingsExportBackUp)
+                }
+            }
+        }
+    }
+
     Toaster(
         state = toastState,
         maxVisibleToasts = 2,
@@ -173,31 +208,19 @@ fun SettingsPage(
                     item {
                         SectionHeader(stringResource(R.string.settings_security))
                     }
-                    // 钱包 section
-                    item {
-                        SectionHeader(stringResource(R.string.settings_wallet_section))
-                    }
+                    // 钱包 → 助记词
                     if (!AnonConfig.viewOnly) {
                         item {
-                            MenuItem(stringResource(R.string.settings_seed)) {
+                            MenuItem(stringResource(R.string.settings_wallet_section)) {
                                 navigateTo(SettingsViewSeedRoute)
                             }
                             HorizontalDivider(thickness = 2.5.dp)
                         }
                     }
-                    // 数据 section
+                    // 数据 → 弹出修改PIN + 导出备份
                     item {
-                        SectionHeader(stringResource(R.string.settings_data_section))
-                    }
-                    item {
-                        MenuItem(stringResource(R.string.settings_change_pin)) {
-                            showLockScreen = true
-                        }
-                        HorizontalDivider(thickness = 2.5.dp)
-                    }
-                    item {
-                        MenuItem(stringResource(R.string.settings_export_backup)) {
-                            navigateTo(SettingsExportBackUp)
+                        MenuItem(stringResource(R.string.settings_data_section)) {
+                            showDataMenu = true
                         }
                         HorizontalDivider(thickness = 2.5.dp)
                     }
