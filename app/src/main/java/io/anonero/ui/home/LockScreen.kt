@@ -146,38 +146,58 @@ fun LockScreen(
             scope.launch(Dispatchers.IO) {
                 try {
                     if (mode == LockScreenMode.OPEN_WALLET) {
-                        // attempt to open wallet, but ALWAYS unlock no matter the result
-                        appViewModel.openWallet(pin)
-                        prefs.edit(commit = true) {
-                            putString(
-                                PREFS_PIN_HASH,
-                                CrazyPassEncoder.encode(
-                                    pin.toByteArray().let { bytes ->
-                                        if (bytes.size < 32) {
-                                            bytes + ByteArray(32 - bytes.size)
-                                        } else bytes
-                                    }
-                                )
-                            )
-                        }
-                        withContext(Dispatchers.Main) {
-                            appViewModel.startService()
+                        // A wallet is unlocked only if the native wallet accepts this password.
+                        if (!appViewModel.openWallet(pin)) {
                             withContext(Dispatchers.Main) {
-                                onUnLocked(pin, shortCut)
-                                (activity as MainActivity).startNotificationService()
+                                currentPin.clear()
+                                showError()
                             }
+                            return@launch
+                        }
+
+                        val pinBytes = pin.toByteArray(Charsets.UTF_8)
+                        val paddedPinBytes = if (pinBytes.size < 32) {
+                            pinBytes + ByteArray(32 - pinBytes.size)
+                        } else {
+                            pinBytes
+                        }
+                        prefs.edit(commit = true) {
+                            putString(PREFS_PIN_HASH, CrazyPassEncoder.encode(paddedPinBytes))
+                        }
+
+                        appViewModel.startService()
+                        withContext(Dispatchers.Main) {
+                            onUnLocked(pin, shortCut)
+                            (activity as? MainActivity)?.startNotificationService()
                         }
                     } else {
-                        // LOCK_SCREEN / VERYFY_PIN: no PIN check, always unlock
+                        // The wallet is already open, so compare the entered PIN against
+                        // the hash saved when the wallet was created or successfully opened.
+                        val pinBytes = pin.toByteArray(Charsets.UTF_8)
+                        val paddedPinBytes = if (pinBytes.size < 32) {
+                            pinBytes + ByteArray(32 - pinBytes.size)
+                        } else {
+                            pinBytes
+                        }
+                        val enteredPinHash = CrazyPassEncoder.encode(paddedPinBytes)
+                        val savedPinHash = prefs.getString(PREFS_PIN_HASH, null)
+                        if (savedPinHash.isNullOrEmpty() || savedPinHash != enteredPinHash) {
+                            withContext(Dispatchers.Main) {
+                                currentPin.clear()
+                                showError()
+                            }
+                            return@launch
+                        }
+
                         withContext(Dispatchers.Main) {
                             onUnLocked(pin, shortCut)
                         }
                     }
                 } catch (e: Exception) {
-                    Timber.tag(TAG).i("checkPin bypass: %s", e.message)
-                    // still unlock even on error
+                    Timber.tag(TAG).w("PIN verification failed: %s", e.message)
                     withContext(Dispatchers.Main) {
-                        onUnLocked(pin, shortCut)
+                        currentPin.clear()
+                        showError()
                     }
                 }
             }
