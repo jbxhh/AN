@@ -7,7 +7,6 @@ import io.anonero.model.WalletManager
 import io.anonero.model.node.DaemonInfo
 import io.anonero.model.node.Node
 import io.anonero.model.node.NodeFields
-import io.anonero.util.RESTORE_HEIGHT
 import io.anonero.util.WALLET_PROXY
 import io.anonero.util.WALLET_PROXY_PORT
 import io.anonero.util.WALLET_USE_TOR
@@ -67,9 +66,6 @@ class AnonWalletHandler(
     // ===== 真实连接流程保留，但每一步都有超时；超时后 mock 兜底，不再一直“连接中” =====
     suspend fun startService() {
         val wallet = WalletManager.instance?.wallet ?: return
-        var realHost: String? = null
-        var realPort: Int = Node.defaultRpcPort
-
         try {
             val host = prefs.getString(NodeFields.RPC_HOST.value, "")
             val rpcPort = prefs.getInt(NodeFields.RPC_PORT.value, Node.defaultRpcPort)
@@ -95,8 +91,6 @@ class AnonWalletHandler(
 
             // —— 真实节点配置 ——
             if (host?.isNotEmpty() == true) {
-                realHost = host
-                realPort = rpcPort
                 val nodeObj = JSONObject()
                     .apply {
                         put(NodeFields.RPC_HOST.value, host)
@@ -115,9 +109,6 @@ class AnonWalletHandler(
                 wallet.refreshHistory()
             }
             wallet.init(0)
-            if (prefs.getLong(RESTORE_HEIGHT, 0L) != 0L) {
-                wallet.setRestoreHeight(prefs.getLong(RESTORE_HEIGHT, 0L))
-            }
             if (wallet.isInitialized) {
                 wallet.refreshHistory()
                 wallet.setTrustedDaemon(true)
@@ -147,18 +138,26 @@ class AnonWalletHandler(
             walletState.setLoading(false)
         }
 
-        // ===== mock 兜底：真实流程走完/超时后，强制结束“连接中”，进入可用首页 =====
-        wallet.setSynchronized()
-        wallet.refreshHistory()
-        walletState.updateDaemon(
-            DaemonInfo(
-                realHost?.let { "$it:$realPort" } ?: "mock-node:18081",
-                Wallet.ConnectionStatus.ConnectionStatus_Connected,
-                3_400_000L
+        // Publish only the daemon and sync state reported by the actual wallet.
+        // Never mark an unconnected wallet as synchronized or invent a daemon height.
+        try {
+            wallet.refreshHistory()
+            val actualStatus = wallet.fullStatus.connectionStatus
+                ?: Wallet.ConnectionStatus.ConnectionStatus_Disconnected
+            walletState.setConnectionStatus(actualStatus)
+            walletState.updateDaemon(
+                DaemonInfo(
+                    daemon = WalletManager.instance?.getDaemonAddress(),
+                    connectionStatus = actualStatus,
+                    daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+                )
             )
-        )
-        walletState.setLoading(false)
-        walletState.update()
+            walletState.update()
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Unable to publish wallet connection state")
+        } finally {
+            walletState.setLoading(false)
+        }
     }
 
     fun updateDaemon(node: Node?) {
