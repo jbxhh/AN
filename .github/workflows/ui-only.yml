@@ -1,7 +1,7 @@
 name: UI-Only Fast APK
+# Manual fallback only. Do not run a UI-only APK build on every push;
+# it can report success while the real wallet/native APK build fails.
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 env:
   JAVA_VERSION: '17'
