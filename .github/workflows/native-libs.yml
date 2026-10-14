@@ -1,4 +1,4 @@
-name: Probe API migration hunks
+name: Dump Monero API patch rejects
 
 on:
   push:
@@ -11,11 +11,11 @@ permissions:
   contents: read
 
 jobs:
-  probe-migration:
+  dump-rejects:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Inspect coin-control migration rejects
+      - name: Dump reject hunks to Actions log
         shell: bash
         run: |
           set -euo pipefail
@@ -25,20 +25,17 @@ jobs:
           git -C monero remote add origin https://github.com/monero-project/monero.git
           git -C monero fetch --depth 1 origin "$MONERO_COMMIT"
           git -C monero checkout --detach FETCH_HEAD
-          mkdir -p "$RUNNER_TEMP/patches"
-          curl -fsSL "https://raw.githubusercontent.com/MrCyjaneK/monero_c/$PATCH_BASE/patches/monero/0008-coin-control.patch" -o "$RUNNER_TEMP/patches/0008.patch"
-          curl -fsSL "https://raw.githubusercontent.com/MrCyjaneK/monero_c/$PATCH_BASE/patches/monero/0005-UR-functions.patch" -o "$RUNNER_TEMP/patches/0005.patch"
+          curl -fsSL "https://raw.githubusercontent.com/MrCyjaneK/monero_c/$PATCH_BASE/patches/monero/0008-coin-control.patch" -o "$RUNNER_TEMP/0008.patch"
           set +e
-          git -C monero apply --reject "$RUNNER_TEMP/patches/0008.patch" 2>&1 | tee "$RUNNER_TEMP/apply.log"
-          rc=${PIPESTATUS[0]}
+          git -C monero apply --reject "$RUNNER_TEMP/0008.patch" > "$RUNNER_TEMP/apply.log" 2>&1
           set -e
-          echo "APPLY_RC=$rc"
-          echo "=== Changed files ==="
-          git -C monero status --short | head -100
-          echo "=== Reject count and hunk headers ==="
-          find monero -name '*.rej' -print
-          grep -H -E '^(---|\+\+\+|@@)' $(find monero -name '*.rej' -print) 2>/dev/null | head -300 || true
-          echo "=== Relevant UR API patch fragments ==="
-          grep -n -B5 -A18 -E 'hasUnknownKeyImages|viewOnlyBalance' "$RUNNER_TEMP/patches/0005.patch" | head -180 || true
-          echo "=== Coin API public interface excerpt ==="
-          grep -n -B3 -A45 -E 'struct CoinsInfo|struct Coins|preferred_inputs|coins\(\)' "$RUNNER_TEMP/patches/0008.patch" | head -300 || true
+          cat "$RUNNER_TEMP/apply.log" | tail -100
+          echo "=== REJECT FILES ==="
+          while IFS= read -r f; do
+            echo "===== $f ====="
+            cat "$f"
+          done < <(find monero -name '*.rej' -print)
+          echo "=== APPLY STATUS ==="
+          git -C monero status --short
+          echo "=== NEW/CHANGED COIN API REFERENCES ==="
+          grep -nE 'struct CoinsInfo|struct Coins|coins\(\)|preferred_inputs|m_coins|WalletImpl::coins' monero/src/wallet/api/wallet2_api.h monero/src/wallet/api/wallet.h monero/src/wallet/api/wallet.cpp 2>/dev/null | head -150 || true
