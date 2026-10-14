@@ -101,7 +101,6 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
                 addressString = neroKeyPayload!!.primaryAddress,
                 spendKeyString = ""
             )
-            anonWallet?.setRestoreHeight(3460000);
             anonWallet?.store()
             delay(100)
             if (anonWallet?.status?.isOk != true) {
@@ -110,7 +109,7 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
             }
             val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
             prefs.edit {
-                putString("passPhraseHash", crazyPass)
+                putString(PREFS_PASSPHRASE_HASH, crazyPass)
             }
             walllet = anonWallet
             delay(500)

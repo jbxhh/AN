@@ -159,7 +159,6 @@ class AnonWalletHandler(
             ?: WalletManager.instance?.getDaemonAddress()
 
         if (connectionStatus == Wallet.ConnectionStatus.ConnectionStatus_Connected) {
-            wallet.setSynchronized()
             wallet.refreshHistory()
         }
 

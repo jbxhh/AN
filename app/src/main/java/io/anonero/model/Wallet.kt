@@ -171,13 +171,13 @@ class Wallet {
         }
         message = "${message}\nupper_transaction_size_limit = 0 (probably)"
         if (daemonUsername != null) {
-            Timber.tag(TAG).i(daemonUsername)
+            Timber.tag(TAG).i("Daemon username configured")
         } else {
             message = "${message}\ndaemon_username == null"
             daemonUsername = ""
         }
         if (daemonPassword != null) {
-            Timber.tag(TAG).i(daemonPassword)
+            Timber.tag(TAG).i("Daemon password configured")
         } else {
             message = "${message}daemon_password == null"
             daemonPassword = ""

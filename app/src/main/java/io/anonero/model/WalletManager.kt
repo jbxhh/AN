@@ -65,6 +65,7 @@ class WalletManager {
         manageWallet(wallet)
         if (wallet.status.isOk) {
             wallet.setPassword(password)
+            wallet.setRestoreHeight(height)
         }
         return wallet
     }
