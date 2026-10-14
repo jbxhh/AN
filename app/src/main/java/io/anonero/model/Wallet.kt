@@ -113,8 +113,8 @@ class Wallet {
         return Subaddress(
             accountIndex,
             subAddressIndex,
-            getSubaddress(subAddressIndex),
-            getSubaddressLabel(0, subAddressIndex)
+            getAddressJ(accountIndex, subAddressIndex),
+            getSubaddressLabel(accountIndex, subAddressIndex)
         )
     }
 
