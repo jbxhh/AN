@@ -1,0 +1,92 @@
+name: Native Monero Libs v0.18.5.3
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'external-libs/Makefile'
+      - 'external-libs/build.sh'
+      - 'external-libs/Containerfile'
+      - '.github/workflows/native-libs.yml'
+
+permissions:
+  contents: read
+
+env:
+  MONERO_TAG: v0.18.5.3
+  MONERO_COMMIT: 22578c3f7d7b4b6dd85ff7daa42a827d97cc53d0
+
+jobs:
+  build-native:
+    name: Build arm64 + armv7 static libs
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Cache native libraries
+        id: native-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            external-libs/arm64-v8a
+            external-libs/armeabi-v7a
+            external-libs/include
+            external-libs/VERSION
+          key: anon-native-${{ env.MONERO_TAG }}-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
+
+      - name: Checkout Monero ${{ env.MONERO_TAG }}
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          rm -rf external-libs/monero
+          git clone --depth 1 --branch "${MONERO_TAG}" \
+            https://github.com/monero-project/monero.git external-libs/monero
+          git -C external-libs/monero submodule update --init --recursive --depth 1
+          echo "Monero HEAD: $(git -C external-libs/monero rev-parse HEAD)"
+          echo "Expected:    ${MONERO_COMMIT}"
+
+      - name: Build Android native libs (Docker)
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          cd external-libs
+          make android NPROC="$(nproc)"
+          echo "==== arm64-v8a ===="
+          find arm64-v8a -name '*.a' | wc -l
+          ls -la arm64-v8a/monero/libwallet_api.a arm64-v8a/libpolyseed.a 2>/dev/null || true
+          echo "==== armeabi-v7a ===="
+          find armeabi-v7a -name '*.a' | wc -l
+          test -f include/wallet2_api.h
+          test -s arm64-v8a/monero/libwallet_api.a
+          test -s armeabi-v7a/monero/libwallet_api.a
+
+      - name: Write VERSION stamp
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "ANONERO monero ${MONERO_TAG} (${MONERO_COMMIT}) built $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > external-libs/VERSION
+          cat external-libs/VERSION
+
+      - name: Upload native libs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: monero-android-libs-${{ env.MONERO_TAG }}
+          path: |
+            external-libs/arm64-v8a
+            external-libs/armeabi-v7a
+            external-libs/include
+            external-libs/VERSION
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Summary
+        run: |
+          echo "### Monero ${MONERO_TAG} native libs" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cache hit: ${{ steps.native-cache.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Artifact: monero-android-libs-${MONERO_TAG}" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f external-libs/VERSION ]; then cat external-libs/VERSION >> "$GITHUB_STEP_SUMMARY"; fi
+          find external-libs/arm64-v8a external-libs/armeabi-v7a -name '*.a' 2>/dev/null | wc -l \
+            | xargs -I{} echo "- Static archives: {}" >> "$GITHUB_STEP_SUMMARY"
