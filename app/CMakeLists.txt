@@ -81,6 +81,12 @@ add_library(wallet_api STATIC IMPORTED)
 set_target_properties(wallet_api PROPERTIES IMPORTED_LOCATION
     ${EXTERNAL_LIBS_DIR}/${ANON_ABI}/monero/libwallet_api.a)
 
+# The patched wallet API uses UR encoding/decoding symbols. Monero's build
+# creates libbc-ur.a, but it must also be linked into ANONERO's JNI library.
+add_library(bc_ur STATIC IMPORTED)
+set_target_properties(bc_ur PROPERTIES IMPORTED_LOCATION
+    ${EXTERNAL_LIBS_DIR}/${ANON_ABI}/monero/libbc-ur.a)
+
 add_library(wallet STATIC IMPORTED)
 set_target_properties(wallet PROPERTIES IMPORTED_LOCATION
     ${EXTERNAL_LIBS_DIR}/${ANON_ABI}/monero/libwallet.a)
@@ -238,6 +244,7 @@ endif()
 target_link_libraries(  anonero
 
                         wallet_api
+                        bc_ur
                         wallet
                         cryptonote_core
                         cryptonote_basic
