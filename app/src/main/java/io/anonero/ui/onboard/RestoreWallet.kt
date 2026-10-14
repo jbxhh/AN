@@ -102,10 +102,11 @@ fun RestoreWallet(
 
     LaunchedEffect(true) {
         scope.launch {
-            val inputStream = resources.openRawResource(R.raw.words)
-            val reader = inputStream.bufferedReader()
-            val lines = reader.readText().split("\n")
-            wordsList = lines
+            resources.openRawResource(R.raw.words).bufferedReader().use { reader ->
+                wordsList = reader.readLines()
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+            }
         }
     }
 
@@ -135,6 +136,12 @@ fun RestoreWallet(
 
         invalidSeed = words.any { it !in wordsList }
         seedList = if (invalidSeed) emptyList() else words
+    }
+
+    LaunchedEffect(wordsList) {
+        if (wordsList.isNotEmpty() && seed.isNotBlank()) {
+            validateSeed()
+        }
     }
 
     Scaffold { paddingValues ->
