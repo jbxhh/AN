@@ -1,32 +1,35 @@
-/* UI-MOCK：构造即装 2 条假 UTXO，不依赖 native 库与同步回调 */
+/*
+ * Copyright (c) 2017 m2049r
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package io.anonero.model
 
 class Coins(private val handle: Long){
-    var all: List<CoinsInfo> = refreshJ()
+    var all: List<CoinsInfo> = ArrayList()
         private set
 
     fun refresh() {
-        all = refreshJ()
+        val transactionInfos = refreshJ()
+        all = transactionInfos
     }
 
-    private fun refreshJ(): List<CoinsInfo> {
-        val day = 86_400_000L
-        val now = System.currentTimeMillis()
-        return listOf(
-            CoinsInfo(0L, false, "mock-key-001", 7_000_000_000_000L,
-                "e5f6071829300000000000000000000000000000000000000000000000000001",
-                "mock-pub-001", false, now - day * 10),
-            CoinsInfo(0L, false, "mock-key-002", 5_345_600_000_000L,
-                "f607182930410000000000000000000000000000000000000000000000000002",
-                "mock-pub-002", false, now - day * 5)
-        )
-    }
-
-    fun getCount(): Int = all.size
+    private external fun refreshJ(): List<CoinsInfo>
+    external fun getCount(): Int
 
     companion object {
         init {
-            try { System.loadLibrary("anonero") } catch (e: Throwable) {}
+            System.loadLibrary("anonero")
         }
     }
 }
