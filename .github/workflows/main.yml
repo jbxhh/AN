@@ -332,14 +332,20 @@ jobs:
           done
 
 
-      - name: Build APK
-        run: ./gradlew :app:assembleAnonDebug --no-daemon --stacktrace
+      - name: Build optimized split APKs
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleAnonRelease --build-cache --parallel --configuration-cache --no-daemon --stacktrace
+          echo "APK output sizes:"
+          find app/build/outputs/apk -type f -name '*.apk' -print0 | while IFS= read -r -d '' apk; do
+            du -h "$apk"
+          done
 
-      - name: Upload APK
+      - name: Upload optimized APKs
         uses: actions/upload-artifact@v4
         with:
           name: ANON-APK
-          path: app/build/outputs/apk/**/*.apk
+          path: app/build/outputs/apk/anon/release/*.apk
           if-no-files-found: error
 
       - name: Summary
@@ -350,7 +356,7 @@ jobs:
           echo "- armv7 cache hit: ${{ steps.cache-armv7.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- JNI cache hit: ${{ steps.cache-jni.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Monero official release: ${MONERO_REF} (${MONERO_COMMIT})" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Artifact: ANON-APK" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Artifact: ANON-APK (R8/resource shrink + per-ABI APK split)" >> "$GITHUB_STEP_SUMMARY"
           if [ -f external-libs/VERSION ]; then cat external-libs/VERSION >> "$GITHUB_STEP_SUMMARY"; fi
           find external-libs/arm64-v8a external-libs/armeabi-v7a -name '*.a' 2>/dev/null | wc -l \
             | xargs -I{} echo "- Static archives: {}" >> "$GITHUB_STEP_SUMMARY"
