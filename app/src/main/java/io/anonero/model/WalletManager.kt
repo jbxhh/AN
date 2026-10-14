@@ -59,13 +59,13 @@ class WalletManager {
         language: String,
         height: Long
     ): Wallet {
+        require(height >= 0L) { "restore height must not be negative" }
         val walletHandle =
             createWalletJ(aFile.absolutePath, password, passphrase, language, networkType.value)
         val wallet = Wallet(walletHandle)
         manageWallet(wallet)
         if (wallet.status.isOk) {
             wallet.setPassword(password)
-            require(height >= 0L) { "restore height must not be negative" }
             wallet.setRestoreHeight(height)
         }
         return wallet
