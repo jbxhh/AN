@@ -4,6 +4,13 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
     alias(libs.plugins.compose.compiler)
 }
+
+// Real wallet needs libanonero.so. Enable when prebuilt static libs exist or -Panon.native=true.
+// UI-only CI (no external-libs/*.a) stays fast and skips NDK/CMake.
+val nativeLibsReady =
+    file("../external-libs/arm64-v8a/monero/libwallet_api.a").exists() ||
+        (project.findProperty("anon.native")?.toString() == "true")
+
 android {
     namespace = "io.anonero"
     compileSdk = 35
@@ -12,7 +19,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 7
-        versionName = "1.0.4-ui"
+        versionName = if (nativeLibsReady) "1.0.4" else "1.0.4-ui"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -20,10 +27,30 @@ android {
         packaging {
             jniLibs.useLegacyPackaging = true
         }
+        if (nativeLibsReady) {
+            ndk {
+                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            }
+            externalNativeBuild {
+                cmake {
+                    arguments(
+                        "-DANDROID_STL=c++_shared",
+                        "-DCMAKE_BUILD_PARALLEL_LEVEL=${Runtime.getRuntime().availableProcessors()}"
+                    )
+                    cppFlags("-std=c++17", "-fexceptions", "-frtti")
+                }
+            }
+        }
+    }
+    if (nativeLibsReady) {
+        externalNativeBuild {
+            cmake {
+                path = file("CMakeLists.txt")
+            }
+        }
     }
     buildTypes {
         debug {
-            // debug 与 release 共存
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
         }
@@ -38,7 +65,6 @@ android {
         create("stageNet") {
             isMinifyEnabled = false
             isDebuggable = true
-            // stagenet 与其他共存
             applicationIdSuffix = ".stagenet"
             versionNameSuffix = "-stagenet"
             signingConfig = signingConfigs.getByName("debug")
@@ -65,14 +91,13 @@ android {
     }
     flavorDimensions += "anon_mode"
     productFlavors {
-        // 各 flavor + buildType 组合包名全部不同，任意版本可并存
-        // 例: io.anonero.anon.ui / io.anonero.anon.ui.debug / io.anonero.nero.ui.debug
         create("anon") {
             applicationIdSuffix = ".anon.ui"
             resValue("string", "app_name", "ANON UI")
             dimension = "anon_mode"
             buildConfigField("String", "FLAVOR", "\"anon\"")
             buildConfigField("boolean", "VIEW_ONLY", "false")
+            buildConfigField("boolean", "NATIVE_ENABLED", if (nativeLibsReady) "true" else "false")
         }
         create("nero") {
             applicationIdSuffix = ".nero.ui"
@@ -80,9 +105,9 @@ android {
             dimension = "anon_mode"
             buildConfigField("String", "FLAVOR", "\"nero\"")
             buildConfigField("boolean", "VIEW_ONLY", "true")
+            buildConfigField("boolean", "NATIVE_ENABLED", if (nativeLibsReady) "true" else "false")
         }
     }
-    // native disabled for fast UI-only build
     buildToolsVersion = "36.0.0"
 }
 dependencies {
