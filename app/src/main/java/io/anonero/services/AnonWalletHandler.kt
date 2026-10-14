@@ -54,14 +54,23 @@ class AnonWalletHandler(
 
     fun openWallet(pin: String): Boolean {
         val walletFile = AnonConfig.getDefaultWalletFile(AnonConfig.context!!)
-        val anonWallet = WalletManager.instance?.openWallet(
+        val manager = WalletManager.instance ?: throw InvalidPin()
+        val anonWallet = manager.openWallet(
             walletFile.path,
             pin,
         )
-        if (anonWallet?.status?.isOk != true) {
-            Timber.tag(TAG).e("openWallet error: %s", anonWallet?.status?.errorString)
+        val status = anonWallet.status
+        if (!status.isOk) {
+            Timber.tag(TAG).e("openWallet error: %s", status.errorString)
+            // Do not leave an invalid wallet registered in WalletManager. This lets
+            // the user retry a PIN without replacing/leaking the previous native handle.
+            val closed = runCatching { anonWallet.close() }.getOrDefault(false)
+            if (!closed) {
+                Timber.tag(TAG).e("Failed to close wallet after an unsuccessful open")
+            }
+            return false
         }
-        return anonWallet?.status?.isOk ?: throw InvalidPin()
+        return true
     }
 
     // ===== 真实连接流程保留，但每一步都有超时；超时后 mock 兜底，不再一直“连接中” =====
