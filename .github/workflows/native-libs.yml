@@ -1,4 +1,4 @@
-name: Dump Monero API patch rejects
+name: Probe Polyseed patch on Monero 0.18.5.1 fork
 
 on:
   push:
@@ -11,31 +11,28 @@ permissions:
   contents: read
 
 jobs:
-  dump-rejects:
+  probe-polyseed:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - name: Dump reject hunks to Actions log
+      - name: Test Polyseed patch against Feather Monero with coin control
         shell: bash
         run: |
           set -euo pipefail
-          MONERO_COMMIT=43c31c2aacdd789404d16cfda0c5456e0a090b86
+          MONERO_COMMIT=927e269e04afc9b83472cece77023bd66f2f383f
           PATCH_BASE=33671871de3d51696b66ffb3bd94f744e26974f6
           git init monero
-          git -C monero remote add origin https://github.com/monero-project/monero.git
+          git -C monero remote add origin https://github.com/feather-wallet/monero.git
           git -C monero fetch --depth 1 origin "$MONERO_COMMIT"
           git -C monero checkout --detach FETCH_HEAD
-          curl -fsSL "https://raw.githubusercontent.com/MrCyjaneK/monero_c/$PATCH_BASE/patches/monero/0008-coin-control.patch" -o "$RUNNER_TEMP/0008.patch"
+          echo "=== Base ref ==="
+          grep -nE 'viewOnlyBalance|hasUnknownKeyImages|struct CoinsInfo|struct Coins|preferred_inputs|createTransaction\(' monero/src/wallet/api/wallet2_api.h | head -60 || true
+          echo "=== Polyseed core baseline ==="
+          grep -nE 'is_polyseed|get_polyseed|polyseed' monero/src/wallet/wallet2.h monero/src/wallet/api/wallet2_api.h | head -50 || true
+          curl -fsSL "https://raw.githubusercontent.com/MrCyjaneK/monero_c/$PATCH_BASE/patches/monero/0007-polyseed.patch" -o "$RUNNER_TEMP/0007-polyseed.patch"
           set +e
-          git -C monero apply --reject "$RUNNER_TEMP/0008.patch" > "$RUNNER_TEMP/apply.log" 2>&1
+          git -C monero apply --check "$RUNNER_TEMP/0007-polyseed.patch" > "$RUNNER_TEMP/check.log" 2>&1
+          rc=$?
           set -e
-          cat "$RUNNER_TEMP/apply.log" | tail -100
-          echo "=== REJECT FILES ==="
-          while IFS= read -r f; do
-            echo "===== $f ====="
-            cat "$f"
-          done < <(find monero -name '*.rej' -print)
-          echo "=== APPLY STATUS ==="
-          git -C monero status --short
-          echo "=== NEW/CHANGED COIN API REFERENCES ==="
-          grep -nE 'struct CoinsInfo|struct Coins|coins\(\)|preferred_inputs|m_coins|WalletImpl::coins' monero/src/wallet/api/wallet2_api.h monero/src/wallet/api/wallet.h monero/src/wallet/api/wallet.cpp 2>/dev/null | head -150 || true
+          cat "$RUNNER_TEMP/check.log"
+          echo "POLYSEED_PATCH_CHECK_RC=$rc"
