@@ -386,32 +386,3 @@ jobs:
           if [ -f external-libs/VERSION ]; then cat external-libs/VERSION >> "$GITHUB_STEP_SUMMARY"; fi
           find external-libs/arm64-v8a external-libs/armeabi-v7a -name '*.a' 2>/dev/null | wc -l \
             | xargs -I{} echo "- Static archives: {}" >> "$GITHUB_STEP_SUMMARY"
- || true
-          done
-
-      - name: Upload ARM64 APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: ANON-APK-arm64
-          path: app/build/outputs/apk/anon/release/*arm64-v8a*.apk
-          if-no-files-found: error
-
-      - name: Upload ARMv7 APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: ANON-APK-armv7
-          path: app/build/outputs/apk/anon/release/*armeabi-v7a*.apk
-          if-no-files-found: error
-
-      - name: Summary
-        run: |
-          echo "### ANON APK build (native cache + wallet source)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- APK build runs in this same workflow after native cache restore/build." >> "$GITHUB_STEP_SUMMARY"
-          echo "- arm64 cache hit: ${{ steps.cache-arm64.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- armv7 cache hit: ${{ steps.cache-armv7.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- JNI cache hit: ${{ steps.cache-jni.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Monero official release: ${MONERO_REF} (${MONERO_COMMIT})" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Artifact: ANON-APK (R8/resource shrink + per-ABI APK split)" >> "$GITHUB_STEP_SUMMARY"
-          if [ -f external-libs/VERSION ]; then cat external-libs/VERSION >> "$GITHUB_STEP_SUMMARY"; fi
-          find external-libs/arm64-v8a external-libs/armeabi-v7a -name '*.a' 2>/dev/null | wc -l \
-            | xargs -I{} echo "- Static archives: {}" >> "$GITHUB_STEP_SUMMARY"
