@@ -8,8 +8,8 @@ name: Build ANON APK
 env:
   JAVA_VERSION: '17'
 concurrency:
-  # Let the native prerequisite finish and avoid misleading cancelled APK runs.
-  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref_name }}
+  # Do not queue or cancel separate APK builds behind one another.
+  group: ${{ github.workflow }}-${{ github.run_id }}
   cancel-in-progress: false
 
 permissions:
