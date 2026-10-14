@@ -222,9 +222,8 @@ class WalletState {
         val safeProgressState = syncProgress.copy(progress = safeProgress)
         _syncProgress.update { if (done) null else safeProgressState }
         _isSyncing.set(!done)
-        if (done) {
-            _connectionStatus.update { Wallet.ConnectionStatus.ConnectionStatus_Connected }
-        }
+        // Sync completion is not proof that the daemon connection is still alive.
+        // Connection status is updated only from the wallet's real status callback.
     }
 
     fun toggleHideAmounts() {
