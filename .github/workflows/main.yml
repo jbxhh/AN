@@ -47,7 +47,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          # Build the latest commit on the branch. Java-only fixes may be pushed
+          # while the native workflow is running; pinning workflow_run.head_sha
+          # would silently omit those fixes from the resulting APK.
+          ref: ${{ github.event.workflow_run.head_branch || github.ref_name }}
           fetch-depth: 1
       - name: Set up JDK 17
         uses: actions/setup-java@v4
