@@ -284,6 +284,11 @@ step_monero() {
               -D BOOST_IGNORE_SYSTEM_PATHS=ON -D OPENSSL_ROOT_DIR="$PREFIX" ../..
         make wallet_api -j"$NPROC"
     fi
+    # Monero marks wallet_api EXCLUDE_FROM_ALL, so the normal Android target
+    # does not produce libwallet_api.a. Build the required targets explicitly.
+    if android; then
+        (cd "$MONERO/build/release" && make wallet_api polyseed_wrapper -j"$NPROC")
+    fi
     cd "$MONERO/build/release" && mkdir -p lib
     find . -path ./lib -prune -o -name '*.a' -exec cp '{}' lib \;
 }
