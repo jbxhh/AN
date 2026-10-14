@@ -1,12 +1,13 @@
 name: Build ANON APK
 "on":
   push:
-    branches: [ main ]
+    branches: [ main, fix/native-api-compatible-base ]
     # Native C++/CMake/dependency changes are built by native-libs first.
     # Build the APK from push events only for app/Gradle sources that can
     # reuse an existing native cache; native workflow success triggers APK.
     paths:
       - 'app/src/main/java/**'
+      - 'app/src/test/**'
       - 'app/src/main/kotlin/**'
       - 'app/src/main/res/**'
       - 'app/src/main/assets/**'
@@ -27,16 +28,17 @@ name: Build ANON APK
   workflow_run:
     workflows: ["Native Monero Libs (Polyseed support)"]
     types: [completed]
-    branches: [main]
+    branches: [main, fix/native-api-compatible-base]
 env:
   JAVA_VERSION: '17'
 concurrency:
-  # Do not discard a valid APK build when another commit arrives.
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  # Keep only the newest APK build for this branch; cancel superseded runs.
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref_name }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
+  actions: read
 jobs:
   build:
     name: Build APK
@@ -46,6 +48,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # Build the latest commit on the branch. Java-only fixes may be pushed
+          # while the native workflow is running; pinning workflow_run.head_sha
+          # would silently omit those fixes from the resulting APK.
+          ref: ${{ github.event.workflow_run.head_branch || github.ref_name }}
           fetch-depth: 1
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -66,52 +72,40 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties', '**/settings.gradle*', '**/build.gradle*', '**/libs.versions.toml') }}
           restore-keys: ${{ runner.os }}-gradle-
-      # Restore the same independent cache keys used by native-libs.yml.
-      # The native workflow deliberately saves arm64, armv7, and JNI separately;
-      # a combined cache key can never hit those entries.
-      - name: Restore arm64 Monero native libraries
-        id: native-cache-arm64
-        uses: actions/cache/restore@v4
+      - name: Select native library artifact run
+        id: native-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
+            native_run_id="${{ github.event.workflow_run.id }}"
+          else
+            native_run_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/native-libs.yml/runs?branch=${GITHUB_REF_NAME}&status=success&per_page=50" --jq '.workflow_runs[0].id // empty')"
+          fi
+          if [[ ! "${native_run_id}" =~ ^[0-9]+$ ]]; then
+            echo "::error::No successful native-libraries run found for branch ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+          echo "Using native library workflow run: ${native_run_id}"
+          echo "run_id=${native_run_id}" >> "${GITHUB_OUTPUT}"
+      - name: Download verified cached Monero native libraries
+        uses: actions/download-artifact@v4
         with:
-          path: |
-            external-libs/arm64-v8a
-            external-libs/include
-            external-libs/VERSION
-          key: anon-native-arm64-43c31c2aacdd789404d16cfda0c5456e0a090b86-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
-
-      - name: Restore armv7 Monero native libraries
-        id: native-cache-armv7
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            external-libs/armeabi-v7a
-            external-libs/include
-            external-libs/VERSION
-          key: anon-native-armv7-43c31c2aacdd789404d16cfda0c5456e0a090b86-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
-
-      - name: Restore JNI shared libraries
-        id: native-cache-jni
-        uses: actions/cache/restore@v4
-        with:
-          path: external-libs/prebuilt
-          key: anon-jni-ndk27.2.12479018-cmake3.22.1-api26-43c31c2aacdd789404d16cfda0c5456e0a090b86-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}-${{ hashFiles('app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
-
+          name: monero-android-libs-monero-api-compatible-33671871
+          run-id: ${{ steps.native-run.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: external-libs
       - name: Verify cached Monero Polyseed-support libraries
         run: |
           set -euo pipefail
-          for cache in arm64 armv7 jni; do
-            case "$cache" in
-              arm64) hit="${{ steps.native-cache-arm64.outputs.cache-hit }}" ;;
-              armv7) hit="${{ steps.native-cache-armv7.outputs.cache-hit }}" ;;
-              jni) hit="${{ steps.native-cache-jni.outputs.cache-hit }}" ;;
-            esac
-            if [ "$hit" != "true" ]; then
-              echo "::error::Monero $cache cache miss. Run 'Native Monero Libs (Polyseed support)' to build and cache libraries first; APK workflow intentionally does not compile Monero C++ sources."
-              exit 1
-            fi
-          done
           test -s external-libs/include/wallet2_api.h
-          grep -Fq "monero polyseed-support-2026-09-20 (43c31c2aacdd789404d16cfda0c5456e0a090b86)" external-libs/VERSION
+          test -s external-libs/VERSION
+          grep -Fq "getPolyseed(std::string &seed, std::string &passphrase)" external-libs/include/wallet2_api.h
+          grep -Fq "hasUnknownKeyImages() const" external-libs/include/wallet2_api.h
+          grep -Fq "viewOnlyBalance" external-libs/include/wallet2_api.h
+          grep -Fq "struct CoinsInfo" external-libs/include/wallet2_api.h
+          grep -Fq "preferred_inputs" external-libs/include/wallet2_api.h
           for abi in arm64-v8a armeabi-v7a; do
             test -s "external-libs/prebuilt/$abi/libanonero.so"
             test -s "external-libs/prebuilt/$abi/libc++_shared.so"
@@ -126,9 +120,12 @@ jobs:
             echo "$abi: $count static archives verified"
           done
       - run: chmod +x ./gradlew
+      - name: Run ANON unit tests
+        run: ./gradlew :app:testAnonDebugUnitTest --no-daemon --stacktrace
       - name: Build APK
         id: build
         run: |
+          set -euo pipefail
           ./gradlew :app:assembleAnonDebug --no-daemon --stacktrace 2>&1 | tee build.log
       - name: Upload APK
         uses: actions/upload-artifact@v4
