@@ -187,7 +187,16 @@ class ProxySettingsViewModel(
             _useManualProxy.postValue(false)
             torService.start()
         } else {
-            anonPrefs.edit { putBoolean(WALLET_USE_TOR, false) }
+            // Stored proxy values may be the Tor SOCKS endpoint from the previous mode.
+            // Clear them before switching to manual/direct mode so a stopped Tor port
+            // is not accidentally reused as a manual proxy.
+            anonPrefs.edit {
+                putBoolean(WALLET_USE_TOR, false)
+                remove(WALLET_PROXY)
+                remove(WALLET_PROXY_PORT)
+            }
+            anonWalletHandler.setProxy(null, null)
+            torService.stop()
             _useManualProxy.postValue(true)
         }
     }
