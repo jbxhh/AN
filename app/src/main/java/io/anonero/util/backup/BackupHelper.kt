@@ -313,6 +313,16 @@ object BackupHelper {
     }
 
     fun cleanCacheDir() {
-        AnonConfig.context?.cacheDir?.deleteRecursively()
+        val cacheDir = AnonConfig.context?.cacheDir ?: return
+
+        // Remove only transient backup/restore files. Deleting cacheDir itself also
+        // removes Tor state, diagnostic logs, and unrelated app caches; deleting the
+        // backup subdirectory would also destroy encrypted backups already created.
+        listOf("tmp_backup", "tmp_extract", "backup.anon", "backup.zip").forEach { name ->
+            File(cacheDir, name).deleteRecursively()
+        }
+        cacheDir.listFiles()
+            ?.filter { it.isFile && it.name.endsWith(".zip") && it.name.contains("_backup_") }
+            ?.forEach { it.delete() }
     }
 }
