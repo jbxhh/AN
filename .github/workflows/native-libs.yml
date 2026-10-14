@@ -23,7 +23,6 @@ permissions:
 env:
   MONERO_REF: polyseed-support-2026-09-20
   MONERO_COMMIT: 43c31c2aacdd789404d16cfda0c5456e0a090b86
-  NATIVE_BUILD_HASH: ${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
 
 jobs:
   build-native:
@@ -45,7 +44,7 @@ jobs:
             external-libs/arm64-v8a
             external-libs/include
             external-libs/VERSION
-          key: anon-native-arm64-${{ env.MONERO_COMMIT }}-${{ env.NATIVE_BUILD_HASH }}
+          key: anon-native-arm64-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
 
       - name: Restore armv7 native library cache
         id: cache-armv7
@@ -55,7 +54,7 @@ jobs:
             external-libs/armeabi-v7a
             external-libs/include
             external-libs/VERSION
-          key: anon-native-armv7-${{ env.MONERO_COMMIT }}-${{ env.NATIVE_BUILD_HASH }}
+          key: anon-native-armv7-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
 
       # JNI changes should relink libanonero.so, not rebuild Monero's large
       # dependency graph. Its key still includes the exact native input versions.
@@ -64,7 +63,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: external-libs/prebuilt
-          key: anon-jni-ndk27.2.12479018-cmake3.22.1-api26-${{ env.MONERO_COMMIT }}-${{ env.NATIVE_BUILD_HASH }}-${{ hashFiles('app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
+          key: anon-jni-ndk27.2.12479018-cmake3.22.1-api26-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}-${{ hashFiles('app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
 
       - name: Checkout Monero Polyseed-support revision
         if: steps.cache-arm64.outputs.cache-hit != 'true' || steps.cache-armv7.outputs.cache-hit != 'true'
@@ -114,7 +113,7 @@ jobs:
             external-libs/arm64-v8a
             external-libs/include
             external-libs/VERSION
-          key: anon-native-arm64-${{ env.MONERO_COMMIT }}-${{ env.NATIVE_BUILD_HASH }}
+          key: anon-native-arm64-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
 
       - name: Build armv7 native libraries
         if: steps.cache-armv7.outputs.cache-hit != 'true'
@@ -134,7 +133,7 @@ jobs:
             external-libs/armeabi-v7a
             external-libs/include
             external-libs/VERSION
-          key: anon-native-armv7-${{ env.MONERO_COMMIT }}-${{ env.NATIVE_BUILD_HASH }}
+          key: anon-native-armv7-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
 
       - name: Build and cache JNI shared libraries
         if: steps.cache-jni.outputs.cache-hit != 'true'
@@ -179,7 +178,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: external-libs/prebuilt
-          key: anon-jni-ndk27.2.12479018-cmake3.22.1-api26-${{ env.MONERO_COMMIT }}-${{ env.NATIVE_BUILD_HASH }}-${{ hashFiles('app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
+          key: anon-jni-ndk27.2.12479018-cmake3.22.1-api26-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}-${{ hashFiles('app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
 
       - name: Upload native libs artifact
         uses: actions/upload-artifact@v4
