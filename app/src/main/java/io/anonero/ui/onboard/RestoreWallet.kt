@@ -108,12 +108,6 @@ fun RestoreWallet(
         }
     }
 
-    // Revalidate prefilled phrases after the word list is loaded, including when
-    // the user returns to this screen from a later onboarding step.
-    LaunchedEffect(seed, wordsList) {
-        if (wordsList.isNotEmpty()) validateSeed()
-    }
-
     fun validateSeed() {
         val parsedWords = seed.split(Regex("\\s+"))
             .map { it.trim() }
@@ -135,6 +129,12 @@ fun RestoreWallet(
 
         invalidSeed = parsedWords.any { it !in wordsList }
         seedList = if (invalidSeed) emptyList() else parsedWords
+    }
+
+    // Revalidate prefilled phrases after the word list is loaded, including when
+    // the user returns to this screen from a later onboarding step.
+    LaunchedEffect(seed, wordsList) {
+        if (wordsList.isNotEmpty()) validateSeed()
     }
 
     Scaffold { paddingValues ->
