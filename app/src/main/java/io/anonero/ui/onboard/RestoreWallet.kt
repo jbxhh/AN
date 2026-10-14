@@ -275,14 +275,23 @@ fun RestoreWallet(
             AnonOutlineButton (
                 onClick = {
                     if (enabled) {
-                         if (seedList.size == 25 && restoreHeight.isEmpty()) {
+                         val parsedHeight = restoreHeight.trim()
+                            .takeIf { it.isNotEmpty() }
+                            ?.toLongOrNull()
+                        if (restoreHeight.isNotBlank() &&
+                            (parsedHeight == null || parsedHeight < 0L)
+                        ) {
+                            restoreHeightError = "Invalid restore height"
+                            return@AnonOutlineButton
+                        }
+                        if (seedList.size == 25 && parsedHeight == null) {
                             restoreHeightError = "Restore height required for 25 word seed"
                             return@AnonOutlineButton
                         }
                         oNextPressed(
                             RestorePayload(
                                 seed = seedList,
-                                restoreHeight = restoreHeight.trim().toLongOrNull(),
+                                restoreHeight = parsedHeight,
                             )
                         )
                     }
