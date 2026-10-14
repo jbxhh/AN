@@ -356,16 +356,31 @@ jobs:
           for abi in arm64-v8a armeabi-v7a; do
             lib="external-libs/prebuilt/$abi/libanonero.so"
             test -s "$lib"
-            echo "$abi libanonero.so before strip: $(stat -c '%s' "$lib") bytes"
+            echo "$abi libanonero.so before strip: $(stat -c %s "$lib") bytes"
             "$STRIP" --strip-unneeded "$lib"
-            echo "$abi libanonero.so after strip:  $(stat -c '%s' "$lib") bytes"
+            echo "$abi libanonero.so after strip: $(stat -c %s "$lib") bytes"
           done
           ./gradlew :app:assembleAnonRelease --build-cache --parallel --configuration-cache --no-daemon --stacktrace
-          echo "APK output sizes and native payload:"
+          echo "APK output sizes and largest entries:"
           for apk in app/build/outputs/apk/anon/release/*.apk; do
             test -s "$apk"
             du -h "$apk"
-            unzip -l "$apk" | grep -E 'lib/(arm64-v8a|armeabi-v7a)/.*\\.so
+            unzip -l "$apk" | sort -nr | head -n 12
+          done
+
+      - name: Upload ARM64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ANON-APK-arm64
+          path: app/build/outputs/apk/anon/release/*arm64-v8a*.apk
+          if-no-files-found: error
+
+      - name: Upload ARMv7 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ANON-APK-armv7
+          path: app/build/outputs/apk/anon/release/*armeabi-v7a*.apk
+          if-no-files-found: error
 
       - name: Summary
         run: |
