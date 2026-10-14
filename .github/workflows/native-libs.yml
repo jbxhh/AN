@@ -34,8 +34,9 @@ jobs:
             external-libs/arm64-v8a
             external-libs/armeabi-v7a
             external-libs/include
+            external-libs/prebuilt
             external-libs/VERSION
-          key: anon-native-${{ env.MONERO_TAG }}-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
+          key: anon-native-${{ env.MONERO_TAG }}-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile', 'app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
 
       - name: Checkout Monero ${{ env.MONERO_TAG }}
         if: steps.native-cache.outputs.cache-hit != 'true'
@@ -63,6 +64,30 @@ jobs:
           test -s arm64-v8a/monero/libwallet_api.a
           test -s armeabi-v7a/monero/libwallet_api.a
 
+      - name: Build and cache JNI shared libraries (C++ stays out of APK workflow)
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "ndk;27.2.12479018" "cmake;3.22.1" >/dev/null
+          NDK="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
+          for abi in arm64-v8a armeabi-v7a; do
+            build_dir="$RUNNER_TEMP/anonero-$abi"
+            cmake -S app -B "$build_dir" \
+              -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+              -DANDROID_ABI="$abi" \
+              -DANDROID_PLATFORM=android-26 \
+              -DANDROID_STL=c++_shared \
+              -DCMAKE_BUILD_TYPE=Release
+            cmake --build "$build_dir" --target anonero --parallel "$(nproc)"
+            mkdir -p "external-libs/prebuilt/$abi"
+            install -m 0644 "$build_dir/libanonero.so" "external-libs/prebuilt/$abi/libanonero.so"
+            install -m 0644 "$NDK/sources/cxx-stl/llvm-libc++/libs/$abi/libc++_shared.so" "external-libs/prebuilt/$abi/libc++_shared.so"
+            test -s "external-libs/prebuilt/$abi/libanonero.so"
+            test -s "external-libs/prebuilt/$abi/libc++_shared.so"
+            echo "$abi: cached libanonero.so + libc++_shared.so"
+          done
+
       - name: Write VERSION stamp
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: |
@@ -78,6 +103,7 @@ jobs:
             external-libs/arm64-v8a
             external-libs/armeabi-v7a
             external-libs/include
+            external-libs/prebuilt
             external-libs/VERSION
           if-no-files-found: error
           retention-days: 90
