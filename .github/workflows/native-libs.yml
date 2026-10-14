@@ -30,8 +30,8 @@ on:
       - '.github/workflows/native-libs.yml'
 
 concurrency:
-  # Queue native prerequisite runs instead of cancelling them on each source commit.
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Each run gets its own group so a new build never waits behind an older run.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.run_id }}
   cancel-in-progress: false
 
 permissions:
