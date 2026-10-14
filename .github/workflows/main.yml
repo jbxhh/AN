@@ -52,6 +52,22 @@ jobs:
           /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1" >/dev/null
           echo "Android SDK ready"
 
+      # Compile wallet Kotlin/Java sources before native builds so source errors
+      # surface immediately instead of being hidden behind a long C++ build.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties', '**/settings.gradle*', '**/build.gradle*', '**/libs.versions.toml') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
+      - name: Fast wallet source compile
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:compileAnonDebugKotlin :app:compileAnonDebugJavaWithJavac --no-daemon --stacktrace
+
+
       # Keep each ABI in its own immutable cache. If one ABI fails, the other
       # ABI's completed cache is still available to later runs.
       - name: Restore arm64 native library cache
@@ -234,13 +250,6 @@ jobs:
             echo "$abi: $count static archives verified"
           done
 
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties', '**/settings.gradle*', '**/build.gradle*', '**/libs.versions.toml') }}
-          restore-keys: ${{ runner.os }}-gradle-
 
       - name: Run ANON unit tests
         run: |
