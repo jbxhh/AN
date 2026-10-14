@@ -263,13 +263,23 @@ dep_utf8proc() {
 step_monero() {
     cc; cd "$MONERO"
     if android; then
-        # ANDROID_STANDALONE_TOOLCHAIN_PATH is exported EMPTY on purpose. monero/Makefile
-        # does `?=` on it and passes it as -D CMAKE_ANDROID_STANDALONE_TOOLCHAIN; defined-
-        # but-empty stops the ?= default and makes CMake skip that branch and pick up the
-        # NDK from ANDROID_NDK_ROOT. Non-empty dies on a directory nobody creates.
-        env -u CC -u CXX CMAKE_INCLUDE_PATH="$PREFIX/include" CMAKE_LIBRARY_PATH="$PREFIX/lib" \
-            ANDROID_STANDALONE_TOOLCHAIN_PATH= \
-            ANDROID_NDK_ROOT="$NDK" USE_SINGLE_BUILDDIR=1 make "$MONERO_TARGET" -j"$NPROC"
+        # This pinned Monero revision has no release-static-android-* Makefile targets.
+        # Configure CMake directly with the NDK toolchain instead of invoking a missing
+        # Make target. Keep both ABIs on the same deterministic build path.
+        rm -rf "$MONERO/build/release"
+        mkdir -p "$MONERO/build/release"
+        cmake -S "$MONERO" -B "$MONERO/build/release" \
+            -D CMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+            -D ANDROID_ABI="$ABI" -D ANDROID_PLATFORM="android-$API" \
+            -D CMAKE_BUILD_TYPE=Release -D CMAKE_PREFIX_PATH="$PREFIX" \
+            -D CMAKE_INCLUDE_PATH="$PREFIX/include" -D CMAKE_LIBRARY_PATH="$PREFIX/lib" \
+            -D BOOST_ROOT="$PREFIX" -D BOOST_IGNORE_SYSTEM_PATHS=ON \
+            -D OPENSSL_ROOT_DIR="$PREFIX" -D STATIC=ON \
+            -D BUILD_TESTS=OFF -D BUILD_GUI_DEPS=ON -D USE_DEVICE_TREZOR=OFF \
+            -D STACK_TRACE=OFF -D CMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -D BUILD_64="$([ "$ABI" = arm64-v8a ] && echo ON || echo OFF)" \
+            -D BUILD_TAG="android-$ABI"
+        cmake --build "$MONERO/build/release" --parallel "$NPROC"
     else
         # No linux wallet_api target in the fork, so drive cmake directly, pointed at our
         # prefix rather than the system. STATIC stays OFF: STATIC=ON would set
@@ -284,10 +294,10 @@ step_monero() {
               -D BOOST_IGNORE_SYSTEM_PATHS=ON -D OPENSSL_ROOT_DIR="$PREFIX" ../..
         make wallet_api -j"$NPROC"
     fi
-    # Monero marks wallet_api EXCLUDE_FROM_ALL, so the normal Android target
-    # does not produce libwallet_api.a. Build the required targets explicitly.
+    # Monero marks wallet_api EXCLUDE_FROM_ALL, so the default build may omit it.
+    # Build the JNI-required API and Polyseed wrapper with CMake's actual target names.
     if android; then
-        (cd "$MONERO/build/release" && make wallet_api polyseed_wrapper -j"$NPROC")
+        cmake --build "$MONERO/build/release" --parallel "$NPROC" --target wallet_api polyseed_wrapper
     fi
     cd "$MONERO/build/release" && mkdir -p lib
     find . -path ./lib -prune -o -name '*.a' -exec cp '{}' lib \;
