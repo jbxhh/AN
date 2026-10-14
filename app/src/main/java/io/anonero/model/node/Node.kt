@@ -138,26 +138,26 @@ open class Node {
         if (jsonObject.has(NodeFields.NODE_NAME.value)) {
             this.name = jsonObject.getString(NodeFields.NODE_NAME.value)
         }
-        if (jsonObject.has(NodeFields.RPC_NETWORK.value)) {
-            networkType = when (jsonObject.getString(NodeFields.RPC_NETWORK.value)) {
+        networkType = if (jsonObject.has(NodeFields.RPC_NETWORK.value)) {
+            when (jsonObject.getString(NodeFields.RPC_NETWORK.value)) {
                 MAINNET -> NetworkType.NetworkType_Mainnet
                 STAGENET -> NetworkType.NetworkType_Stagenet
                 TESTNET -> NetworkType.NetworkType_Testnet
                 else -> throw IllegalArgumentException(
-                    "invalid net: " + jsonObject.getString(
-                        NodeFields.RPC_NETWORK.value
-                    )
+                    "invalid net: " + jsonObject.getString(NodeFields.RPC_NETWORK.value)
                 )
             }
-            require(networkType == WalletManager.instance?.networkType) { "wrong net: $networkType" }
+        } else {
+            WalletManager.instance?.networkType ?: AnonConfig.getNetworkType()
         }
+        require(networkType == WalletManager.instance?.networkType) { "wrong net: $networkType" }
         if (jsonObject.has(NodeFields.NODE_TRUSTED.value)) {
             this.trusted = jsonObject.getBoolean(NodeFields.NODE_TRUSTED.value)
         }
     }
 
     constructor() {
-        networkType = WalletManager.instance?.networkType
+        networkType = WalletManager.instance?.networkType ?: AnonConfig.getNetworkType()
     }
 
     // constructor used for created nodes from retrieved peer lists
@@ -175,7 +175,7 @@ open class Node {
     }
 
     override fun hashCode(): Int {
-        return host.hashCode()
+        return host?.hashCode() ?: 0
     }
 
     // Nodes are equal if they are the same host address:port & are on the same network
@@ -200,7 +200,7 @@ open class Node {
                 NetworkType.NetworkType_Mainnet -> jsonObject.put("network", MAINNET)
                 NetworkType.NetworkType_Stagenet -> jsonObject.put("network", STAGENET)
                 NetworkType.NetworkType_Testnet -> jsonObject.put("network", TESTNET)
-                null -> TODO()
+                null -> throw IllegalStateException("Node network type is required")
             }
             if (name?.isNotEmpty() == true) jsonObject.put("name", name)
             jsonObject.put("trusted", trusted)
@@ -221,7 +221,7 @@ open class Node {
             NetworkType.NetworkType_Mainnet -> sb.append(MAINNET)
             NetworkType.NetworkType_Stagenet -> sb.append(STAGENET)
             NetworkType.NetworkType_Testnet -> sb.append(TESTNET)
-            null -> TODO()
+            null -> throw IllegalStateException("Node network type is required")
         }
         if (name != null) try {
             sb.append("/").append(URLEncoder.encode(name, "UTF-8"))
