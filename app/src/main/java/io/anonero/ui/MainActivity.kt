@@ -10,7 +10,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Process
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -37,7 +36,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.rememberNavController
 import io.anonero.AnonConfig
 import io.anonero.R
-import io.anonero.model.WalletManager
 import io.anonero.services.AnonNeroService
 import io.anonero.services.TorService
 import io.anonero.services.WalletState
@@ -94,7 +92,8 @@ class MainActivity : ComponentActivity() {
         }
 
         val scrimColor = Color.Black.copy(alpha = 0.1f).toArgb()
-        splashscreen.setKeepOnScreenCondition { isAppReady }
+        // Keep the splash visible only until wallet/preferences initialization finishes.
+        splashscreen.setKeepOnScreenCondition { !isAppReady }
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(scrimColor),
             navigationBarStyle = SystemBarStyle.dark(scrimColor),
@@ -235,19 +234,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        scope.launch(Dispatchers.IO) {
-            WalletManager.instance?.wallet?.let {
-                it.store()
-                it.close()
-            }
-        }.invokeOnCompletion {
-            if (it != null) {
-                Timber.tag(TAG).e(it)
-            }
-        }
-        torService.dispose()
+        // Activity recreation/background transitions must not close the process-wide
+        // wallet or dispose the shared Tor service. Persist/close wallet through its
+        // own lifecycle instead of racing an IO coroutine against scope cancellation.
         scope.cancel()
         super.onDestroy()
-        Process.killProcess(Process.myPid())
     }
 }
