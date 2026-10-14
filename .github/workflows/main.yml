@@ -3,6 +3,10 @@ name: Build ANON APK
   push:
     branches: [ main ]
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Native Monero Libs v0.18.5.3"]
+    types: [completed]
+    branches: [main]
 env:
   JAVA_VERSION: '17'
 permissions:
@@ -10,6 +14,7 @@ permissions:
 jobs:
   build:
     name: Build APK
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
