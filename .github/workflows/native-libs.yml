@@ -13,8 +13,10 @@ on:
       - '.github/workflows/native-libs.yml'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Do not cancel a long native C++ build just because another commit was pushed.
+  # Distinct commits run independently; completed outputs are keyed by exact inputs.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -101,7 +103,19 @@ jobs:
             cmake --build "$build_dir" --target anonero --parallel "$(nproc)"
             mkdir -p "external-libs/prebuilt/$abi"
             install -m 0644 "$build_dir/libanonero.so" "external-libs/prebuilt/$abi/libanonero.so"
-            install -m 0644 "$NDK/sources/cxx-stl/llvm-libc++/libs/$abi/libc++_shared.so" "external-libs/prebuilt/$abi/libc++_shared.so"
+            case "$abi" in
+              arm64-v8a) libcxx_triple=aarch64-linux-android ;;
+              armeabi-v7a) libcxx_triple=arm-linux-androideabi ;;
+              *) echo "::error::Unsupported Android ABI: $abi"; exit 1 ;;
+            esac
+            # NDK r27 stores the runtime in sysroot/usr/lib/<triple>, not the
+            # removed sources/cxx-stl/llvm-libc++/libs/<abi> directory.
+            libcxx="$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/$libcxx_triple/libc++_shared.so"
+            if [ ! -s "$libcxx" ]; then
+              echo "::error::Missing libc++_shared.so at $libcxx"
+              exit 1
+            fi
+            install -m 0644 "$libcxx" "external-libs/prebuilt/$abi/libc++_shared.so"
             test -s "external-libs/prebuilt/$abi/libanonero.so"
             test -s "external-libs/prebuilt/$abi/libc++_shared.so"
             echo "$abi: cached libanonero.so + libc++_shared.so"
