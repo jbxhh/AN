@@ -67,7 +67,6 @@ jobs:
           ./gradlew :app:compileAnonDebugKotlin :app:compileAnonDebugJavaWithJavac :app:testAnonDebugUnitTest --no-daemon --stacktrace
 
   build:
-    needs: source-check
     name: Build native libraries and APK
     runs-on: ubuntu-latest
     timeout-minutes: 360
