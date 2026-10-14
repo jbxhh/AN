@@ -34,6 +34,12 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
     private var neroKeyPayload: NeroKeyPayload? = null
     private var restorePayload: RestorePayload? = null
 
+    private fun createPinHash(pin: String): String {
+        val bytes = pin.toByteArray(Charsets.UTF_8)
+        val padded = if (bytes.size < 32) bytes + ByteArray(32 - bytes.size) else bytes
+        return CrazyPassEncoder.encode(padded)
+    }
+
     fun setMode(mode: Mode) = run { this.mode = mode }
 
     fun getMode() = mode
@@ -66,14 +72,7 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
                 putString(PREFS_PASSPHRASE_HASH, crazyPass)
             }
 
-            //adds padding to the pin if it's less than 32 bytes
-            val pinHash = CrazyPassEncoder.encode(
-                pin.toByteArray().let { bytes ->
-                    if (bytes.size < 32) {
-                        bytes + ByteArray(32 - bytes.size)
-                    } else bytes
-                }
-            )
+            val pinHash = createPinHash(pin)
             prefs.edit {
                 putString(PREFS_PIN_HASH, pinHash)
             }
@@ -107,8 +106,10 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
                 throw CancellationException(context.getString(R.string.unable_to_create_wallet))
             }
             val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
+            anonWallet?.setPassword(pin)
             prefs.edit {
-                putString("passPhraseHash", crazyPass)
+                putString(PREFS_PASSPHRASE_HASH, crazyPass)
+                putString(PREFS_PIN_HASH, createPinHash(pin))
             }
             walllet = anonWallet
             delay(500)
@@ -181,8 +182,10 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
             throw CancellationException("unable to create wallet ${anonWallet?.status?.errorString}")
         }
         val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
+        anonWallet.setPassword(pin)
         prefs.edit(commit = true) {
             putString(PREFS_PASSPHRASE_HASH, crazyPass)
+            putString(PREFS_PIN_HASH, createPinHash(pin))
         }
         try {
             anonWallet.close()
