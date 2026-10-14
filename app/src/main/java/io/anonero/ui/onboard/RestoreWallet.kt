@@ -95,6 +95,7 @@ fun RestoreWallet(
     }
     var seedList by remember { mutableStateOf(emptyList<String>()) }
     var wordsList by remember { mutableStateOf(emptyList<String>()) }
+    var moneroWordsList by remember { mutableStateOf(emptyList<String>()) }
     val scope = rememberCoroutineScope()
     val resources = LocalContext.current.resources
     var invalidSeed by remember { mutableStateOf(false) }
@@ -107,38 +108,25 @@ fun RestoreWallet(
                     .map { it.trim() }
                     .filter { it.isNotEmpty() }
             }
+            resources.openRawResource(R.raw.monero_words).bufferedReader().use { reader ->
+                moneroWordsList = reader.readLines()
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+            }
         }
     }
 
     fun validateSeed() {
-        val words = seed.trim()
-            .split(Regex("\\s+"))
-            .filter { it.isNotEmpty() }
-
-        if (words.isEmpty()) {
-            seedList = emptyList()
-            invalidSeed = false
-            return
-        }
-
-        // Polyseed uses 16 words; the standard Monero seed uses 25 words.
-        if (words.size != 16 && words.size != 25) {
-            seedList = emptyList()
-            invalidSeed = words.size >= 16
-            return
-        }
-
-        if (wordsList.isEmpty()) {
-            seedList = emptyList()
-            invalidSeed = false
-            return
-        }
-
-        invalidSeed = words.any { it !in wordsList }
-        seedList = if (invalidSeed) emptyList() else words
+        val result = validateRestoreSeedWords(
+            rawSeed = seed,
+            polyseedWords = wordsList.toSet(),
+            moneroWords = moneroWordsList.toSet()
+        )
+        invalidSeed = result.invalid
+        seedList = result.words
     }
 
-    LaunchedEffect(wordsList) {
+    LaunchedEffect(wordsList, moneroWordsList) {
         if (wordsList.isNotEmpty() && seed.isNotBlank()) {
             validateSeed()
         }
