@@ -102,22 +102,30 @@ object BackupHelper {
         tmpBackupFile.writeText(json)
         val walletDir = File(context.filesDir, "wallets")
         walletDir.copyRecursively(tmpBackupDir, true)
-        val list = tmpBackupDir.listFiles()
-        val files = list?.map { it.absolutePath }?.toTypedArray()
+        val files = tmpBackupDir.walkTopDown()
+            .filter { it.isFile }
+            .toList()
+            .toTypedArray()
+        if (files.isEmpty()) {
+            tmpBackupDir.deleteRecursively()
+            throw IOException("No wallet files available for backup")
+        }
+
         val backupCacheDir = File(context.cacheDir, "backup")
-        if (!backupCacheDir.exists()) {
-            backupCacheDir.mkdirs()
+        if (!backupCacheDir.exists() && !backupCacheDir.mkdirs()) {
+            throw IOException("Unable to create encrypted backup directory")
         }
         val backupFileEncrypted =
             File(backupCacheDir, "${context.getString(R.string.app_name)}_backup_$timeStamp.anon")
 
-        if (files != null) {
-            zip(files, backupFile.absolutePath)
+        try {
+            zip(files, backupFile.absolutePath, tmpBackupDir)
             EncryptUtil.encryptFile(seedPassphrase, backupFile, backupFileEncrypted)
+            return backupFileEncrypted.absolutePath
+        } finally {
             tmpBackupDir.deleteRecursively()
             backupFile.delete()
         }
-        return backupFileEncrypted.absolutePath
     }
 
     fun testBackUp(destinationDir: File): Boolean {
@@ -127,31 +135,32 @@ object BackupHelper {
         return items?.size == 2
     }
 
-    private fun zip(_files: Array<String>, zipFileName: String?) {
+    private fun zip(files: Array<File>, zipFileName: String, baseDir: File) {
+        val basePath = baseDir.canonicalFile.toPath()
         try {
-            var origin: BufferedInputStream?
-            val dest = FileOutputStream(zipFileName)
-            val out = ZipOutputStream(
-                BufferedOutputStream(
-                    dest
-                )
-            )
-            val data = ByteArray(BUFFER)
-            for (i in _files.indices) {
-                val fi = FileInputStream(_files[i])
-                origin = BufferedInputStream(fi, BUFFER)
-                val entry = ZipEntry(_files[i].substring(_files[i].lastIndexOf("/") + 1))
-                out.putNextEntry(entry)
-                var count: Int
-                while (origin.read(data, 0, BUFFER).also { count = it } != -1) {
-                    out.write(data, 0, count)
+            ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFileName))).use { output ->
+                val buffer = ByteArray(BUFFER)
+                files.forEach { file ->
+                    val relativePath = basePath.relativize(file.canonicalFile.toPath())
+                        .toString()
+                        .replace(File.separatorChar, '/')
+                    if (relativePath.isBlank() || relativePath.startsWith("../")) {
+                        throw IOException("Invalid wallet backup path")
+                    }
+                    output.putNextEntry(ZipEntry(relativePath))
+                    BufferedInputStream(FileInputStream(file), BUFFER).use { input ->
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                        }
+                    }
+                    output.closeEntry()
                 }
-                origin.close()
             }
-            out.close()
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e)
-            Timber.tag(TAG).e(e)
+            File(zipFileName).delete()
+            throw e
         }
     }
 
