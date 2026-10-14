@@ -20,6 +20,11 @@ on:
 permissions:
   contents: read
 
+# Superseded commits should not consume runners building obsolete APKs.
+concurrency:
+  group: anon-build-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   MONERO_REF: v0.18.5.3
   MONERO_COMMIT: 22578c3f7d7b4b6dd85ff7daa42a827d97cc53d0
