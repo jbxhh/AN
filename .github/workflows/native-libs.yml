@@ -1,205 +1,41 @@
-name: Native Monero Libs (Polyseed support)
+name: Probe ANONERO Monero API
 
 on:
-  workflow_dispatch:
   push:
+    branches: [ fix/native-source-compat ]
     paths:
-      - 'external-libs/Makefile'
-      - 'external-libs/build.sh'
-      - 'external-libs/Containerfile'
-      - 'app/CMakeLists.txt'
-      - 'app/src/main/cpp/anonero.cpp'
-      - 'app/src/main/cpp/anonero.h'
       - '.github/workflows/native-libs.yml'
-
-concurrency:
-  # Do not cancel a long native C++ build just because another commit was pushed.
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
-  cancel-in-progress: false
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-env:
-  MONERO_REF: polyseed-support-2026-09-20
-  MONERO_COMMIT: 43c31c2aacdd789404d16cfda0c5456e0a090b86
-
 jobs:
-  build-native:
-    name: Build arm64 + armv7 static libs
+  probe-source:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      # Keep each ABI in its own immutable cache. If one ABI fails, the other
-      # ABI's completed cache is still available to later runs.
-      - name: Restore arm64 native library cache
-        id: cache-arm64
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            external-libs/arm64-v8a
-            external-libs/include
-            external-libs/VERSION
-          key: anon-native-arm64-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
-
-      - name: Restore armv7 native library cache
-        id: cache-armv7
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            external-libs/armeabi-v7a
-            external-libs/include
-            external-libs/VERSION
-          key: anon-native-armv7-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
-
-      # JNI changes should relink libanonero.so, not rebuild Monero's large
-      # dependency graph. Its key still includes the exact native input versions.
-      - name: Restore JNI library cache
-        id: cache-jni
-        uses: actions/cache/restore@v4
-        with:
-          path: external-libs/prebuilt
-          key: anon-jni-ndk27.2.12479018-cmake3.22.1-api26-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}-${{ hashFiles('app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
-
-      - name: Checkout Monero Polyseed-support revision
-        if: steps.cache-arm64.outputs.cache-hit != 'true' || steps.cache-armv7.outputs.cache-hit != 'true'
+      - name: Probe public ANONERO Monero source
+        shell: bash
         run: |
-          set -euo pipefail
-          rm -rf external-libs/monero
-          git init external-libs/monero
-          git -C external-libs/monero remote add origin https://github.com/monero-project/monero.git
-          git -C external-libs/monero fetch --depth 1 origin "${MONERO_COMMIT}"
-          git -C external-libs/monero checkout --detach FETCH_HEAD
-          git -C external-libs/monero submodule update --init --recursive --depth 1
-          actual="$(git -C external-libs/monero rev-parse HEAD)"
-          echo "Monero HEAD: $actual"
-          echo "Expected:    ${MONERO_COMMIT}"
-          test "$actual" = "${MONERO_COMMIT}" || {
-            echo "::error::Monero checkout does not match the pinned Polyseed-support commit."
+          set -uo pipefail
+          SOURCE_URL="https://gitea.com/anonero/monero.git"
+          echo "Remote refs from $SOURCE_URL"
+          if ! git ls-remote --heads "$SOURCE_URL" | tee "$RUNNER_TEMP/refs.txt"; then
+            echo "::error::Could not read ANONERO Monero refs."
             exit 1
-          }
-          grep -Fq "createWalletFromPolyseed" external-libs/monero/src/wallet/api/wallet2_api.h
-          grep -Fq "monero_add_library(polyseed_wrapper" external-libs/monero/src/mnemonics/polyseed/CMakeLists.txt
-
-      - name: Prepare cached Monero header and version
-        if: steps.cache-arm64.outputs.cache-hit != 'true' || steps.cache-armv7.outputs.cache-hit != 'true'
-        run: |
-          set -euo pipefail
-          cd external-libs
-          make include/wallet2_api.h VERSION
-          test -s include/wallet2_api.h
-          test -s VERSION
-          cat VERSION
-
-      - name: Build arm64 native libraries
-        if: steps.cache-arm64.outputs.cache-hit != 'true'
-        run: |
-          set -euo pipefail
-          cd external-libs
-          make arm64-v8a NPROC="$(nproc)"
-          test -s arm64-v8a/monero/libwallet_api.a
-          test -s arm64-v8a/libpolyseed.a
-          echo "arm64-v8a static archives: $(find arm64-v8a -name '*.a' | wc -l)"
-
-      - name: Save arm64 native library cache
-        if: steps.cache-arm64.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            external-libs/arm64-v8a
-            external-libs/include
-            external-libs/VERSION
-          key: anon-native-arm64-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
-
-      - name: Build armv7 native libraries
-        if: steps.cache-armv7.outputs.cache-hit != 'true'
-        run: |
-          set -euo pipefail
-          cd external-libs
-          make armeabi-v7a NPROC="$(nproc)"
-          test -s armeabi-v7a/monero/libwallet_api.a
-          test -s armeabi-v7a/libpolyseed.a
-          echo "armeabi-v7a static archives: $(find armeabi-v7a -name '*.a' | wc -l)"
-
-      - name: Save armv7 native library cache
-        if: steps.cache-armv7.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            external-libs/armeabi-v7a
-            external-libs/include
-            external-libs/VERSION
-          key: anon-native-armv7-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
-
-      - name: Build and cache JNI shared libraries
-        if: steps.cache-jni.outputs.cache-hit != 'true'
-        env:
-          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-          ANDROID_HOME: /usr/local/lib/android/sdk
-        run: |
-          set -euo pipefail
-          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
-          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "ndk;27.2.12479018" "cmake;3.22.1" >/dev/null
-          NDK="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
-          for abi in arm64-v8a armeabi-v7a; do
-            build_dir="$RUNNER_TEMP/anonero-$abi"
-            cmake -S app -B "$build_dir" \
-              -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
-              -DANDROID_ABI="$abi" \
-              -DANDROID_PLATFORM=android-26 \
-              -DANDROID_STL=c++_shared \
-              -DCMAKE_BUILD_TYPE=Release
-            cmake --build "$build_dir" --target anonero --parallel "$(nproc)"
-            mkdir -p "external-libs/prebuilt/$abi"
-            install -m 0644 "$build_dir/libanonero.so" "external-libs/prebuilt/$abi/libanonero.so"
-            case "$abi" in
-              arm64-v8a) libcxx_triple=aarch64-linux-android ;;
-              armeabi-v7a) libcxx_triple=arm-linux-androideabi ;;
-              *) echo "::error::Unsupported Android ABI: $abi"; exit 1 ;;
-            esac
-            # NDK r27 stores the runtime in sysroot/usr/lib/<triple>.
-            libcxx="$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/$libcxx_triple/libc++_shared.so"
-            if [ ! -s "$libcxx" ]; then
-              echo "::error::Missing libc++_shared.so at $libcxx"
-              exit 1
+          fi
+          for ref in refs/heads/release-v0.18.3.1-anonero refs/heads/release-v0.18.0.0-monerujo; do
+            if grep -q " $ref$" "$RUNNER_TEMP/refs.txt"; then
+              echo "=== Inspecting $ref ==="
+              rm -rf "$RUNNER_TEMP/monero-probe"
+              git init "$RUNNER_TEMP/monero-probe"
+              git -C "$RUNNER_TEMP/monero-probe" remote add origin "$SOURCE_URL"
+              git -C "$RUNNER_TEMP/monero-probe" fetch --depth 1 origin "$ref"
+              git -C "$RUNNER_TEMP/monero-probe" checkout --detach FETCH_HEAD
+              echo "COMMIT=$(git -C "$RUNNER_TEMP/monero-probe" rev-parse HEAD)"
+              HEADER="$RUNNER_TEMP/monero-probe/src/wallet/api/wallet2_api.h"
+              test -s "$HEADER" || { echo "::error::wallet2_api.h missing"; exit 1; }
+              grep -nE 'getPolyseed|hasUnknownKeyImages|viewOnlyBalance|CoinsInfo|struct Coins|class Coins|createTransaction\(' "$HEADER" || true
             fi
-            install -m 0644 "$libcxx" "external-libs/prebuilt/$abi/libc++_shared.so"
-            test -s "external-libs/prebuilt/$abi/libanonero.so"
-            test -s "external-libs/prebuilt/$abi/libc++_shared.so"
-            echo "$abi: libanonero.so + libc++_shared.so ready"
           done
-
-      - name: Save JNI library cache
-        if: steps.cache-jni.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: external-libs/prebuilt
-          key: anon-jni-ndk27.2.12479018-cmake3.22.1-api26-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}-${{ hashFiles('app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
-
-      - name: Upload native libs artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: monero-android-libs-${{ env.MONERO_REF }}
-          path: |
-            external-libs/arm64-v8a
-            external-libs/armeabi-v7a
-            external-libs/include
-            external-libs/prebuilt
-            external-libs/VERSION
-          if-no-files-found: error
-          retention-days: 90
-
-      - name: Summary
-        run: |
-          echo "### Monero Polyseed-support native libs" >> "$GITHUB_STEP_SUMMARY"
-          echo "- arm64 cache hit: ${{ steps.cache-arm64.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- armv7 cache hit: ${{ steps.cache-armv7.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- JNI cache hit: ${{ steps.cache-jni.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Artifact: monero-android-libs-${MONERO_REF}" >> "$GITHUB_STEP_SUMMARY"
-          if [ -f external-libs/VERSION ]; then cat external-libs/VERSION >> "$GITHUB_STEP_SUMMARY"; fi
-          find external-libs/arm64-v8a external-libs/armeabi-v7a -name '*.a' 2>/dev/null | wc -l \
-            | xargs -I{} echo "- Static archives: {}" >> "$GITHUB_STEP_SUMMARY"
