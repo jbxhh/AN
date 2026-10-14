@@ -67,6 +67,7 @@ kotlinx.serialization.KSerializer serializer(...);
 # If there is no `java.lang.ClassValue` (for example, in Android), then R8/ProGuard will print a warning.
 # However, since in this case they will not be used, we can disable these warnings
 -dontwarn kotlinx.serialization.internal.ClassValueReferences
+-dontwarn java.lang.management.ManagementFactory
 
 # disable optimisation for descriptor field because in some versions of ProGuard, optimization generates incorrect bytecode that causes a verification error
 # see https://github.com/Kotlin/kotlinx.serialization/issues/2719
