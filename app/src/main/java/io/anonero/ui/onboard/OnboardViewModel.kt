@@ -141,6 +141,9 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
         require(seedWords.size != 25 || payload.restoreHeight != null) {
             "Restore height is required for a 25-word seed"
         }
+        require(payload.restoreHeight == null || payload.restoreHeight >= 0L) {
+            "Restore height must not be negative"
+        }
         val context = AnonConfig.context?.applicationContext
             ?: throw IllegalStateException("Application context unavailable")
         val walletFile = AnonConfig.getDefaultWalletFile(context)
