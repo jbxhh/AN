@@ -23,8 +23,16 @@ help:
 	@echo "targets: android (arm64-v8a armeabi-v7a), linux (linux-x86_64 + libanonero.so)"
 	@echo "engine:  $(CONTAINER)    jobs: $(NPROC)"
 
-arm64-v8a:    ; @$(MAKE) --no-print-directory image TARGET=android64 ABI=$@
-armeabi-v7a:  ; @$(MAKE) --no-print-directory image TARGET=android32 ABI=$@
+# CI restores these directories only on an exact source/config cache-key match.
+# Reuse complete archives on that exact hit; otherwise rebuild the ABI from source.
+arm64-v8a:
+	@if test -s $@/monero/libwallet_api.a && test -s $@/libcrypto.a && test -s $@/libsodium.a && test -s $@/libpolyseed.a; then \
+	    echo "==> Reusing exact-cache native artifacts for $@"; \
+	  else $(MAKE) --no-print-directory image TARGET=android64 ABI=$@; fi
+armeabi-v7a:
+	@if test -s $@/monero/libwallet_api.a && test -s $@/libcrypto.a && test -s $@/libsodium.a && test -s $@/libpolyseed.a; then \
+	    echo "==> Reusing exact-cache native artifacts for $@"; \
+	  else $(MAKE) --no-print-directory image TARGET=android32 ABI=$@; fi
 linux-x86_64: ; @$(MAKE) --no-print-directory image TARGET=linux     ABI=$@
 
 arm64-v8a armeabi-v7a linux-x86_64: monero build.sh Containerfile
