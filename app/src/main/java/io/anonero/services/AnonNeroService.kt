@@ -80,10 +80,14 @@ class AnonNeroService : Service() {
 
     private fun start() {
         startForeground(NOTIFICATION_ID, foregroundNotification())
+        // Each StateFlow collector is long-lived; a sequential second collect
+        // would never start while the first one is active.
         scope.launch {
             walletState.walletConnectionStatus.collect {
                 updateNotificationState()
             }
+        }
+        scope.launch {
             walletState.walletStatus.collect {
                 updateNotificationState()
             }
