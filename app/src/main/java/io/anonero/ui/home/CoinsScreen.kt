@@ -1,5 +1,10 @@
 package io.anonero.ui.home
 
+import kotlinx.coroutines.launch
+import io.anonero.model.WalletManager
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarHost
 import io.anonero.ui.theme.AnonNeroTheme
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -69,8 +74,9 @@ fun CoinsScreen(
     val coins by walletState.coins.collectAsState(arrayListOf())
 
     var selectedCoins by remember { mutableStateOf(selected) }
-    var frozenCoins by remember { mutableStateOf(setOf<String>()) }
     var detailCoin by remember { mutableStateOf<CoinsInfo?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
     val connectionStatus by walletState.walletConnectionStatus.asLiveData().observeAsState(
         Wallet.ConnectionStatus.ConnectionStatus_Disconnected
@@ -88,12 +94,62 @@ fun CoinsScreen(
     }
 
     fun selectCoin(coin: CoinsInfo) {
-        if (frozenCoins.contains(coin.pub_key)) return
+        if (coin.frozen) return
 
         selectedCoins = if (selectedCoins.contains(coin.pub_key)) {
             selectedCoins - coin.pub_key
         } else {
             selectedCoins + coin.pub_key
+        }
+    }
+
+    fun reportOutputError(message: String) {
+        detailCoin = null
+        coroutineScope.launch {
+            snackbarHostState.showSnackbar(message)
+        }
+    }
+
+    fun setOutputFrozen(coin: CoinsInfo, shouldFreeze: Boolean) {
+        val wallet = WalletManager.instance?.wallet
+        val walletCoins = wallet?.coins
+        if (wallet == null || walletCoins == null) {
+            reportOutputError("钱包不可用，请重新打开钱包")
+            return
+        }
+
+        val changed = runCatching {
+            if (shouldFreeze) walletCoins.setFrozen(coin.pub_key)
+            else walletCoins.thaw(coin.pub_key)
+        }.getOrDefault(false)
+        if (!changed) {
+            walletState.update()
+            reportOutputError(if (shouldFreeze) "冻结输出失败" else "解冻输出失败")
+            return
+        }
+
+        val stored = runCatching { wallet.store() }.getOrDefault(false)
+        if (!stored) {
+            // Roll back the in-memory change if it cannot be saved to the wallet file.
+            runCatching {
+                if (coin.frozen) walletCoins.setFrozen(coin.pub_key)
+                else walletCoins.thaw(coin.pub_key)
+            }
+            runCatching { wallet.store() }
+            walletState.update()
+            reportOutputError("保存输出状态失败，已尝试恢复原状态")
+            return
+        }
+
+        walletState.update()
+        val updatedCoin = walletCoins.all.firstOrNull { it.pub_key == coin.pub_key }
+        if (updatedCoin == null || updatedCoin.frozen != shouldFreeze) {
+            reportOutputError(if (shouldFreeze) "冻结状态未生效" else "解冻状态未生效")
+            return
+        }
+        detailCoin = updatedCoin
+        if (shouldFreeze) {
+            selectedCoins = selectedCoins - coin.pub_key
         }
     }
 
@@ -107,19 +163,19 @@ fun CoinsScreen(
             val coin = detailCoin!!
             OutputDetailScreen(
                 coin = coin,
-                isFrozen = frozenCoins.contains(coin.pub_key),
+                isFrozen = coin.frozen,
                 onBackPress = { detailCoin = null },
                 onFreeze = {
-                    frozenCoins = frozenCoins + coin.pub_key
-                    selectedCoins = selectedCoins - coin.pub_key
+                    setOutputFrozen(coin, shouldFreeze = true)
                 },
                 onUnfreeze = {
-                    frozenCoins = frozenCoins - coin.pub_key
+                    setOutputFrozen(coin, shouldFreeze = false)
                 }
             )
         } else {
             Scaffold(
                 modifier = Modifier.fillMaxSize(),
+                snackbarHost = { SnackbarHost(snackbarHostState) },
                 floatingActionButtonPosition = FabPosition.Center,
                 floatingActionButton = {
                     if (selectedCoins.isNotEmpty()) {
@@ -176,7 +232,7 @@ fun CoinsScreen(
 
                     items(coins.size) { index ->
                         val coin = coins[index]
-                        val isFrozen = frozenCoins.contains(coin.pub_key)
+                        val isFrozen = coin.frozen
 
                         ListItem(
                             modifier = Modifier

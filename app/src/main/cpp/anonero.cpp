@@ -1541,7 +1541,7 @@ jobject newCoinsInfo(JNIEnv *env, Monero::CoinsInfo *info) {
                                     static_cast<jlong> (info->amount()),
                                     _hash,
                                     _pub_key,
-                                    info->unlocked(),
+                                    info->frozen(),
                                     static_cast<jlong> (info->internalOutputIndex()));
     env->DeleteLocalRef(_key_image);
     env->DeleteLocalRef(_hash);
@@ -1569,6 +1569,26 @@ JNIEXPORT jint JNICALL
 Java_io_anonero_model_Coins_getCount(JNIEnv *env, jobject instance) {
     Monero::Coins *coins = getHandle<Monero::Coins>(env, instance);
     return coins->count();
+}
+
+JNIEXPORT void JNICALL
+Java_io_anonero_model_Coins_setFrozenJ(JNIEnv *env, jobject instance, jstring public_key) {
+    Monero::Coins *coins = getHandle<Monero::Coins>(env, instance);
+    if (coins == nullptr || public_key == nullptr) return;
+    const char *key = env->GetStringUTFChars(public_key, nullptr);
+    if (key == nullptr) return;
+    coins->setFrozen(std::string(key));
+    env->ReleaseStringUTFChars(public_key, key);
+}
+
+JNIEXPORT void JNICALL
+Java_io_anonero_model_Coins_thawJ(JNIEnv *env, jobject instance, jstring public_key) {
+    Monero::Coins *coins = getHandle<Monero::Coins>(env, instance);
+    if (coins == nullptr || public_key == nullptr) return;
+    const char *key = env->GetStringUTFChars(public_key, nullptr);
+    if (key == nullptr) return;
+    coins->thaw(std::string(key));
+    env->ReleaseStringUTFChars(public_key, key);
 }
 
 JNIEXPORT jobject JNICALL
