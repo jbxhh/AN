@@ -1,4 +1,3 @@
-/* UI-MOCK：假未签名交易，不依赖 native 库 */
 package io.anonero.model
 
 class UnsignedTransaction internal constructor(override var handle: Long) : StagingTransaction {
@@ -14,6 +13,7 @@ class UnsignedTransaction internal constructor(override var handle: Long) : Stag
         Priority_Medium(2),
         Priority_High(3),
         Priority_Last(4);
+
 
         companion object {
             fun fromInteger(n: Int): Priority? {
@@ -32,29 +32,35 @@ class UnsignedTransaction internal constructor(override var handle: Long) : Stag
         get() = Status.entries[statusJ]
 
     val statusJ: Int
-        get() = 0
+        external get
 
     val errorString: String?
-        get() = null
+        external get
+
 
     val address: String?
-        get() = "4h82pJGF9p7kpzb6eU326EFZf2cDnimbTFVeJtx1qtBmUNJAEqN76R7PwPfHt3oWb8R6cKvhgyxQdDn53jFrK6wFx7RJWhv"
+        external get
 
     val amount: Long
-        get() = 0L
+        // commit transaction or save to file if filename is provided.
+        external get
 
     val fee: Long
-        get() = 0L
+        //    public native long getDust();
+        external get
 
     val firstTxId: String
-        get() = firstTxIdJ
+        get() {
+            val id = firstTxIdJ
+            return id
+        }
 
     val firstTxIdJ: String
-        get() = "c3712da86a78c49ea20e32684b27b95e909348334896a68f812d810a485ed032"
+        external get //    public native long getTxCount();
 
     companion object {
         init {
-            try { System.loadLibrary("anonero") } catch (e: Throwable) {}
+            System.loadLibrary("anonero")
         }
     }
 }
