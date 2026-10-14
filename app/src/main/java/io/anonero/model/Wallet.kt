@@ -123,7 +123,10 @@ class Wallet {
         var amount: Long = 0
         history?.let { history ->
             for (info in history.all) {
-                if (info.addressIndex == subAddressIndex && info.direction == TransactionInfo.Direction.Direction_In) {
+                if (info.accountIndex == accountIndex &&
+                    info.addressIndex == subAddressIndex &&
+                    info.direction == TransactionInfo.Direction.Direction_In
+                ) {
                     amount += info.amount
                 }
             }

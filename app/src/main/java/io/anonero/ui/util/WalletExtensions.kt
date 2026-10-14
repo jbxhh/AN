@@ -5,12 +5,11 @@ import io.anonero.model.Wallet
 
 fun Wallet.getLastUnusedIndex(): Int {
     var lastUsedSubaddress = 0
-    val subaddress = arrayListOf<Subaddress>()
-    for (i in 0 until this.numSubAddresses) {
-        subaddress.add(this.getSubaddressObject(i))
-    }
+    val currentAccountIndex = this.getAccountIndex()
     for (info in this.history?.all ?: listOf()) {
-        if (info.addressIndex > lastUsedSubaddress) lastUsedSubaddress = info.addressIndex
+        if (info.accountIndex == currentAccountIndex && info.addressIndex > lastUsedSubaddress) {
+            lastUsedSubaddress = info.addressIndex
+        }
     }
     return lastUsedSubaddress
 }
