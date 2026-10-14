@@ -66,11 +66,6 @@ jobs:
 
   build:
     needs: source-check
-    concurrency:
-      # Share the former workflow-level group so native/APK builds stay serialized,
-      # while the quick source-check job can run immediately.
-      group: ${{ github.workflow }}-${{ github.ref }}
-      cancel-in-progress: false
     name: Build native libraries and APK
     runs-on: ubuntu-latest
     timeout-minutes: 360
