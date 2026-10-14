@@ -1,4 +1,12 @@
 # Add project specific ProGuard rules here.
+
+# JNI methods are exported by their exact Java/Kotlin class and method names.
+# R8 must not rename classes or members that have native implementations.
+-keepclasseswithmembernames,includedescriptorclasses class * {
+    native <methods>;
+}
+
+
 # You can control the set of applied configuration files using the
 # proguardFiles setting in build.gradle.
 #
