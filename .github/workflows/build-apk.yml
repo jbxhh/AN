@@ -39,8 +39,6 @@ jobs:
             external-libs/include
             external-libs/VERSION
           key: ${{ runner.os }}-native-${{ hashFiles('.gitmodules', 'external-libs/Containerfile', 'external-libs/build.sh', 'external-libs/Makefile', 'external-libs/monero/**') }}
-          restore-keys: |
-            ${{ runner.os }}-native-
 
       - name: Install native build tools
         run: |
