@@ -46,8 +46,8 @@ UNBOUND_VERSION=1.24.2  # https://www.nlnetlabs.nl/downloads/unbound/
 UNBOUND_SHA256=44e7b53e008a6dcaec03032769a212b46ab5c23c105284aa05a4f3af78e59cdb
 
 # Pinned to monero's external/polyseed submodule.
-POLYSEED_COMMIT=b7c35bb3c6b91e481ecb04fc235eaff69c507fa1
-UTF8PROC_COMMIT=1cb28a66ca79a0845e99433fd1056257456cef8b
+POLYSEED_COMMIT=50aa33733ac4b5f795230e8c1ef8569abaf8c5c4
+UTF8PROC_COMMIT=b3e0f28adaec943ac25e3e27514dd6037e7a022e
 
 ## TARGET TABLE
 
@@ -255,7 +255,7 @@ dep_polyseed() {
 }
 
 dep_utf8proc() {
-    cc; pin https://github.com/JuliaStrings/utf8proc v2.8.0 utf8proc "$UTF8PROC_COMMIT"
+    cc; pin https://github.com/JuliaStrings/utf8proc master utf8proc "$UTF8PROC_COMMIT"
     mkdir -p build && cd build && rm -rf ../CMakeCache.txt ../CMakeFiles/
     cmake -DCMAKE_INSTALL_PREFIX="$PREFIX" $(cmakeflags) .. && make -j"$NPROC" && make install
 }
