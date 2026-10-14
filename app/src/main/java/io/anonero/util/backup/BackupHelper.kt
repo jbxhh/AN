@@ -88,37 +88,51 @@ object BackupHelper {
         )
         val json = Json.encodeToString(backUpPayload)
 
-        context.cacheDir.deleteRecursively()
-
         val tmpBackupDir = File(context.cacheDir, "tmp_backup")
-        if (tmpBackupDir.exists()) {
-            tmpBackupDir.deleteRecursively()
+        if (tmpBackupDir.exists() && !tmpBackupDir.deleteRecursively()) {
+            throw java.io.IOException("Unable to clear temporary backup directory")
         }
+        if (!tmpBackupDir.mkdirs() && !tmpBackupDir.isDirectory) {
+            throw java.io.IOException("Unable to create temporary backup directory")
+        }
+
         val date = Date()
         val sdf = SimpleDateFormat("dd_MM_yyyy' 'HH_mm_a", Locale.getDefault())
         val timeStamp: String = sdf.format(date)
-        val backupFile = File(context.cacheDir, "${R.string.app_name}_backup_$timeStamp.zip")
-        tmpBackupDir.mkdirs()
+        val appName = context.getString(R.string.app_name)
+        val backupFile = File(context.cacheDir, "${appName}_backup_$timeStamp.zip")
         val tmpBackupFile = File(tmpBackupDir, "anon.json")
         tmpBackupFile.writeText(json)
-        val walletDir = File(context.filesDir, "wallets")
-        walletDir.copyRecursively(tmpBackupDir, true)
-        val list = tmpBackupDir.listFiles()
-        val files = list?.map { it.absolutePath }?.toTypedArray()
-        val backupCacheDir = File(context.cacheDir, "backup")
-        if (!backupCacheDir.exists()) {
-            backupCacheDir.mkdirs()
-        }
-        val backupFileEncrypted =
-            File(backupCacheDir, "${R.string.app_name}_backup_$timeStamp.anon")
 
-        if (files != null) {
+        val walletDir = File(context.filesDir, "wallets")
+        if (!walletDir.isDirectory) {
+            throw java.io.IOException("Wallet backup directory does not exist")
+        }
+        walletDir.copyRecursively(tmpBackupDir, overwrite = true)
+
+        val files = tmpBackupDir.listFiles()
+            ?.filter { it.isFile }
+            ?.map { it.absolutePath }
+            ?.toTypedArray()
+            ?: throw java.io.IOException("Unable to list backup files")
+        if (files.isEmpty()) {
+            throw java.io.IOException("No files available for backup")
+        }
+
+        val backupCacheDir = File(context.cacheDir, "backup")
+        if (!backupCacheDir.exists() && !backupCacheDir.mkdirs()) {
+            throw java.io.IOException("Unable to create encrypted backup directory")
+        }
+        val backupFileEncrypted = File(backupCacheDir, "${appName}_backup_$timeStamp.anon")
+
+        try {
             zip(files, backupFile.absolutePath)
             EncryptUtil.encryptFile(seedPassphrase, backupFile, backupFileEncrypted)
+            return backupFileEncrypted.absolutePath
+        } finally {
             tmpBackupDir.deleteRecursively()
             backupFile.delete()
         }
-        return backupFileEncrypted.absolutePath
     }
 
     fun testBackUp(destinationDir: File): Boolean {
@@ -128,49 +142,70 @@ object BackupHelper {
         return items?.size == 2
     }
 
-    private fun zip(_files: Array<String>, zipFileName: String?) {
-        try {
-            var origin: BufferedInputStream?
-            val dest = FileOutputStream(zipFileName)
-            val out = ZipOutputStream(
-                BufferedOutputStream(
-                    dest
-                )
-            )
-            val data = ByteArray(BUFFER)
-            for (i in _files.indices) {
-                val fi = FileInputStream(_files[i])
-                origin = BufferedInputStream(fi, BUFFER)
-                val entry = ZipEntry(_files[i].substring(_files[i].lastIndexOf("/") + 1))
-                out.putNextEntry(entry)
-                var count: Int
-                while (origin.read(data, 0, BUFFER).also { count = it } != -1) {
-                    out.write(data, 0, count)
+    private fun zip(files: Array<String>, zipFileName: String) {
+        ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFileName))).use { output ->
+            files.forEach { filePath ->
+                val source = File(filePath)
+                require(source.isFile) { "Backup entry is not a file" }
+                output.putNextEntry(ZipEntry(source.name))
+                BufferedInputStream(FileInputStream(source), BUFFER).use { input ->
+                    input.copyTo(output, BUFFER)
                 }
-                origin.close()
+                output.closeEntry()
             }
-            out.close()
-        } catch (e: Exception) {
-            Timber.tag(TAG).e(e)
-            Timber.tag(TAG).e(e)
         }
     }
 
     fun unZip(toUnzip: File, destinationDir: File) {
-        destinationDir.apply {
-            if (!exists()) {
-                mkdirs()
-            }
+        val root = destinationDir.canonicalFile
+        if (!root.exists() && !root.mkdirs()) {
+            throw java.io.IOException("Unable to create backup extraction directory")
         }
+        if (!root.isDirectory) {
+            throw java.io.IOException("Backup extraction target is not a directory")
+        }
+        val rootPrefix = root.path + File.separator
+
         ZipFile(toUnzip).use { zip ->
-            zip.entries().asSequence().forEach { entry ->
-                zip.getInputStream(entry).use { input ->
-                    val filePath = "${destinationDir}${File.separator}${entry.name}"
-                    if (!entry.isDirectory) {
-                        input.copyTo(File(filePath).apply { createNewFile() }.outputStream())
-                    } else {
-                        val dir = File(filePath)
-                        dir.mkdir()
+            val entries = zip.entries()
+            while (entries.hasMoreElements()) {
+                val entry = entries.nextElement()
+                val entryName = entry.name.replace('\\\\', '/')
+                if (entryName.isBlank() || entryName.startsWith("/") ||
+                    entryName.startsWith("//") ||
+                    entryName.matches(Regex("^[A-Za-z]:.*"))
+                ) {
+                    throw java.io.IOException("Invalid backup archive entry path")
+                }
+
+                val outputFile = File(root, entryName).canonicalFile
+                if (outputFile.path != root.path && !outputFile.path.startsWith(rootPrefix)) {
+                    throw java.io.IOException("Backup archive entry escapes extraction directory")
+                }
+                if (outputFile == root && !entry.isDirectory) {
+                    throw java.io.IOException("Invalid backup archive file path")
+                }
+
+                if (entry.isDirectory) {
+                    if (!outputFile.exists() && !outputFile.mkdirs()) {
+                        throw java.io.IOException("Unable to create backup directory")
+                    }
+                    if (!outputFile.isDirectory) {
+                        throw java.io.IOException("Backup entry conflicts with a file")
+                    }
+                } else {
+                    val parent = outputFile.parentFile
+                        ?: throw java.io.IOException("Backup entry has no parent directory")
+                    if (!parent.exists() && !parent.mkdirs()) {
+                        throw java.io.IOException("Unable to create backup entry directory")
+                    }
+                    if (!parent.isDirectory) {
+                        throw java.io.IOException("Backup entry parent is not a directory")
+                    }
+                    zip.getInputStream(entry).use { input ->
+                        BufferedOutputStream(FileOutputStream(outputFile)).use { output ->
+                            input.copyTo(output, BUFFER)
+                        }
                     }
                 }
             }
@@ -178,40 +213,60 @@ object BackupHelper {
     }
 
     fun extractBackUp(backupPath: String, passPhrase: String): BackupPayload? {
-        val destFile = File(AnonConfig.context?.cacheDir, "backup.anon").apply { createNewFile() }
-        val decryptedDestFile =
-            File(AnonConfig.context?.cacheDir, "backup.zip").apply { createNewFile() }
-        val extractDestination = File(AnonConfig.context?.cacheDir, "tmp_extract")
-        val inPutStream = AnonConfig.context?.contentResolver?.openInputStream(backupPath.toUri())
-        inPutStream?.copyTo(destFile.outputStream())
-        inPutStream?.close()
-        val backup: BackupPayload
+        val context = AnonConfig.context?.applicationContext
+            ?: throw IllegalStateException("Application context unavailable")
+        val destFile = File(context.cacheDir, "backup.anon")
+        val decryptedDestFile = File(context.cacheDir, "backup.zip")
+        val extractDestination = File(context.cacheDir, "tmp_extract")
+
         try {
+            val source = context.contentResolver.openInputStream(backupPath.toUri())
+                ?: throw java.io.IOException("Unable to open selected backup")
+            source.use { input ->
+                destFile.outputStream().use { output ->
+                    input.copyTo(output, BUFFER)
+                }
+            }
+
+            // Do not let a previous extraction supply files missing from this archive.
+            if (extractDestination.exists() && !extractDestination.deleteRecursively()) {
+                throw java.io.IOException("Unable to clear previous backup extraction")
+            }
             EncryptUtil.decryptFile(passPhrase, destFile, decryptedDestFile)
             unZip(decryptedDestFile, extractDestination)
 
             val anonJson = File(extractDestination, "anon.json")
-            val json = anonJson.readText()
-            backup = Json.decodeFromString<BackupPayload>(json)
-            if(backup.backup.meta.network != AnonConfig.getNetworkType().toStringForBackUp()){
-                 throw NetworkMismatchException()
+            if (!anonJson.isFile) {
+                throw java.io.IOException("Backup metadata is missing")
             }
+            val backup = Json.decodeFromString<BackupPayload>(anonJson.readText())
+            if (backup.backup.meta.network != AnonConfig.getNetworkType().toStringForBackUp()) {
+                throw NetworkMismatchException()
+            }
+            return backup
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e)
-            throw e;
+            extractDestination.deleteRecursively()
+            Timber.tag(TAG).e(e, "Unable to extract backup")
+            throw e
+        } finally {
+            destFile.delete()
+            decryptedDestFile.delete()
         }
-        return backup;
     }
 
     suspend fun restoreBackUp(backupPayload: BackupPayload, passPhrase: String): Boolean {
         try {
 
-            val extractDestination = File(AnonConfig.context?.cacheDir, "tmp_extract")
-            if (!extractDestination.exists() && !testBackUp(extractDestination)) {
+            val context = AnonConfig.context?.applicationContext ?: return false
+            val extractDestination = File(context.cacheDir, "tmp_extract")
+            if (!extractDestination.isDirectory || !testBackUp(extractDestination)) {
                 return false
             }
 
-            val anonDir = AnonConfig.getDefaultWalletDir(AnonConfig.context!!)
+            val anonDir = AnonConfig.getDefaultWalletDir(context)
+            if (!anonDir.exists() && !anonDir.mkdirs()) {
+                return false
+            }
 
             val v1Node = backupPayload.backup.node
             walletPrefs.edit(commit = true) {
@@ -236,9 +291,7 @@ object BackupHelper {
                     password = v1Node.password
                     networkType = AnonConfig.getNetworkType()
                 }
-                nodes.forEach {
-                    nodeRepository.addItem(node)
-                }
+                nodeRepository.addItem(node)
             }
             walletPrefs.edit(commit = true) {
                 putString(
