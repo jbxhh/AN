@@ -82,10 +82,7 @@ class WalletState {
             if (wallet.isInitialized) {
                 _balanceInfo.update { wallet.balance }
                 _unLockedBalance.update {
-                    if (AnonConfig.viewOnly) {
-                        wallet.viewOnlyBalance()
-                    }
-                    wallet.unlockedBalance
+                    if (AnonConfig.viewOnly) wallet.viewOnlyBalance() else wallet.unlockedBalance
                 }
                 _walletStatus.update { wallet.fullStatus }
                 if (wallet.status.errorString.isNotEmpty()) {
@@ -203,8 +200,13 @@ class WalletState {
     }
 
     fun syncUpdate(syncProgress: SyncProgress) {
-        val done = syncProgress.progress == 1f || syncProgress.left == 0L
-        _syncProgress.update { if (done) null else syncProgress }
+        // The remaining-block count is authoritative. A rounded progress fraction
+        // can reach 100% before the wallet has actually caught up with the daemon.
+        if (syncProgress.left < 0L) return
+        val done = syncProgress.left == 0L
+        val safeProgress = if (done) 1f else syncProgress.progress.coerceIn(0f, 0.999f)
+        val safeProgressState = syncProgress.copy(progress = safeProgress)
+        _syncProgress.update { if (done) null else safeProgressState }
         _isSyncing.set(!done)
         if (done) {
             _connectionStatus.update { Wallet.ConnectionStatus.ConnectionStatus_Connected }
