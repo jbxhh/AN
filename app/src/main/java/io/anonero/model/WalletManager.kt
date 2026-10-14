@@ -1,13 +1,28 @@
 /*
- * UI-MOCK：原 native(external) 方法全部改为 Kotlin 假实现，仅用于 UI/UX 走查
+ * Copyright (c) 2017 m2049r
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package io.anonero.model
+
 import io.anonero.AnonConfig
 import io.anonero.model.node.Node
 import timber.log.Timber
 import java.io.File
 import java.util.Locale
+
 private const val TAG = "WalletManager"
+
 class WalletManager {
     var networkType = NetworkType.NetworkType_Mainnet
     var wallet: Wallet? = null
@@ -19,13 +34,16 @@ class WalletManager {
         private set
     var proxy = ""
         private set
+
     fun init() {
         this.networkType = AnonConfig.getNetworkType()
     }
+
     private fun manageWallet(wallet: Wallet) {
         Timber.tag(TAG).i("Managing %s", wallet.name)
         this.wallet = wallet
     }
+
     private fun unmanageWallet(wallet: Wallet?) {
         requireNotNull(wallet) { "Cannot unmanage null!" }
         checkNotNull(this.wallet) { "No wallet under management!" }
@@ -33,6 +51,7 @@ class WalletManager {
         Timber.tag(TAG).i("Unmanaging ${wallet.name}")
         this.wallet = null
     }
+
     fun createWallet(
         aFile: File,
         password: String,
@@ -49,25 +68,29 @@ class WalletManager {
         }
         return wallet
     }
-    private fun createWalletJ(
+
+    private external fun createWalletJ(
         path: String,
         password: String,
         passphrase: String,
         language: String,
         networkType: Int
-    ): Long = 1L
+    ): Long
+
     fun openWallet(path: String, password: String): Wallet {
         val walletHandle = openWalletJ(path, password, networkType.value, AnonConfig.viewOnly)
         val wallet = Wallet(walletHandle)
         manageWallet(wallet)
         return wallet
     }
-    private fun openWalletJ(
+
+    private external fun openWalletJ(
         path: String,
         password: String,
         networkType: Int,
         isViewOnly: Boolean
-    ): Long = 1L
+    ): Long
+
     fun recoveryWallet(
         aFile: File,
         password: String,
@@ -84,11 +107,13 @@ class WalletManager {
         manageWallet(wallet)
         return wallet
     }
-    private fun recoveryWalletJ(
+
+    private external fun recoveryWalletJ(
         path: String, password: String,
         mnemonic: String, offset: String,
         networkType: Int, restoreHeight: Long
-    ): Long = 1L
+    ): Long
+
     fun recoveryWalletPolyseed(
         aFile: File, password: String,
         mnemonic: String, offset: String
@@ -102,11 +127,13 @@ class WalletManager {
         manageWallet(wallet)
         return wallet
     }
-    private fun recoveryWalletPolyseedJ(
+
+    private external fun recoveryWalletPolyseedJ(
         path: String, password: String,
         mnemonic: String, offset: String,
         networkType: Int
-    ): Long = 1L
+    ): Long
+
     fun createWalletWithKeys(
         aFile: File, password: String, language: String, restoreHeight: Long,
         addressString: String, viewKeyString: String, spendKeyString: String
@@ -120,7 +147,8 @@ class WalletManager {
         manageWallet(wallet)
         return wallet
     }
-    private fun createWalletFromKeysJ(
+
+    private external fun createWalletFromKeysJ(
         path: String, password: String,
         language: String,
         networkType: Int,
@@ -128,7 +156,8 @@ class WalletManager {
         addressString: String,
         viewKeyString: String,
         spendKeyString: String
-    ): Long = 1L
+    ): Long
+
     fun createWalletFromDevice(
         aFile: File, password: String, restoreHeight: Long,
         deviceName: String
@@ -142,14 +171,16 @@ class WalletManager {
         manageWallet(wallet)
         return wallet
     }
-    private fun createWalletFromDeviceJ(
+
+    private external fun createWalletFromDeviceJ(
         path: String, password: String,
         networkType: Int,
         deviceName: String,
         restoreHeight: Long,
         subaddressLookahead: String
-    ): Long = 1L
-    fun closeJ(wallet: Wallet?): Boolean = true
+    ): Long
+
+    external fun closeJ(wallet: Wallet?): Boolean
     fun close(wallet: Wallet): Boolean {
         unmanageWallet(wallet)
         val closed = closeJ(wallet)
@@ -158,19 +189,24 @@ class WalletManager {
         }
         return closed
     }
+
     fun walletExists(aFile: File): Boolean {
         return walletExists(aFile.absolutePath)
     }
-    private fun walletExists(path: String?): Boolean = path?.let { File(it).exists() } ?: false
-    fun verifyWalletPassword(
+
+    private external fun walletExists(path: String?): Boolean
+    external fun verifyWalletPassword(
         keysFileName: String?,
         password: String?,
         watchOnly: Boolean
-    ): Boolean = true
+    ): Boolean
+
     fun verifyWalletPasswordOnly(keysFileName: String, password: String): Boolean {
         return queryWalletDeviceJ(keysFileName, password) >= 0
     }
-    private fun queryWalletDeviceJ(keysFileName: String, password: String): Int = 0
+
+    private external fun queryWalletDeviceJ(keysFileName: String, password: String): Int
+
     fun setDaemon(node: Node?) {
         if (node != null) {
             daemonAddress = node.address
@@ -185,37 +221,45 @@ class WalletManager {
             daemonPassword = ""
         }
     }
+
     fun getDaemonAddress(): String? {
         return daemonAddress
     }
-    private fun setDaemonAddressJ(address: String) {}
-    fun getDaemonVersion(): Int = 18
-    fun getBlockchainHeight(): Long = 3_400_000L
-    fun getBlockchainTargetHeight(): Long = 3_400_000L
-    fun getNetworkDifficulty(): Long = 200_000_000_000L
-    fun getMiningHashRate(): Double = 0.0
-    fun getBlockTarget(): Long = 120L
-    fun isMining(): Boolean = false
-    fun startMining(
+
+    private external fun setDaemonAddressJ(address: String)
+    external fun getDaemonVersion(): Int
+    external fun getBlockchainHeight(): Long
+    external fun getBlockchainTargetHeight(): Long
+    external fun getNetworkDifficulty(): Long
+    external fun getMiningHashRate(): Double
+    external fun getBlockTarget(): Long
+    external fun isMining(): Boolean
+
+    external fun startMining(
         address: String?,
         backgroundMining: Boolean,
         ignoreBattery: Boolean
-    ): Boolean = true
-    fun stopMining(): Boolean = true
-    fun resolveOpenAlias(address: String?, dnssec_valid: Boolean): String? = null
+    ): Boolean
+
+    external fun stopMining(): Boolean
+    external fun resolveOpenAlias(address: String?, dnssec_valid: Boolean): String?
     fun setProxy(address: String): Boolean {
         proxy = address
         return setProxyJ(address)
     }
-    private fun setProxyJ(address: String?): Boolean = true
+
+    private external fun setProxyJ(address: String?): Boolean
+
     inner class WalletInfo(wallet: File) : Comparable<WalletInfo> {
         private val path: File? = wallet.parentFile
         private val name: String = wallet.name
+
         override fun compareTo(other: WalletInfo): Int {
             return name.lowercase(Locale.getDefault())
                 .compareTo(other.name.lowercase(Locale.getDefault()))
         }
     }
+
     companion object {
         var LOGLEVEL_SILENT = -1
         var LOGLEVEL_WARN = 0
@@ -223,6 +267,7 @@ class WalletManager {
         var LOGLEVEL_DEBUG = 2
         var LOGLEVEL_TRACE = 3
         var LOGLEVEL_MAX = 4
+
         @get:Synchronized
         var instance: WalletManager? = null
             get() {
@@ -232,9 +277,11 @@ class WalletManager {
                 return field
             }
             private set
+
         init {
-            try { System.loadLibrary("anonero") } catch (e: Throwable) {}
+            System.loadLibrary("anonero")
         }
+
         fun addressPrefix(networkType: NetworkType): String {
             return when (networkType) {
                 NetworkType.NetworkType_Testnet -> "9A-"
@@ -242,22 +289,30 @@ class WalletManager {
                 NetworkType.NetworkType_Stagenet -> "5-"
             }
         }
+
         fun resetInstance() {
             instance = null
         }
+
         @JvmStatic
-        fun initLogger(argv0: String?, defaultLogBaseName: String?) {}
+        external fun initLogger(argv0: String?, defaultLogBaseName: String?)
+
         @JvmStatic
-        fun setLogLevel(level: Int) {}
+        external fun setLogLevel(level: Int)
+
         @JvmStatic
-        fun logDebug(category: String?, message: String?) {}
+        external fun logDebug(category: String?, message: String?)
+
         @JvmStatic
-        fun logInfo(category: String?, message: String?) {}
+        external fun logInfo(category: String?, message: String?)
+
         @JvmStatic
-        fun logWarning(category: String?, message: String?) {}
+        external fun logWarning(category: String?, message: String?)
+
         @JvmStatic
-        fun logError(category: String?, message: String?) {}
+        external fun logError(category: String?, message: String?)
+
         @JvmStatic
-        fun moneroVersion(): String? = "0.18.3.4-ui-mock"
+        external fun moneroVersion(): String?
     }
 }
