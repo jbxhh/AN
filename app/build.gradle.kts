@@ -8,11 +8,12 @@ android {
     namespace = "io.anonero"
     compileSdk = 35
     defaultConfig {
-        applicationId = "io.anonero"
+        // UI版独立包名，可与正式版(io.anonero.anon)共存安装
+        applicationId = "io.anonero.ui"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.0.2-ui"
+        versionCode = 6
+        versionName = "1.0.3-ui"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -63,15 +64,15 @@ android {
     flavorDimensions += "anon_mode"
     productFlavors {
         create("anon") {
-            applicationIdSuffix = ".anon"
-            resValue("string", "app_name", "ANON")
+            // 不再加 .anon，包名已是 io.anonero.ui
+            resValue("string", "app_name", "ANON UI")
             dimension = "anon_mode"
             buildConfigField("String", "FLAVOR", "\"anon\"")
             buildConfigField("boolean", "VIEW_ONLY", "false")
         }
         create("nero") {
             applicationIdSuffix = ".nero"
-            resValue("string", "app_name", "NERO")
+            resValue("string", "app_name", "NERO UI")
             dimension = "anon_mode"
             buildConfigField("String", "FLAVOR", "\"nero\"")
             buildConfigField("boolean", "VIEW_ONLY", "true")
