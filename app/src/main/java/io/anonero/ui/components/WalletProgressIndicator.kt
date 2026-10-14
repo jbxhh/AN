@@ -15,13 +15,10 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,7 +29,6 @@ import androidx.lifecycle.asLiveData
 import io.anonero.model.Wallet
 import io.anonero.services.WalletState
 import io.anonero.util.Formats
-import kotlinx.coroutines.delay
 import org.koin.java.KoinJavaComponent.inject
 import java.util.Locale
 
@@ -71,13 +67,6 @@ fun WalletProgressIndicator(modifier: Modifier = Modifier, refreshIndicatorProgr
     val isConnected = connectionStatus == Wallet.ConnectionStatus.ConnectionStatus_Connected
     val isNetworkConnected by networkConnected()
     val isSyncing = syncProgress != null && syncProgress!!.left > 0L
-
-    // UI-MOCK：顶部“连接/加载”条最多显示 3 秒，之后强制隐藏，不再一直转
-    var autoHide by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        delay(3000)
-        autoHide = true
-    }
 
         AnimatedVisibility(
         refreshIndicatorProgress != 0.0f || showIndefiniteLoading || isSyncing,
