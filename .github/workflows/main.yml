@@ -37,19 +37,19 @@ jobs:
         with:
           fetch-depth: 1
 
-      # Stop only obsolete native-only runs from before workflow consolidation.
-      # Keep all unified APK runs, especially the current full native/APK build.
-      - name: Cancel obsolete duplicate native-only runs
+      # Keep one current unified build. Cancel old native-only runs and older
+      # APK runs so the current run can use any cache they have already saved.
+      - name: Cancel stale duplicate build runs
         if: github.ref_name == 'main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" \
-            --jq '.workflow_runs[] | select(.name == "Native Monero Libs (Polyseed support)" and .head_branch == "main" and (.status == "in_progress" or .status == "queued" or .status == "pending")) | .id' \
+            --jq '.workflow_runs[] | select((.name == "Native Monero Libs (Polyseed support)" or .name == "Build ANON APK") and .head_branch == "main" and (.id | tostring) != env.GITHUB_RUN_ID and (.status == "in_progress" or .status == "queued" or .status == "pending")) | .id' \
             | while read -r id; do
                 [ -n "$id" ] || continue
-                echo "Cancelling obsolete native-only run $id"
+                echo "Cancelling stale duplicate run $id"
                 gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${id}/cancel" || true
               done
 
