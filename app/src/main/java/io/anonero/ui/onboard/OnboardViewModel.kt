@@ -170,6 +170,12 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
         if (payload.seed.size != 16 && payload.seed.size != 25) {
             throw CancellationException("Invalid recovery phrase length: ${payload.seed.size}")
         }
+        if (payload.restoreHeight != null && payload.restoreHeight < 0L) {
+            throw CancellationException("Restore height must be a non-negative integer")
+        }
+        if (payload.seed.size == 25 && payload.restoreHeight == null) {
+            throw CancellationException("Restore height required for 25 word seed")
+        }
 
         val context = AnonConfig.context?.applicationContext
             ?: throw IllegalStateException("Application context unavailable")
@@ -197,6 +203,7 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
 
         val candidateFile = File(stagingDir, "anon")
         var candidateWallet: Wallet? = null
+        var preserveStagingDir = false
         try {
             val restoredWallet = when (payload.seed.size) {
                 16 -> WalletManager.instance?.recoveryWalletPolyseed(
@@ -253,10 +260,17 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
                 }
             }
         } catch (e: Exception) {
-            candidateWallet?.let { runCatching { it.close() } }
+            val candidateClosed = candidateWallet?.let {
+                runCatching { it.close() }.getOrDefault(false)
+            } ?: true
+            if (!candidateClosed) {
+                // Never delete files while a native wallet may still have them open.
+                preserveStagingDir = true
+                Timber.tag(TAG).e("Unable to close temporary wallet after restore failure; preserving staging files")
+            }
             throw e
         } finally {
-            stagingDir.deleteRecursively()
+            if (!preserveStagingDir) stagingDir.deleteRecursively()
         }
     }
 
