@@ -59,7 +59,7 @@ jobs:
       - name: Compile wallet Kotlin/Java before native work
         run: |
           chmod +x ./gradlew
-          ./gradlew :app:compileAnonDebugKotlin :app:compileAnonDebugJavaWithJavac --no-daemon --stacktrace
+          ./gradlew :app:compileAnonDebugKotlin :app:compileAnonDebugJavaWithJavac :app:testAnonDebugUnitTest --no-daemon --stacktrace
 
   build:
     needs: source-check
@@ -273,11 +273,6 @@ jobs:
             echo "$abi: $count static archives verified"
           done
 
-
-      - name: Run ANON unit tests
-        run: |
-          chmod +x ./gradlew
-          ./gradlew :app:testAnonDebugUnitTest --no-daemon --stacktrace
 
       - name: Build APK
         run: ./gradlew :app:assembleAnonDebug --no-daemon --stacktrace
