@@ -217,6 +217,7 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                                 if (it is CoinsScreenRoute) showBottomNavigation = false
                                 bottomNavController.navigate(it)
                             },
+                            toastState = toastState,
                             sharedTransitionScope = this@SharedTransitionLayout,
                             animatedContentScope = this@composable
                         )
