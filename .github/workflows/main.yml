@@ -147,6 +147,22 @@ jobs:
           echo "valid=$valid" >> "$GITHUB_OUTPUT"
           echo "armv7 native cache valid: $valid"
 
+      - name: Validate restored JNI cache
+        id: validate-jni-cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          valid=false
+          if [[ "${{ steps.cache-jni.outputs.cache-hit }}" == "true" ]] &&
+             test -s external-libs/prebuilt/arm64-v8a/libanonero.so &&
+             test -s external-libs/prebuilt/arm64-v8a/libc++_shared.so &&
+             test -s external-libs/prebuilt/armeabi-v7a/libanonero.so &&
+             test -s external-libs/prebuilt/armeabi-v7a/libc++_shared.so; then
+            valid=true
+          fi
+          echo "valid=$valid" >> "$GITHUB_OUTPUT"
+          echo "JNI cache valid: $valid"
+
       # JNI changes should relink libanonero.so, not rebuild Monero's large
       # dependency graph. Its key still includes the exact native input versions.
       - name: Restore JNI library cache
@@ -220,7 +236,7 @@ jobs:
           echo "arm64-v8a static archives: $(find arm64-v8a -name '*.a' | wc -l)"
 
       - name: Save arm64 native library cache
-        if: steps.validate-arm64-cache.outputs.valid != 'true'
+        if: steps.cache-arm64.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: |
@@ -240,7 +256,7 @@ jobs:
           echo "armeabi-v7a static archives: $(find armeabi-v7a -name '*.a' | wc -l)"
 
       - name: Save armv7 native library cache
-        if: steps.validate-armv7-cache.outputs.valid != 'true'
+        if: steps.cache-armv7.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: |
@@ -250,7 +266,7 @@ jobs:
           key: anon-native-armv7-${{ env.NATIVE_CACHE_SCHEMA }}-${{ env.MONERO_COMMIT }}-${{ env.MONERO_PATCH_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
 
       - name: Build and cache JNI shared libraries
-        if: steps.cache-jni.outputs.cache-hit != 'true' || steps.validate-arm64-cache.outputs.valid != 'true' || steps.validate-armv7-cache.outputs.valid != 'true'
+        if: steps.validate-jni-cache.outputs.valid != 'true'
         env:
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
           ANDROID_HOME: /usr/local/lib/android/sdk
@@ -288,7 +304,7 @@ jobs:
           done
 
       - name: Save JNI library cache
-        if: steps.cache-jni.outputs.cache-hit != 'true' || steps.validate-arm64-cache.outputs.valid != 'true' || steps.validate-armv7-cache.outputs.valid != 'true'
+        if: steps.cache-jni.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: external-libs/prebuilt
