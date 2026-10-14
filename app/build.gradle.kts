@@ -27,11 +27,8 @@ android {
         packaging {
             jniLibs.useLegacyPackaging = true
         }
-        if (nativeLibsReady) {
-            ndk {
-                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
-            }
-        }
+        // ABI selection is controlled by android.splits.abi below; do not also
+        // set ndk.abiFilters because AGP treats those two filters as conflicting.
     }
     sourceSets {
         getByName("main") {
