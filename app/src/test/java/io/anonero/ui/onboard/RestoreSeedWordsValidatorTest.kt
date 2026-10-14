@@ -19,6 +19,15 @@ class RestoreSeedWordsValidatorTest {
     }
 
     @Test
+    fun normalizesUppercaseWordsBeforeValidation() {
+        val phrase = List(16) { "ABANDON" }.joinToString(" ")
+        val result = validateRestoreSeedWords(phrase, polyseedWords, moneroWords)
+
+        assertFalse(result.invalid)
+        assertEquals(List(16) { "abandon" }, result.words)
+    }
+
+    @Test
     fun validates25WordPhraseAgainstMoneroVocabulary() {
         val phrase = List(25) { "abbey" }.joinToString(" ")
         val result = validateRestoreSeedWords(phrase, polyseedWords, moneroWords)
