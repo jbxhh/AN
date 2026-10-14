@@ -1,16 +1,28 @@
 /*
- * UI-MOCK 版本：所有原 native(external) 方法改为 Kotlin 假实现，
- * 不依赖 libanonero.so / Monero 静态库，仅用于 UI/UX 走查（全页面可点通）。
+ * Copyright (c) 2017 m2049r
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package io.anonero.model
-import io.anonero.AnonConfig
+
 import timber.log.Timber
 import java.io.File
-import java.math.BigDecimal
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
 private const val TAG = "Wallet"
+
 class Wallet {
     var isSynchronized = false
     var isInitialized = false
@@ -19,7 +31,6 @@ class Wallet {
     private var listenerHandle: Long = 0
     private var pendingTransaction: PendingTransaction? = null
     private var unsignedTransaction: UnsignedTransaction? = null
-    private var mockPath: String? = null
     var history: TransactionHistory? = null
         get() {
             if (field == null) {
@@ -34,33 +45,41 @@ class Wallet {
             }
             return field
         }
+
     internal constructor(handle: Long) {
         this.handle = handle
     }
+
     fun getPendingTx(): PendingTransaction? {
         return pendingTransaction
     }
+
     fun getUnsginedTx(): UnsignedTransaction? {
         return unsignedTransaction
     }
+
     internal constructor(handle: Long, accountIndex: Int) {
         this.handle = handle
         this.accountIndex = accountIndex
     }
+
     fun getAccountIndex(): Int {
         return accountIndex
     }
+
     fun setAccountIndex(accountIndex: Int) {
         this.accountIndex = accountIndex
         history?.setAccountFor(this)
     }
+
     val name: String
         get() = getPath()?.let { File(it).name }.toString()
-    // ===== UI-MOCK =====
-    fun getSeed(offset: String?): String? = MOCK_SEED
-    fun getLegacySeed(offset: String?): String? = MOCK_SEED
-    fun isPolyseedSupported(offset: String?): Boolean = true
-    fun getSeedLanguage(): String? = "English"
+
+    external fun getSeed(offset: String?): String?
+    external fun getLegacySeed(offset: String?): String?
+    external fun isPolyseedSupported(offset: String?): Boolean
+    external fun getSeedLanguage(): String?
+
     val status: Status
         get() = statusWithErrorString()
     val fullStatus: Status
@@ -69,27 +88,27 @@ class Wallet {
             walletStatus.connectionStatus = connectionStatus
             return walletStatus
         }
-    private fun statusWithErrorString(): Status =
-        if (MOCK_MODE == 1) Status(1, "模拟：钱包打开失败") else Status(0, "")
+
+    private external fun statusWithErrorString(): Status
+
     @Synchronized
-    fun setPassword(password: String?): Boolean = true
+    external fun setPassword(password: String?): Boolean
     val address: String
         get() = getAddress(accountIndex)
+
     fun getAddress(accountIndex: Int): String {
         return getAddressJ(accountIndex, 0)
     }
+
     private fun getSubaddress(addressIndex: Int): String {
         return getAddressJ(accountIndex, addressIndex)
     }
+
     fun getSubaddress(accountIndex: Int, addressIndex: Int): String {
         return getAddressJ(accountIndex, addressIndex)
     }
-    private fun getAddressJ(accountIndex: Int, addressIndex: Int): String {
-        // UI-MOCK：每个子地址给不同字符串，保证列表不重复
-        if (addressIndex == 0) return MOCK_ADDRESS
-        val suffix = addressIndex.toString(36).padStart(4, '0')
-        return MOCK_ADDRESS.substring(0, MOCK_ADDRESS.length - suffix.length) + suffix
-    }
+
+    private external fun getAddressJ(accountIndex: Int, addressIndex: Int): String
     private fun getSubaddressObject(accountIndex: Int, subAddressIndex: Int): Subaddress {
         return Subaddress(
             accountIndex,
@@ -98,6 +117,7 @@ class Wallet {
             getSubaddressLabel(0, subAddressIndex)
         )
     }
+
     fun getSubaddressObject(subAddressIndex: Int): Subaddress {
         val subaddress = getSubaddressObject(accountIndex, subAddressIndex)
         var amount: Long = 0
@@ -108,46 +128,34 @@ class Wallet {
                 }
             }
         }
+
         subaddress.amount = amount
         return subaddress
     }
-    fun getPath(): String? = mockPath ?: MOCK_FILENAME
+
+    external fun getPath(): String?
     val networkType: NetworkType?
         get() = NetworkType.fromInteger(nettype())
-    fun nettype(): Int = 0
-    fun getIntegratedAddress(paymentId: String?): String? = MOCK_ADDRESS
-    fun getSecretViewKey(): String =
-        "d5e0853964b50af03b971722f244f58d669cbee3772a077021721a278f64f7fd"
-    fun getSecretSpendKey(): String =
-        "633dbdde131ca3766e4d58e72e310275dff6c15c0c8e9df469611a11f5125227"
+
+    external fun nettype(): Int
+
+    external fun getIntegratedAddress(paymentId: String?): String?
+    external fun getSecretViewKey(): String
+    external fun getSecretSpendKey(): String
+
     fun store(): Boolean {
         return store("")
     }
+
     @Synchronized
-    fun store(path: String?): Boolean {
-        // UI-MOCK: 落一个空文件，让重启后“钱包存在”，流程能继续
-        try {
-            if (!path.isNullOrBlank()) {
-                mockPath = path
-                val f = File(path)
-                f.parentFile?.mkdirs()
-                if (!f.exists()) f.createNewFile()
-            } else {
-                AnonConfig.context?.let {
-                    val f = AnonConfig.getDefaultWalletFile(it)
-                    f.parentFile?.mkdirs()
-                    if (!f.exists()) f.createNewFile()
-                    mockPath = f.absolutePath
-                }
-            }
-        } catch (_: Throwable) {}
-        return true
-    }
+    external fun store(path: String?): Boolean
     fun close(): Boolean {
         disposePendingTransaction()
         return WalletManager.instance?.close(this) == true
     }
-    fun getFilename(): String = MOCK_FILENAME
+
+    external fun getFilename(): String
+
     fun init(upperTransactionSizeLimit: Long): Boolean {
         var daemonAddress = WalletManager.instance?.getDaemonAddress()
         var daemonUsername = WalletManager.instance?.daemonUsername
@@ -181,6 +189,7 @@ class Wallet {
             proxyAddress = ""
         }
         Timber.tag(TAG).i("${message}\n);")
+
         isInitialized = initJ(
             daemonAddress, upperTransactionSizeLimit,
             daemonUsername, daemonPassword,
@@ -188,49 +197,67 @@ class Wallet {
         )
         return isInitialized
     }
-    private fun initJ(
+
+    private external fun initJ(
         daemonAddress: String, upperTransactionSizeLimit: Long,
         daemonUsername: String, daemonPassword: String, proxyAddress: String
-    ): Boolean = true
-    fun getRestoreHeight(): Long = 0L
-    fun setRestoreHeight(height: Long) {}
+    ): Boolean
+
+    external fun getRestoreHeight(): Long
+    external fun setRestoreHeight(height: Long)
+
     private val connectionStatus: ConnectionStatus
         get() {
             val s = getConnectionStatusJ()
             return ConnectionStatus.values()[s]
         }
-    private fun getConnectionStatusJ(): Int = if (MOCK_MODE == 2) 0 else 1
-    fun setTrustedDaemon(trusted: Boolean): Boolean = true
+
+    private external fun getConnectionStatusJ(): Int
+
+    external fun setTrustedDaemon(trusted: Boolean): Boolean
+
     fun setProxy(address: String?): Boolean {
         return setProxyJ(address)
     }
-    private fun setProxyJ(address: String?): Boolean = true
+
+    private external fun setProxyJ(address: String?): Boolean
     val balance: Long
         get() = getBalance(accountIndex)
-    private fun getBalance(accountIndex: Int): Long = 12_345_600_000_000L // 12.3456 XMR
-    fun viewOnlyBalance(): Long = 12_345_600_000_000L
-    fun getBalanceAll(): Long = 12_345_600_000_000L
+
+    private external fun getBalance(accountIndex: Int): Long
+
+    external fun viewOnlyBalance(): Long
+
+    external fun getBalanceAll(): Long
+
     val unlockedBalance: Long
         get() = getUnlockedBalance(accountIndex)
-    fun getUnlockedBalanceAll(): Long = 11_000_000_000_000L
-    fun getUnlockedBalance(accountIndex: Int): Long = 11_000_000_000_000L
-    fun isWatchOnly(): Boolean = false
-    fun getBlockChainHeight(): Long = if (MOCK_MODE == 3) 1_700_000L else 3_400_000L
-    fun getApproximateBlockChainHeight(): Long = 3_400_000L
-    fun getDaemonBlockChainHeight(): Long = 3_400_000L
-    fun getDaemonBlockChainTargetHeight(): Long = 3_400_000L
+
+    external fun getUnlockedBalanceAll(): Long
+
+    external fun getUnlockedBalance(accountIndex: Int): Long
+    external fun isWatchOnly(): Boolean
+
+    external fun getBlockChainHeight(): Long
+    external fun getApproximateBlockChainHeight(): Long
+
+    external fun getDaemonBlockChainHeight(): Long
+    external fun getDaemonBlockChainTargetHeight(): Long
+
     fun setSynchronized() {
         isSynchronized = true
     }
-    fun startRefresh() {}
-    fun pauseRefresh() {}
-    fun refresh(): Boolean = true
-    fun refreshAsync() {}
-    private fun rescanBlockchainAsyncJ() {}
+
+    external fun startRefresh()
+    external fun pauseRefresh()
+    external fun refresh(): Boolean
+    external fun refreshAsync()
+    private external fun rescanBlockchainAsyncJ()
     fun rescanBlockchainAsync() {
         isSynchronized = false
         rescanBlockchainAsyncJ()
     }
+
     private fun disposePendingTransaction() {
         if (pendingTransaction != null) {
             disposeTransaction(pendingTransaction)
@@ -238,6 +265,7 @@ class Wallet {
             unsignedTransaction = null
         }
     }
+
     fun createSweepTransaction(
         dstAddr: String,
         priority: PendingTransaction.Priority,
@@ -250,12 +278,15 @@ class Wallet {
         unsignedTransaction = null
         return pendingTransaction
     }
-    fun createTransactionJ(
+
+    external fun createTransactionJ(
         dstAddr: String, paymentId: String,
         amount: Long, mixinCount: Int,
         priority: Int, accountIndex: Int, keyImages: ArrayList<String>
-    ): Long = 1L
-    fun signAndExportJ(inputFile: String?, outputFile: String?): String? = ""
+    ): Long
+
+    external fun signAndExportJ(inputFile: String?, outputFile: String?): String?
+
     @Throws(Exception::class)
     fun createTransaction(
         dst_addr: String?,
@@ -283,72 +314,99 @@ class Wallet {
     	unsignedTransaction = null
     	return pendingTransaction!!
     }
+
     fun send(pendingTransaction: PendingTransaction): Boolean {
         return pendingTransaction.commit("", overwrite = true)
     }
+
     @Throws(java.lang.Exception::class)
     fun getUtxos(): List<CoinsInfo> {
         return coins?.all ?: listOf()
     }
+
     @Throws(java.lang.Exception::class)
     private fun checkSelectedAmounts(selectedUtxos: List<String>, amount: Long, sendAll: Boolean) {
-        // UI-MOCK：跳过余额校验，普通转账也能走到成功页
+        if (!sendAll) {
+            var amountSelected: Long = 0
+            for (coinsInfo in getUtxos()) {
+                if (selectedUtxos.contains(coinsInfo.key)) {
+                    amountSelected += coinsInfo.amount
+                }
+            }
+            if (amountSelected <= amount) {
+                Timber.tag("Wallet").e("insufficient wallet balance- Available/Selected: $amountSelected, amount: $amount")
+                throw java.lang.Exception("insufficient wallet balance")
+            }
+        }
     }
-    private fun createSweepTransaction(
+    private external fun createSweepTransaction(
         dstAddr: String, paymentId: String,
         mixinCount: Int,
         priority: Int, accountIndex: Int, keyImages: ArrayList<String>
-    ): Long = 1L
+    ): Long
+
     fun createSweepUnmixableTransaction(): PendingTransaction? {
         disposePendingTransaction()
         val txHandle = createSweepUnmixableTransactionJ()
         pendingTransaction = PendingTransaction(txHandle)
         return pendingTransaction
     }
-    private fun createSweepUnmixableTransactionJ(): Long = 1L
-    private fun disposeTransaction(pendingTransaction: PendingTransaction?) {}
-    private fun getHistoryJ(): Long = 1L
-    private fun getCoinsJ(): Long = 1L
-    fun exportOutputs(filename: String?, all: Boolean): Boolean = true
-    fun importOutputs(filename: String?): String? = ""
-    fun exportKeyImages(filename: String?, all: Boolean): Boolean = true
-    fun hasUnknownKeyImages(): Boolean = false
-    fun importKeyImages(filename: String?): Boolean = true
+
+    private external fun createSweepUnmixableTransactionJ(): Long
+    private external fun disposeTransaction(pendingTransaction: PendingTransaction?)
+    private external fun getHistoryJ(): Long
+    private external fun getCoinsJ(): Long
+
+    external fun exportOutputs(filename: String?, all: Boolean): Boolean
+    external fun importOutputs(filename: String?): String?
+    external fun exportKeyImages(filename: String?, all: Boolean): Boolean
+    external fun hasUnknownKeyImages(): Boolean
+    external fun importKeyImages(filename: String?): Boolean
     fun loadUnsignedTransaction(inputFile: String?): UnsignedTransaction {
         val unsignedTx: Long = loadUnsignedTx(inputFile)
         unsignedTransaction = UnsignedTransaction(unsignedTx)
         pendingTransaction = null
         return unsignedTransaction!!
     }
-    fun submitTransaction(filename: String?): String? = null
-    private fun loadUnsignedTx(inputFile: String?): Long = 1L
+
+    external fun submitTransaction(filename: String?): String?
+
+    private external fun loadUnsignedTx(inputFile: String?): Long
+
     fun refreshHistory() {
         history?.refreshWithNotes(this)
     }
-    fun stopBackgroundSync(password: String?): Boolean = true
-    fun startBackgroundSync(): Boolean = true
+
+    external fun stopBackgroundSync(password: String?): Boolean
+
+    external fun startBackgroundSync(): Boolean
+
     fun refreshCoins() {
         if (isSynchronized) {
             Timber.tag("Wallet").d("Coin Refreshed: %s", coins?.getCount())
             coins?.refresh()
         }
     }
-    private fun setListenerJ(listener: WalletListener?): Long = 1L
+
+    private external fun setListenerJ(listener: WalletListener?): Long
     fun setListener(listener: WalletListener?) {
         listenerHandle = setListenerJ(listener)
     }
-    fun getDefaultMixin(): Int = 15
-    fun setDefaultMixin(mixin: Int) {}
-    fun setUserNote(txid: String?, note: String?): Boolean = true
-    fun getUserNote(txid: String?): String? = null
-    fun getTxKey(txid: String?): String? = null
+
+    external fun getDefaultMixin(): Int
+    external fun setDefaultMixin(mixin: Int)
+    external fun setUserNote(txid: String?, note: String?): Boolean
+    external fun getUserNote(txid: String?): String?
+    external fun getTxKey(txid: String?): String?
+
     @JvmOverloads
-    fun addAccount(label: String? = NEW_ACCOUNT_NAME) {}
+    external fun addAccount(label: String? = NEW_ACCOUNT_NAME)
     var accountLabel: String?
         get() = getAccountLabel(accountIndex)
         set(label) {
             setAccountLabel(accountIndex, label)
         }
+
     private fun getAccountLabel(accountIndex: Int): String {
         var label = getSubaddressLabel(accountIndex, 0)
         if (label == NEW_ACCOUNT_NAME) {
@@ -359,28 +417,28 @@ class Wallet {
         }
         return label
     }
+
     fun getSubaddressLabel(addressIndex: Int): String {
         return getSubaddressLabel(accountIndex, addressIndex)
     }
-    private fun getSubaddressLabel(accountIndex: Int, addressIndex: Int): String =
-        mockSubLabels[addressIndex] ?: NEW_ACCOUNT_NAME
+
+    private external fun getSubaddressLabel(accountIndex: Int, addressIndex: Int): String
     private fun setAccountLabel(accountIndex: Int, label: String?) {
         setSubaddressLabel(accountIndex, 0, label)
     }
+
     fun setSubaddressLabel(addressIndex: Int, label: String?) {
         setSubaddressLabel(accountIndex, addressIndex, label)
         refreshHistory()
     }
-    private fun setSubaddressLabel(accountIndex: Int, addressIndex: Int, label: String?) {
-        if (label != null) mockSubLabels[addressIndex] = label
-    }
-    fun getNumAccounts(): Int = 1
+
+    private external fun setSubaddressLabel(accountIndex: Int, addressIndex: Int, label: String?)
+    external fun getNumAccounts(): Int
     val numSubAddresses: Int
         get() = getNumSubaddresses(accountIndex)
-    // UI-MOCK：内存里维护子地址数量和标签，点“添加”真的会多一条
-    private var mockSubCount = 1
-    private val mockSubLabels = HashMap<Int, String>()
-    private fun getNumSubaddresses(accountIndex: Int): Int = mockSubCount
+
+    private external fun getNumSubaddresses(accountIndex: Int): Int
+
     private fun getNewSubaddress(accountIndex: Int): String {
         val timeStamp = SimpleDateFormat("yyyy-MM-dd-HH:mm:ss", Locale.US).format(Date())
         addSubaddress(accountIndex, timeStamp)
@@ -388,19 +446,20 @@ class Wallet {
         Timber.tag("Wallet").i("${getNumSubaddresses(accountIndex) - 1} : ${subaddress}")
         return subaddress
     }
-    fun addSubaddress(accountIndex: Int, label: String?) {
-        mockSubLabels[mockSubCount] = label ?: "Subaddress$mockSubCount"
-        mockSubCount++
-    }
+
+    external fun addSubaddress(accountIndex: Int, label: String?)
     private fun getLastSubaddress(accountIndex: Int): String {
         return getSubaddress(accountIndex, getNumSubaddresses(accountIndex) - 1)
     }
+
     val deviceType: Device
         get() {
             val device = getDeviceTypeJ()
             return Device.values()[device + 1]
         }
-    private fun getDeviceTypeJ(): Int = 0
+
+    private external fun getDeviceTypeJ(): Int
+
     fun validateAddress(addressField: String): Boolean {
         return WalletManager.instance?.networkType?.value?.let {
             isAddressValid(
@@ -409,63 +468,66 @@ class Wallet {
             )
         } == true
     }
+
     enum class Device(val accountLookahead: Int, val subaddressLookahead: Int) {
         Device_Undefined(0, 0), Device_Software(50, 200), Device_Ledger(5, 20)
     }
+
     enum class StatusEnum {
         Status_Ok, Status_Error, Status_Critical
     }
+
     enum class ConnectionStatus {
         ConnectionStatus_Disconnected, ConnectionStatus_Connected, ConnectionStatus_WrongVersion
     }
+
     class Status internal constructor(status: Int, val errorString: String) {
         val status: StatusEnum
         var connectionStatus: ConnectionStatus? = null
+
         init {
             this.status = StatusEnum.entries.toTypedArray()[status]
         }
+
         val isOk: Boolean
             get() = (status == StatusEnum.Status_Ok
                     && (connectionStatus == null || connectionStatus == ConnectionStatus.ConnectionStatus_Connected))
+
         override fun toString(): String {
             return "Wallet.Status: $status/$errorString/$connectionStatus"
         }
     }
+
     companion object {
         const val SWEEP_ALL = Long.MAX_VALUE
-        private const val NEW_ACCOUNT_NAME = ""
-        // ===== UI-MOCK 假数据 =====
-        private const val MOCK_FILENAME = "mock_wallet"
-        private const val MOCK_ADDRESS =
-            "4h82pJGF9p7kpzb6eU326EFZf2cDnimbTFVeJtx1qtBmUNJAEqN76R7PwPfHt3oWb8R6cKvhgyxQdDn53jFrK6wFx7RJWhv"
-        private const val MOCK_SEED =
-            "abbey ability abiding abort absorb abstract absurd abuse access accident account accuse achieve acid acoustic acquire across act action actor actress adapt adept adjust admire"
-        // 测试场景开关：0 全成功 / 1 钱包错误 / 2 节点断开 / 3 同步中 / 4 发送失败
-        @JvmField var MOCK_MODE = 0
+        private const val NEW_ACCOUNT_NAME = "Untitled account"
+
         init {
-            try { System.loadLibrary("anonero") } catch (e: Throwable) {}
+            System.loadLibrary("anonero")
         }
+
         @JvmStatic
-        fun getDisplayAmount(amount: Long): String =
-            BigDecimal(amount).movePointLeft(12).stripTrailingZeros().toPlainString()
+        external fun getDisplayAmount(amount: Long): String
+
         @JvmStatic
-        fun getAmountFromString(amount: String?): Long =
-            if (amount.isNullOrBlank()) 0L else BigDecimal(amount).movePointRight(12).toLong()
+        external fun getAmountFromString(amount: String?): Long
+
         @JvmStatic
-        fun getAmountFromDouble(amount: Double): Long =
-            BigDecimal.valueOf(amount).movePointRight(12).toLong()
+        external fun getAmountFromDouble(amount: Double): Long
+
         @JvmStatic
-        fun generatePaymentId(): String =
-            "0000000000000000000000000000000000000000000000000000000000000000"
+        external fun generatePaymentId(): String
+
         @JvmStatic
-        fun isPaymentIdValid(payment_id: String?): Boolean =
-            payment_id != null && payment_id.matches(Regex("^[0-9a-fA-F]{16,64}$"))
+        external fun isPaymentIdValid(payment_id: String): Boolean
+
         @JvmStatic
-        fun isAddressValid(address: String?, networkType: Int): Boolean =
-            !address.isNullOrBlank()
+        external fun isAddressValid(address: String?, networkType: Int): Boolean
+
         @JvmStatic
-        fun getPaymentIdFromAddress(address: String?, networkType: Int): String? = null
+        external fun getPaymentIdFromAddress(address: String?, networkType: Int): String?
+
         @JvmStatic
-        fun getMaximumAllowedAmount(): Long = Long.MAX_VALUE
+        external fun getMaximumAllowedAmount(): Long
     }
 }
