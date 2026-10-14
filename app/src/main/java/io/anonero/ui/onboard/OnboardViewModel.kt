@@ -18,6 +18,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.io.File
+import java.io.IOException
 
 
 enum class Mode {
@@ -133,57 +135,93 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
     }
 
     suspend fun restoreFromSeed(pin: String) {
-        if (restorePayload == null) return
+        val payload = restorePayload ?: return
+        if (payload.seed.size != 16 && payload.seed.size != 25) {
+            throw CancellationException("Invalid recovery phrase length: ${payload.seed.size}")
+        }
 
-        val context = AnonConfig.context!!.applicationContext
-        val walletFile = AnonConfig.getDefaultWalletFile(context)
-        AnonConfig.getDefaultWalletDir(context).deleteRecursively()
-        AnonConfig.getDefaultWalletDir(context).mkdirs()
-        delay(100)
-                // UI-MOCK：不是 25/16 词也走恢复，假钱包直接返回句柄，不再因 invalid seed length 闪退
-        val anonWallet = when (restorePayload!!.seed.size) {
-            16 -> WalletManager.instance?.recoveryWalletPolyseed(
-                walletFile,
-                pin,
-                restorePayload!!.seed.joinToString(" "),
-                passPhrase,
-            )
-            else -> WalletManager.instance?.recoveryWallet(
-                walletFile,
-                pin,
-                restorePayload!!.seed.joinToString(" ").ifBlank { "abandon" },
-                passPhrase,
-                restorePayload!!.restoreHeight ?: 0
-            )
+        val context = AnonConfig.context?.applicationContext
+            ?: throw IllegalStateException("Application context unavailable")
+        val activeWallet = WalletManager.instance?.wallet
+        if (activeWallet != null) {
+            throw CancellationException("Close the current wallet before restoring another wallet")
         }
-        if (anonWallet == null) {
-            throw Exception("unable to create wallet from seed, invalid seed length ${restorePayload!!.seed.size}")
-        }
-        delay(1000)
-        restorePayload?.restoreHeight?.let {
-            anonWallet?.setRestoreHeight(it)
-        }
-        anonWallet?.store()
-        anonWallet?.store(walletFile.path)
-        delay(100)
-        if (anonWallet?.status?.isOk != true) {
-            walletFile.delete()
-            throw CancellationException("unable to create wallet ${anonWallet?.status?.errorString}")
-        }
-        val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
-        prefs.edit(commit = true) {
-            putString(PREFS_PASSPHRASE_HASH, crazyPass)
-            restorePayload?.restoreHeight?.let {
-                putLong(RESTORE_HEIGHT, it)
+
+        val walletDir = File(context.filesDir, "wallets")
+        val stagingDir = File(context.filesDir, "wallets.restore-staging")
+        val previousDir = File(context.filesDir, "wallets.restore-backup")
+
+        // Recover a previous transaction if the process was interrupted between
+        // renaming the old and newly restored wallet directories.
+        if (!walletDir.exists() && previousDir.exists()) {
+            if (!previousDir.renameTo(walletDir)) {
+                throw IOException("Unable to recover the existing wallet directory")
             }
         }
-        try {
-            anonWallet.close()
-        } catch (e: Exception) {
-            Timber.tag(TAG).w(e, "Unable to close wallet")
+
+        stagingDir.deleteRecursively()
+        if (!stagingDir.mkdirs() && !stagingDir.isDirectory) {
+            throw IOException("Unable to create a temporary wallet directory")
         }
 
-        delay(500)
+        val candidateFile = File(stagingDir, "anon")
+        var candidateWallet: Wallet? = null
+        try {
+            candidateWallet = when (payload.seed.size) {
+                16 -> WalletManager.instance?.recoveryWalletPolyseed(
+                    candidateFile,
+                    pin,
+                    payload.seed.joinToString(" "),
+                    passPhrase
+                )
+                25 -> WalletManager.instance?.recoveryWallet(
+                    candidateFile,
+                    pin,
+                    payload.seed.joinToString(" "),
+                    passPhrase,
+                    payload.restoreHeight ?: 0L
+                )
+                else -> null
+            } ?: throw CancellationException("Unable to create wallet from recovery phrase")
+
+            payload.restoreHeight?.let { candidateWallet.setRestoreHeight(it) }
+            if (!candidateWallet.store() || !candidateWallet.store(candidateFile.path)) {
+                throw CancellationException("Unable to save the restored wallet")
+            }
+            val status = candidateWallet.status
+            if (!status.isOk) {
+                throw CancellationException("Unable to restore wallet: ${status.errorString}")
+            }
+            if (!candidateWallet.close()) {
+                candidateWallet = null
+                throw CancellationException("Unable to close the temporary restored wallet")
+            }
+            candidateWallet = null
+
+            // Only replace the current wallet after the candidate has recovered,
+            // passed native wallet status checks, been saved and closed.
+            previousDir.deleteRecursively()
+            val hadPreviousWallet = walletDir.exists()
+            if (hadPreviousWallet && !walletDir.renameTo(previousDir)) {
+                throw IOException("Unable to preserve the existing wallet before restore")
+            }
+            if (!stagingDir.renameTo(walletDir)) {
+                if (hadPreviousWallet && previousDir.exists()) previousDir.renameTo(walletDir)
+                throw IOException("Unable to install the restored wallet")
+            }
+            previousDir.deleteRecursively()
+
+            val crazyPass = KeyStoreHelper.getCrazyPass(context, passPhrase)
+            prefs.edit(commit = true) {
+                putString(PREFS_PASSPHRASE_HASH, crazyPass)
+                payload.restoreHeight?.let { putLong(RESTORE_HEIGHT, it) }
+            }
+        } catch (e: Exception) {
+            candidateWallet?.let { runCatching { it.close() } }
+            throw e
+        } finally {
+            stagingDir.deleteRecursively()
+        }
     }
 
 }
