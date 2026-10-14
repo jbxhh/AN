@@ -193,7 +193,6 @@ class AnonWalletHandler(
             }
             walletManager?.setDaemon(node)
             wallet?.setTrustedDaemon(true)
-            walletState.setLoading(false)
         } catch (e: Exception) {
             walletState.updateDaemon(
                 DaemonInfo(
@@ -202,7 +201,9 @@ class AnonWalletHandler(
                     daemonHeight = 0L
                 )
             )
-            e.printStackTrace()
+            Timber.tag(TAG).e(e, "Unable to change daemon")
+        } finally {
+            walletState.setLoading(false)
         }
 
     }
