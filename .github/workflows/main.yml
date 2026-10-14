@@ -30,8 +30,9 @@ name: Build ANON APK
 env:
   JAVA_VERSION: '17'
 concurrency:
+  # Do not discard a valid APK build when another commit arrives.
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
