@@ -45,7 +45,7 @@ class AnonWalletHandler(
             torService.socksFlow.collect {
                 val wallet = WalletManager.instance?.wallet
                 if (prefs.getBoolean(WALLET_USE_TOR, false) && wallet?.isInitialized == true) {
-                    setProxy(it.address.toString(), it.port.value)
+                    setProxy(it.address.value, it.port.value)
                 }
             }
         }
@@ -75,18 +75,26 @@ class AnonWalletHandler(
             val proxyPort = prefs.getInt(WALLET_PROXY_PORT, -1)
             val useTor = prefs.getBoolean(WALLET_USE_TOR, true)
 
-            // —— 真实 Tor/代理流程，最多等 10 秒，等不到就继续往下走 ——
-            withTimeoutOrNull(10_000L) {
-                if (useTor || proxyHost.isNullOrBlank()) {
+            // Configure the selected transport without silently falling back to Tor.
+            if (useTor) {
+                val socks = withTimeoutOrNull(10_000L) {
                     torService.start()
                     while (torService.socks == null) {
                         delay(200)
                     }
-                    val socket = torService.socks
-                    WalletManager.instance?.setProxy("${socket?.value}")
-                } else if (proxyHost.isNotEmpty() && proxyPort != -1) {
-                    WalletManager.instance?.setProxy("${proxyHost}:$proxyPort")
+                    torService.socks
                 }
+                if (socks != null) {
+                    WalletManager.instance?.setProxy("${socks.address.value}:${socks.port.value}")
+                } else {
+                    Timber.tag(TAG).w("Tor SOCKS endpoint was not available before timeout")
+                    WalletManager.instance?.setProxy("")
+                }
+            } else if (!proxyHost.isNullOrBlank() && proxyPort in 1..65535) {
+                WalletManager.instance?.setProxy("${proxyHost}:$proxyPort")
+            } else {
+                // A disabled Tor setting with no manual proxy means direct connection.
+                WalletManager.instance?.setProxy("")
             }
 
             // —— 真实节点配置 ——
@@ -207,6 +215,9 @@ class AnonWalletHandler(
                 remove(WALLET_PROXY)
                 remove(WALLET_PROXY_PORT)
             }
+            // Clearing preferences alone left the native wallet using the old proxy.
+            WalletManager.instance?.setProxy("")
+            WalletManager.instance?.wallet?.setProxy("")
         } else {
             prefs.edit {
                 putString(WALLET_PROXY, proxy)
