@@ -5,10 +5,6 @@ import io.anonero.model.Wallet
 
 fun Wallet.getLastUnusedIndex(): Int {
     var lastUsedSubaddress = 0
-    val subaddress = arrayListOf<Subaddress>()
-    for (i in 0 until this.numSubAddresses) {
-        subaddress.add(this.getSubaddressObject(i))
-    }
     for (info in this.history?.all ?: listOf()) {
         if (info.addressIndex > lastUsedSubaddress) lastUsedSubaddress = info.addressIndex
     }
@@ -17,15 +13,26 @@ fun Wallet.getLastUnusedIndex(): Int {
 
 
 fun Wallet.getLatestSubAddress(): Subaddress {
-    val lastUsedSubAddress = getLastUnusedIndex()
-    //get the next address
-    val address = this.getSubaddressObject(lastUsedSubAddress + 1)
-    //if label is empty add new subaddress
-    if (address.label.isEmpty()) {
-        this.addSubaddress(getAccountIndex(), "Subaddress${address.addressIndex}")
-        this.store()
+    val accountIndex = getAccountIndex()
+    val nextIndex = (getLastUnusedIndex() + 1).coerceAtLeast(1)
+    var changed = false
+
+    // A wallet can have fewer subaddresses than the first unused index requested.
+    // Create missing entries before asking native code for the address at that index.
+    while (numSubAddresses <= nextIndex) {
+        val indexToCreate = numSubAddresses
+        addSubaddress(accountIndex, "Subaddress$indexToCreate")
+        changed = true
     }
-    return address
+
+    if (getSubaddressLabel(nextIndex).isEmpty()) {
+        setSubaddressLabel(nextIndex, "Subaddress$nextIndex")
+        changed = true
+    }
+    if (changed) store()
+
+    // Fetch after creation/label changes so callers receive the real latest address.
+    return getSubaddressObject(accountIndex, nextIndex)
 }
 
 
