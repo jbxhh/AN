@@ -109,9 +109,19 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
     }
 
     private fun tryRestartConnection() {
-        wallet.init(0)
-        wallet.startRefresh()
-        walletState.update()
+        try {
+            if (wallet.init(0)) {
+                wallet.startRefresh()
+            } else {
+                Timber.tag(name).w("Wallet initialization failed; refresh was not started")
+            }
+        } catch (e: Exception) {
+            Timber.tag(name).e(e, "Unable to restart wallet connection")
+        } finally {
+            // A failed reconnect must not leave the loading indicator stuck indefinitely.
+            walletState.setLoading(false)
+            walletState.update()
+        }
     }
 
     private fun refresh(walletSynced: Boolean) {
