@@ -287,11 +287,57 @@ std::set<std::string> java2cpp_set(JNIEnv *env, jobject arrayList) {
 std::pair<std::string, uint64_t> extract_pair(JNIEnv *env, jobject p) {
     jfieldID first = env->GetFieldID(class_Pair, "first", "Ljava/lang/Object;");
     jfieldID second = env->GetFieldID(class_Pair, "second", "Ljava/lang/Object;");
-    jstring string = static_cast<jstring>(env->GetObjectField(p, first));
-    std::string converted_string = env->GetStringUTFChars(string, nullptr);
-    uint64_t value = reinterpret_cast<uint64_t>(env->GetObjectField(p, second));
-    auto pair = std::make_pair(converted_string, value);
-    return pair;
+    if (first == nullptr || second == nullptr) {
+        return {};
+    }
+
+    jobject stringObject = env->GetObjectField(p, first);
+    jobject valueObject = env->GetObjectField(p, second);
+    if (stringObject == nullptr || valueObject == nullptr) {
+        if (stringObject != nullptr) env->DeleteLocalRef(stringObject);
+        if (valueObject != nullptr) env->DeleteLocalRef(valueObject);
+        jclass exceptionClass = env->FindClass("java/lang/IllegalArgumentException");
+        if (exceptionClass != nullptr) {
+            env->ThrowNew(exceptionClass, "Transaction destination and amount must not be null");
+            env->DeleteLocalRef(exceptionClass);
+        }
+        return {};
+    }
+
+    auto string = static_cast<jstring>(stringObject);
+    const char *chars = env->GetStringUTFChars(string, nullptr);
+    if (chars == nullptr) {
+        env->DeleteLocalRef(stringObject);
+        env->DeleteLocalRef(valueObject);
+        return {};
+    }
+    std::string convertedString(chars);
+    env->ReleaseStringUTFChars(string, chars);
+
+    // Pair.second is a boxed java.lang.Long, not a native pointer. Unbox it
+    // before passing the amount to Monero's fee estimator.
+    jclass longClass = env->FindClass("java/lang/Long");
+    if (longClass == nullptr) {
+        env->DeleteLocalRef(stringObject);
+        env->DeleteLocalRef(valueObject);
+        return {};
+    }
+    jmethodID longValueMethod = env->GetMethodID(longClass, "longValue", "()J");
+    if (longValueMethod == nullptr) {
+        env->DeleteLocalRef(longClass);
+        env->DeleteLocalRef(stringObject);
+        env->DeleteLocalRef(valueObject);
+        return {};
+    }
+    jlong boxedValue = env->CallLongMethod(valueObject, longValueMethod);
+    env->DeleteLocalRef(longClass);
+    env->DeleteLocalRef(stringObject);
+    env->DeleteLocalRef(valueObject);
+    if (env->ExceptionCheck()) {
+        return {};
+    }
+
+    return std::make_pair(convertedString, static_cast<uint64_t>(boxedValue));
 }
 
 
