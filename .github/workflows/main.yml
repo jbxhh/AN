@@ -89,6 +89,17 @@ jobs:
           /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1" >/dev/null
           echo "Android SDK ready"
 
+      # The source-check and native/APK jobs use separate runners. Reuse the
+      # same Gradle dependency/build cache to avoid resolving and compiling cold.
+      - name: Restore Gradle build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            .gradle/configuration-cache
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties', '**/settings.gradle*', '**/build.gradle*', '**/libs.versions.toml') }}
+          restore-keys: ${{ runner.os }}-gradle-
 
       # Keep each ABI in its own immutable cache. If one ABI fails, the other
       # ABI's completed cache is still available to later runs.
