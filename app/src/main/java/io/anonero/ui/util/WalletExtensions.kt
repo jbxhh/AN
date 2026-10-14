@@ -32,7 +32,7 @@ fun Wallet.getLatestSubAddress(): Subaddress {
     if (changed) store()
 
     // Fetch after creation/label changes so callers receive the real latest address.
-    return getSubaddressObject(accountIndex, nextIndex)
+    return getSubaddressObject(nextIndex)
 }
 
 
