@@ -209,16 +209,18 @@ class WalletManager {
 
     fun setDaemon(node: Node?) {
         if (node != null) {
-            daemonAddress = node.address
             require(networkType === node.networkType) { "network type does not match" }
+            daemonAddress = node.address
             daemonUsername = node.username
             daemonPassword = node.password
-            daemonAddress?.let { addr -> setDaemonAddressJ(addr) }
+            setDaemonAddressJ(node.address)
             Timber.tag(TAG).i("setDaemon:  %s", daemonAddress)
         } else {
             daemonAddress = null
             daemonUsername = ""
             daemonPassword = ""
+            // Keep Monero's native WalletManager in sync when the selected node is removed.
+            setDaemonAddressJ("")
         }
     }
 
