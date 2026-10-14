@@ -63,7 +63,7 @@ class AnonWalletHandler(
         return anonWallet?.status?.isOk ?: throw InvalidPin()
     }
 
-    // ===== 真实连接流程保留，但每一步都有超时；超时后 mock 兜底，不再一直“连接中” =====
+    // 连接超时后保持真实连接状态，不伪造节点或同步高度。
     suspend fun startService() {
         val wallet = WalletManager.instance?.wallet ?: return
         try {
