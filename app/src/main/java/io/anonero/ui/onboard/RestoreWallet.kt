@@ -96,23 +96,16 @@ fun RestoreWallet(
     var seedList by remember { mutableStateOf(emptyList<String>()) }
     var wordsList by remember { mutableStateOf(emptyList<String>()) }
     var moneroWordsList by remember { mutableStateOf(emptyList<String>()) }
-    val scope = rememberCoroutineScope()
     val resources = LocalContext.current.resources
     var invalidSeed by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
 
-    LaunchedEffect(true) {
-        scope.launch {
-            resources.openRawResource(R.raw.words).bufferedReader().use { reader ->
-                wordsList = reader.readLines()
-                    .map { it.trim() }
-                    .filter { it.isNotEmpty() }
-            }
-            resources.openRawResource(R.raw.monero_words).bufferedReader().use { reader ->
-                moneroWordsList = reader.readLines()
-                    .map { it.trim() }
-                    .filter { it.isNotEmpty() }
-            }
+    LaunchedEffect(resources) {
+        wordsList = resources.openRawResource(R.raw.words).bufferedReader().use { reader ->
+            reader.readLines().map { it.trim() }.filter { it.isNotEmpty() }
+        }
+        moneroWordsList = resources.openRawResource(R.raw.monero_words).bufferedReader().use { reader ->
+            reader.readLines().map { it.trim() }.filter { it.isNotEmpty() }
         }
     }
 
@@ -267,18 +260,25 @@ fun RestoreWallet(
                     },
                 )
             }
-            val enabled = seedList.isNotEmpty();
-            AnonOutlineButton (
+            val enabled = seedList.isNotEmpty()
+            AnonOutlineButton(
                 onClick = {
                     if (enabled) {
-                         if (seedList.size == 25 && restoreHeight.isEmpty()) {
+                        val rawHeight = restoreHeight.trim()
+                        val parsedHeight = rawHeight.takeIf { it.isNotEmpty() }?.toLongOrNull()
+                        if (rawHeight.isNotEmpty() && (parsedHeight == null || parsedHeight < 0L)) {
+                            restoreHeightError = "Restore height must be a non-negative integer"
+                            return@AnonOutlineButton
+                        }
+                        if (seedList.size == 25 && parsedHeight == null) {
                             restoreHeightError = "Restore height required for 25 word seed"
                             return@AnonOutlineButton
                         }
+                        restoreHeightError = null
                         oNextPressed(
                             RestorePayload(
                                 seed = seedList,
-                                restoreHeight = restoreHeight.trim().toLongOrNull(),
+                                restoreHeight = parsedHeight,
                             )
                         )
                     }
