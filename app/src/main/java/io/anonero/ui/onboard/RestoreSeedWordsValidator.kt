@@ -19,6 +19,7 @@ internal fun validateRestoreSeedWords(
     val words = rawSeed.trim()
         .split(Regex("\\s+"))
         .filter { it.isNotEmpty() }
+        .map { it.lowercase() }
 
     if (words.size != 16 && words.size != 25) {
         return RestoreSeedValidation(emptyList(), words.size >= 16)
