@@ -173,6 +173,10 @@ fun SettingsPage(
                     item {
                         SectionHeader(stringResource(R.string.settings_security))
                     }
+                    // 钱包 section
+                    item {
+                        SectionHeader(stringResource(R.string.settings_wallet_section))
+                    }
                     if (!AnonConfig.viewOnly) {
                         item {
                             MenuItem(stringResource(R.string.settings_seed)) {
@@ -180,6 +184,10 @@ fun SettingsPage(
                             }
                             HorizontalDivider(thickness = 2.5.dp)
                         }
+                    }
+                    // 数据 section
+                    item {
+                        SectionHeader(stringResource(R.string.settings_data_section))
                     }
                     item {
                         MenuItem(stringResource(R.string.settings_change_pin)) {
@@ -193,6 +201,7 @@ fun SettingsPage(
                         }
                         HorizontalDivider(thickness = 2.5.dp)
                     }
+                    // 删除
                     item {
                         MenuItem(stringResource(R.string.settings_secure_wipe)) {
                             navigateTo(SecureWipeRoute)
