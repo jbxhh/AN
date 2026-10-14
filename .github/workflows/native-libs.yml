@@ -13,9 +13,9 @@ on:
       - '.github/workflows/native-libs.yml'
 
 concurrency:
-  # Do not cancel a long native C++ build just because another commit was pushed.
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
-  cancel-in-progress: false
+  # Keep one native C++ build per branch; newer commits supersede older builds.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
