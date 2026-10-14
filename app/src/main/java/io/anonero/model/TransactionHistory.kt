@@ -1,4 +1,18 @@
-/* UI-MOCK：构造即装 4 条假交易，不依赖同步回调 */
+/*
+ * Copyright (c) 2017 m2049r
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package io.anonero.model
 
 import timber.log.Timber
@@ -6,7 +20,7 @@ import timber.log.Timber
 private const val TAG = "TransactionHistory"
 
 class TransactionHistory(private val handle: Long, var accountIndex: Int) {
-    var all: List<TransactionInfo> = buildMock(accountIndex)
+    var all: List<TransactionInfo> = ArrayList()
         private set
 
     fun setAccountFor(wallet: Wallet) {
@@ -22,7 +36,7 @@ class TransactionHistory(private val handle: Long, var accountIndex: Int) {
         }
     }
 
-    fun getCount(): Int = all.size
+    external fun getCount(): Int
 
     fun refreshWithNotes(wallet: Wallet) {
         refresh()
@@ -30,41 +44,23 @@ class TransactionHistory(private val handle: Long, var accountIndex: Int) {
     }
 
     private fun refresh() {
-        all = buildMock(accountIndex)
-        Timber.tag(TAG).d("refresh size=%s", all.size)
+        val transactionInfos = refreshJ()
+        Timber.tag(TAG).d("refresh size=%s", transactionInfos.size)
+        val iterator = transactionInfos.iterator()
+        while (iterator.hasNext()) {
+            val info = iterator.next()
+            if (info.accountIndex != accountIndex) {
+                iterator.remove()
+            }
+        }
+        all = transactionInfos
     }
 
-    private fun buildMock(idx: Int): MutableList<TransactionInfo> {
-        val now = System.currentTimeMillis()/
-        1000
-        val h = 3_600L
-        return mutableListOf(
-            TransactionInfo(
-                0, false, false, 3_500_000_000_000L, 0L, 3_399_900L,
-                "a1b2c3d4e5f60000000000000000000000000000000000000000000000000001",
-                now - h * 26, null, idx, 0, 20L, "Main account", null
-            ),
-            TransactionInfo(
-                1, false, false, 1_200_000_000_000L, 10_000_000_000L, 3_399_800L,
-                "b2c3d4e5f6070000000000000000000000000000000000000000000000000002",
-                now - h * 50, null, idx, 0, 15L, null, null
-            ),
-            TransactionInfo(
-                0, true, false, 250_000_000_000L, 0L, 0L,
-                "c3d4e5f607180000000000000000000000000000000000000000000000000003",
-                now - h * 2, null, idx, 0, 3L, null, null
-            ),
-            TransactionInfo(
-                1, false, true, 80_000_000_000L, 10_000_000_000L, 3_399_700L,
-                "d4e5f60718290000000000000000000000000000000000000000000000000004",
-                now - h * 80, null, idx, 0, 0L, null, null
-            )
-        )
-    }
+    private external fun refreshJ(): MutableList<TransactionInfo>
 
     companion object {
         init {
-            try { System.loadLibrary("anonero") } catch (e: Throwable) {}
+            System.loadLibrary("anonero")
         }
     }
 }
