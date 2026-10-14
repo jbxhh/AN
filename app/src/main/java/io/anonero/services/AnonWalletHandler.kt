@@ -147,14 +147,27 @@ class AnonWalletHandler(
             walletState.setLoading(false)
         }
 
-        // ===== mock 兜底：真实流程走完/超时后，强制结束“连接中”，进入可用首页 =====
-        wallet.setSynchronized()
-        wallet.refreshHistory()
+        // Never fabricate a connected daemon or mark the wallet synchronized after a timeout.
+        // The listener will update sync state when the real daemon connection succeeds.
+        val connectionStatus = runCatching {
+            wallet.fullStatus.connectionStatus
+        }.getOrNull() ?: Wallet.ConnectionStatus.ConnectionStatus_Disconnected
+        val daemonHeight = runCatching {
+            wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+        }.getOrDefault(0L)
+        val daemonAddress = realHost?.let { "$it:$realPort" }
+            ?: WalletManager.instance?.getDaemonAddress()
+
+        if (connectionStatus == Wallet.ConnectionStatus.ConnectionStatus_Connected) {
+            wallet.setSynchronized()
+            wallet.refreshHistory()
+        }
+
         walletState.updateDaemon(
             DaemonInfo(
-                realHost?.let { "$it:$realPort" } ?: "mock-node:18081",
-                Wallet.ConnectionStatus.ConnectionStatus_Connected,
-                3_400_000L
+                daemonAddress,
+                connectionStatus,
+                daemonHeight
             )
         )
         walletState.setLoading(false)
