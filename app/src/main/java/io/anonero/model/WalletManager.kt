@@ -65,6 +65,8 @@ class WalletManager {
         manageWallet(wallet)
         if (wallet.status.isOk) {
             wallet.setPassword(password)
+            require(height >= 0L) { "restore height must not be negative" }
+            wallet.setRestoreHeight(height)
         }
         return wallet
     }
