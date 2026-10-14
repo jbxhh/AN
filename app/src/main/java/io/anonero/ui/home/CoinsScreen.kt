@@ -241,7 +241,7 @@ fun CoinsScreen(
                                     vertical = 6.dp
                                 )
                                 .clickable {
-                                    selectedCoins = emptySet()
+                                    // Opening output details must not discard other selected outputs.
                                     detailCoin = coin
                                 },
                             headlineContent = {
