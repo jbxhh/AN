@@ -23,6 +23,7 @@ on:
       - '.github/workflows/main.yml'
 env:
   JAVA_VERSION: '17'
+  MONERO_COMMIT: 22578c3f7d7b4b6dd85ff7daa42a827d97cc53d0
 concurrency:
   # Do not queue or cancel separate APK builds behind one another.
   group: ${{ github.workflow }}-${{ github.run_id }}
@@ -63,26 +64,35 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties', '**/settings.gradle*', '**/build.gradle*', '**/libs.versions.toml') }}
           restore-keys: ${{ runner.os }}-gradle-
-      - name: Select native library artifact run
-        id: native-run
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          native_run_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?branch=${GITHUB_REF_NAME}&status=success&per_page=100" --jq '[.workflow_runs[] | select(.name == "Native Monero Libs (Polyseed support)")] | .[0].id // empty')"
-          if [[ ! "${native_run_id}" =~ ^[0-9]+$ ]]; then
-            echo "::error::No successful native-libraries run found for branch ${GITHUB_REF_NAME}"
-            exit 1
-          fi
-          echo "Using native library workflow run: ${native_run_id}"
-          echo "run_id=${native_run_id}" >> "${GITHUB_OUTPUT}"
-      - name: Download verified cached Monero native libraries
-        uses: actions/download-artifact@v4
+      # Reuse the native-library caches directly. The wallet APK build does not
+      # need to wait for a separate native workflow or a successful-run artifact.
+      - name: Restore arm64 native library cache
+        id: cache-arm64
+        uses: actions/cache/restore@v4
         with:
-          name: monero-android-libs-monero-api-compatible-33671871
-          run-id: ${{ steps.native-run.outputs.run_id }}
-          github-token: ${{ github.token }}
-          path: external-libs
+          path: |
+            external-libs/arm64-v8a
+            external-libs/include
+            external-libs/VERSION
+          key: anon-native-arm64-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
+
+      - name: Restore armv7 native library cache
+        id: cache-armv7
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            external-libs/armeabi-v7a
+            external-libs/include
+            external-libs/VERSION
+          key: anon-native-armv7-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
+
+      - name: Restore JNI library cache
+        id: cache-jni
+        uses: actions/cache/restore@v4
+        with:
+          path: external-libs/prebuilt
+          key: anon-jni-ndk27.2.12479018-cmake3.22.1-api26-${{ env.MONERO_COMMIT }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}-${{ hashFiles('app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
+
       - name: Verify cached Monero Polyseed-support libraries
         run: |
           set -euo pipefail
