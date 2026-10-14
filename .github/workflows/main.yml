@@ -179,8 +179,10 @@ jobs:
           rm -rf external-libs/monero "$RUNNER_TEMP/monero_c"
           git init external-libs/monero
           git -C external-libs/monero remote add origin https://github.com/monero-project/monero.git
-          git -C external-libs/monero fetch --depth 1 origin "refs/tags/${MONERO_REF}"
-          git -C external-libs/monero checkout --detach FETCH_HEAD
+          # Fetch the tag into the local tag namespace; fetching only into FETCH_HEAD
+          # leaves git describe --tags unable to find a name in a shallow checkout.
+          git -C external-libs/monero fetch --depth 1 origin "refs/tags/${MONERO_REF}:refs/tags/${MONERO_REF}"
+          git -C external-libs/monero checkout --detach "refs/tags/${MONERO_REF}"
           actual="$(git -C external-libs/monero rev-parse HEAD)"
           tag="$(git -C external-libs/monero describe --tags --exact-match HEAD)"
           echo "Monero official tag: $tag"
