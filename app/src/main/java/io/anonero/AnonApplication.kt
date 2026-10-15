@@ -32,6 +32,8 @@ class AnonApplication : Application(), Thread.UncaughtExceptionHandler {
 
     override fun onCreate() {
         super.onCreate()
+        // Install crash capture before initializing Koin, wallet JNI, or services.
+        Thread.setDefaultUncaughtExceptionHandler(this)
         AnonConfig.context = this
         AnonConfig.initWalletState()
         startKoin {
@@ -40,7 +42,6 @@ class AnonApplication : Application(), Thread.UncaughtExceptionHandler {
         }
         initConfigs()
         plantLog()
-        Thread.setDefaultUncaughtExceptionHandler(this)
         val torService: TorService = get()
         val prefs: SharedPreferences = get(named(WALLET_PREFERENCES))
         val host = prefs.getString(NodeFields.RPC_HOST.value, "")
