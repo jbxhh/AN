@@ -37,19 +37,31 @@ class AnonApplication : Application(), Thread.UncaughtExceptionHandler {
         super.onCreate()
         // Install crash capture before initializing Koin, wallet JNI, or services.
         Thread.setDefaultUncaughtExceptionHandler(this)
-        capturePreviousProcessExitInfo()
+        val detectedCrash = capturePreviousProcessExitInfo()
+        val crashPrefs = getSharedPreferences("crash_prefs", MODE_PRIVATE)
+        val diagnosticMode = detectedCrash || crashPrefs.getBoolean("diagnostic_mode", false)
+
         AnonConfig.context = this
         AnonConfig.initWalletState()
         startKoin {
             androidContext(this@AnonApplication)
             modules(appModule)
         }
-        initConfigs()
+
+        // Install persistent logging before wallet/JNI initialization, which may itself crash.
         plantLog()
+        if (diagnosticMode) {
+            // Do not re-enter a native crash loop before the user can copy the report.
+            initNotificationChannels()
+            Timber.tag(TAG).e("Crash diagnostic mode active; skipping wallet and Tor initialization")
+            return
+        }
+
+        initConfigs()
         val torService: TorService = get()
         val prefs: SharedPreferences = get(named(WALLET_PREFERENCES))
         val host = prefs.getString(NodeFields.RPC_HOST.value, "")
-        if(!host.isNullOrEmpty()){
+        if (!host.isNullOrEmpty()) {
             torService.start()
         }
         AnonConfig.clearSpendCacheFiles(this)
@@ -60,17 +72,22 @@ class AnonApplication : Application(), Thread.UncaughtExceptionHandler {
      * often a tombstone/backtrace. Java uncaught exceptions are already captured by
      * uncaughtException(), so preserve that more specific stack when it matches.
      */
-    private fun capturePreviousProcessExitInfo() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+    /**
+     * On Android 11+, read the previous process exit reason and native tombstone when
+     * available. Enter recovery mode after a detected crash so startup does not crash
+     * again before the report can be shown.
+     */
+    private fun capturePreviousProcessExitInfo(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
 
-        try {
+        return try {
             val prefs = getSharedPreferences("crash_prefs", MODE_PRIVATE)
-            val activityManager = getSystemService(ACTIVITY_SERVICE) as? ActivityManager ?: return
+            val activityManager = getSystemService(ACTIVITY_SERVICE) as? ActivityManager ?: return false
             val latest = activityManager
                 .getHistoricalProcessExitReasons(packageName, 0, 10)
-                .maxByOrNull { it.timestamp } ?: return
+                .maxByOrNull { it.timestamp } ?: return false
 
-            if (latest.timestamp <= prefs.getLong("last_exit_info_timestamp", 0L)) return
+            if (latest.timestamp <= prefs.getLong("last_exit_info_timestamp", 0L)) return false
 
             val reasonText = when (latest.reason) {
                 ApplicationExitInfo.REASON_CRASH_NATIVE -> "Native crash (SIGSEGV/SIGABRT)"
@@ -82,7 +99,7 @@ class AnonApplication : Application(), Thread.UncaughtExceptionHandler {
 
             if (reasonText == null) {
                 prefs.edit().putLong("last_exit_info_timestamp", latest.timestamp).commit()
-                return
+                return false
             }
 
             val previousReport = prefs.getString("last_crash", null)
@@ -93,8 +110,11 @@ class AnonApplication : Application(), Thread.UncaughtExceptionHandler {
                     kotlin.math.abs(latest.timestamp - previousReportTimestamp) < 60_000L)
 
             if (javaReportAlreadyCaptured) {
-                prefs.edit().putLong("last_exit_info_timestamp", latest.timestamp).commit()
-                return
+                prefs.edit()
+                    .putLong("last_exit_info_timestamp", latest.timestamp)
+                    .putBoolean("diagnostic_mode", true)
+                    .commit()
+                return true
             }
 
             val trace = try {
@@ -149,9 +169,12 @@ class AnonApplication : Application(), Thread.UncaughtExceptionHandler {
                 .putString("last_crash", report)
                 .putLong("last_crash_timestamp", latest.timestamp)
                 .putLong("last_exit_info_timestamp", latest.timestamp)
+                .putBoolean("diagnostic_mode", true)
                 .commit()
+            true
         } catch (_: Throwable) {
-            // Crash diagnostics must never prevent the app from starting.
+            // Diagnostic collection must never prevent the app from starting.
+            false
         }
     }
 
@@ -221,6 +244,7 @@ class AnonApplication : Application(), Thread.UncaughtExceptionHandler {
             crashPrefs.edit()
                 .putString("last_crash", report)
                 .putLong("last_crash_timestamp", System.currentTimeMillis())
+                .putBoolean("diagnostic_mode", true)
                 .commit()
         } catch (_: Throwable) {}
         defaultHandler?.uncaughtException(t, e)
