@@ -22,7 +22,7 @@ class AnonLogTree(
 
     override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
         val timestamp = Date().time
-        val errorMessage = if (t == null) message else "$message\\n${t.stackTraceToString()}"
+        val errorMessage = if (t == null) message else "$message\n${t.stackTraceToString()}"
         val safeTag = tag ?: "Anon"
 
         // Write to a small rolling file immediately. DataStore writes are asynchronous,
@@ -56,7 +56,7 @@ class AnonLogTree(
                 "yyyy-MM-dd HH:mm:ss.SSS",
                 java.util.Locale.US
             ).format(Date(timestamp))
-            logFile.appendText("$time | $priority | $tag | $message\\n")
+            logFile.appendText("$time | $priority | $tag | $message\n")
 
             // Keep enough context for crash diagnosis without allowing logs to grow forever.
             val maxBytes = 512 * 1024
@@ -64,7 +64,7 @@ class AnonLogTree(
             if (logFile.length() > maxBytes) {
                 val bytes = logFile.readBytes()
                 var first = (bytes.size - keepBytes).coerceAtLeast(0)
-                while (first < bytes.size && bytes[first] != '\\n'.code.toByte()) {
+                while (first < bytes.size && bytes[first] != '\n'.code.toByte()) {
                     first++
                 }
                 if (first < bytes.size) first++
