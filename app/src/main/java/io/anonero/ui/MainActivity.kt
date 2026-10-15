@@ -82,7 +82,7 @@ class MainActivity : ComponentActivity() {
                 .setTitle("检测到上次异常退出")
                 .setMessage(
                     crash.take(2500) +
-                        if (crash.length > 2500) "\\n\\n……日志较长，点“复制完整日志”获取全部内容。" else ""
+                        if (crash.length > 2500) "\n\n……日志较长，点“复制完整日志”获取全部内容。" else ""
                 )
                 .setNeutralButton("复制完整日志") { _, _ ->
                     val clipboard = getSystemService(ClipboardManager::class.java)
