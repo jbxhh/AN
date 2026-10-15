@@ -4,6 +4,10 @@ import android.graphics.Typeface
 import android.util.Base64
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import java.io.File
@@ -21,4 +25,21 @@ fun xqzpFontFamily(): FontFamily {
         }
         FontFamily(Typeface.createFromFile(f))
     }
+}
+
+/**
+ * Renders the XMR ticker with the same embedded Xique Zhaopai font used on the home screen.
+ * Reuse this composable anywhere the visible ticker "XMR" is displayed.
+ */
+@Composable
+fun XmrText(
+    modifier: Modifier = Modifier,
+    style: TextStyle = LocalTextStyle.current,
+) {
+    Text(
+        text = "XMR",
+        modifier = modifier,
+        style = style,
+        fontFamily = xqzpFontFamily(),
+    )
 }
