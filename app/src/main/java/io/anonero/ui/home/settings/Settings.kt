@@ -58,96 +58,86 @@ fun SettingsPage(
             )
         }
     ) { padding ->
-        Box(
-            modifier = Modifier
+        Column(
+            modifier = modifier
                 .padding(padding)
                 .fillMaxSize()
         ) {
-            Column {
-                LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
-                    item {
-                        SectionHeader(stringResource(R.string.settings_connection))
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp)
+            ) {
+                item(key = "node") {
+                    MenuItem(stringResource(R.string.settings_node_settings)) {
+                        navigateTo(SettingsNodeRoute)
                     }
-                    item {
-                        MenuItem(stringResource(R.string.settings_node_settings)) {
-                            navigateTo(SettingsNodeRoute)
+                    SettingsDivider()
+                }
+                item(key = "proxy") {
+                    MenuItem(stringResource(R.string.settings_proxy_settings)) {
+                        navigateTo(ProxySettingsRoute)
+                    }
+                    SettingsDivider()
+                }
+                if (!AnonConfig.viewOnly) {
+                    item(key = "wallet") {
+                        MenuItem(stringResource(R.string.settings_wallet_section)) {
+                            navigateTo(SettingsViewSeedRoute)
                         }
-                        HorizontalDivider(thickness = 2.5.dp)
-                    }
-                    item {
-                        MenuItem(stringResource(R.string.settings_proxy_settings)) {
-                            navigateTo(ProxySettingsRoute)
-                        }
-                        HorizontalDivider(thickness = 2.5.dp)
-                    }
-                    item {
-                        SectionHeader(stringResource(R.string.settings_security))
-                    }
-                    // 钱包 → 助记词全新页面
-                    if (!AnonConfig.viewOnly) {
-                        item {
-                            MenuItem(stringResource(R.string.settings_wallet_section)) {
-                                navigateTo(SettingsViewSeedRoute)
-                            }
-                            HorizontalDivider(thickness = 2.5.dp)
-                        }
-                    }
-                    // 交易 → 全新页面
-                    item {
-                        MenuItem(stringResource(R.string.settings_trade_section)) {
-                            navigateTo(SettingsTradeRoute)
-                        }
-                        HorizontalDivider(thickness = 2.5.dp)
-                    }
-                    // 数据 → 修改PIN + 导出备份 全新页面
-                    item {
-                        MenuItem(stringResource(R.string.settings_data_section)) {
-                            navigateTo(SettingsDataRoute)
-                        }
-                        HorizontalDivider(thickness = 2.5.dp)
-                    }
-                    // 删除 → 安全删除全新页面
-                    item {
-                        MenuItem(stringResource(R.string.settings_secure_wipe)) {
-                            navigateTo(SecureWipeRoute)
-                        }
-                        HorizontalDivider(thickness = 2.5.dp)
+                        SettingsDivider()
                     }
                 }
+                item(key = "trade") {
+                    MenuItem(stringResource(R.string.settings_trade_section)) {
+                        navigateTo(SettingsTradeRoute)
+                    }
+                    SettingsDivider()
+                }
+                item(key = "data") {
+                    MenuItem(stringResource(R.string.settings_data_section)) {
+                        navigateTo(SettingsDataRoute)
+                    }
+                    SettingsDivider()
+                }
+                item(key = "delete") {
+                    MenuItem(stringResource(R.string.settings_secure_wipe)) {
+                        navigateTo(SecureWipeRoute)
+                    }
+                    // Keep the final divider identical to every row divider.
+                    SettingsDivider()
+                }
             }
-            Column(
+
+            Text(
+                stringResource(
+                    R.string.settings_app_version,
+                    stringResource(R.string.app_name),
+                    BuildConfig.VERSION_NAME
+                ),
+                style = MaterialTheme.typography.labelLarge.copy(
+                    color = MaterialTheme.colorScheme.onSecondary.copy(alpha = 0.6f)
+                ),
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center,
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(12.dp)
-                    .padding(bottom = 64.dp)
-            ) {
-                Text(
-                    stringResource(
-                        R.string.settings_app_version,
-                        stringResource(R.string.app_name),
-                        BuildConfig.VERSION_NAME
-                    ),
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        color = MaterialTheme.colorScheme.onSecondary.copy(alpha = 0.6f)
-                    ),
-                    fontSize = 12.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.clickable(
+                    .align(Alignment.CenterHorizontally)
+                    .padding(top = 8.dp, bottom = 76.dp)
+                    .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
                     ) { navigateTo(SettingsLogs) }
-                )
-            }
+            )
         }
     }
 }
 
 @Composable
-private fun SectionHeader(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.titleLarge.copy(color = MaterialTheme.colorScheme.primary),
-        modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp)
+private fun SettingsDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(horizontal = 4.dp),
+        thickness = 2.5.dp
     )
 }
 
