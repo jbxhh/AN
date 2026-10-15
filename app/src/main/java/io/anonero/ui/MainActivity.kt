@@ -83,9 +83,9 @@ class MainActivity : ComponentActivity() {
             android.app.AlertDialog.Builder(this)
                 .setTitle("已进入闪退诊断模式")
                 .setMessage(
-                    "为了避免应用再次立即闪退，当前已暂时跳过钱包和 Tor 初始化。\\n\\n" +
+                    "为了避免应用再次立即闪退，当前已暂时跳过钱包和 Tor 初始化。\n\n" +
                         crash.take(2500) +
-                        if (crash.length > 2500) "\\n\\n……日志较长，请点“复制完整日志”获取全部内容。" else ""
+                        if (crash.length > 2500) "\n\n……日志较长，请点“复制完整日志”获取全部内容。" else ""
                 )
                 .setNeutralButton("复制完整日志") { _, _ ->
                     val clipboard = getSystemService(ClipboardManager::class.java)
