@@ -107,9 +107,18 @@ class MainActivity : ComponentActivity() {
 
             LaunchedEffect(key1 = true) {
                 scope.launch(Dispatchers.IO) {
-                    walletExist = AnonConfig.getDefaultWalletFile(context).exists()
-                    useTor = anonPrefs.getBoolean(WALLET_USE_TOR, true)
-                    isAppReady = true
+                    try {
+                        walletExist = AnonConfig.getDefaultWalletFile(context).exists()
+                        useTor = anonPrefs.getBoolean(WALLET_USE_TOR, true)
+                    } catch (e: Exception) {
+                        // A corrupt/unavailable preference or wallet path must not leave
+                        // the system splash screen waiting forever.
+                        Timber.tag(TAG).e(e, "Startup initialization failed; continuing with safe defaults")
+                        walletExist = false
+                        useTor = false
+                    } finally {
+                        isAppReady = true
+                    }
                 }
             }
             TorSplash(enableTor = useTor) {
