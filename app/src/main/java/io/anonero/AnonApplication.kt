@@ -68,11 +68,6 @@ class AnonApplication : Application(), Thread.UncaughtExceptionHandler {
     }
 
     /**
-     * Android 11+ keeps the previous process exit reason and, for native crashes,
-     * often a tombstone/backtrace. Java uncaught exceptions are already captured by
-     * uncaughtException(), so preserve that more specific stack when it matches.
-     */
-    /**
      * On Android 11+, read the previous process exit reason and native tombstone when
      * available. Enter recovery mode after a detected crash so startup does not crash
      * again before the report can be shown.
@@ -231,6 +226,13 @@ class AnonApplication : Application(), Thread.UncaughtExceptionHandler {
         try {
             val sw = java.io.StringWriter()
             e.printStackTrace(java.io.PrintWriter(sw))
+            val recentLogs = try {
+                val logFile = AnonConfig.getLogFile(this)
+                if (logFile.isFile) logFile.readBytes().takeLast(8_000).toByteArray().decodeToString()
+                else ""
+            } catch (_: Throwable) {
+                ""
+            }
             val report = buildString {
                 appendLine("ANONERO crash report")
                 appendLine("Time: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", java.util.Locale.US).format(java.util.Date())}")
@@ -239,6 +241,11 @@ class AnonApplication : Application(), Thread.UncaughtExceptionHandler {
                 appendLine("App version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
                 appendLine()
                 append(sw.toString())
+                if (recentLogs.isNotBlank()) {
+                    appendLine()
+                    appendLine("RECENT APP LOGS")
+                    appendLine(recentLogs)
+                }
             }
             val crashPrefs = getSharedPreferences("crash_prefs", 0)
             crashPrefs.edit()
