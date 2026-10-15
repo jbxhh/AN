@@ -1,5 +1,10 @@
 # Add project specific ProGuard rules here.
 
+# JNI/C++ accesses wallet model classes by fully qualified name and reflection.
+# R8 must not remove or rename classes that are referenced only from native code.
+-keep class io.anonero.model.** { *; }
+-keep class io.anonero.model.node.** { *; }
+
 # JNI methods are exported by their exact Java/Kotlin class and method names.
 # R8 must not rename classes or members that have native implementations.
 -dontwarn java.lang.management.**
