@@ -663,10 +663,8 @@ fun TransactionScreen(
                         Column(
                             modifier = Modifier.fillParentMaxWidth()
                         ) {
-                            Text(
-                                "XMR",
+                            XmrText(
                                 style = MaterialTheme.typography.displayLarge.copy(fontSize = 50.sp),
-                                fontFamily = xqzpFontFamily(),
                                 modifier = Modifier
                                     .padding(start = 8.dp, bottom = 2.dp)
                                     .offset(y = (-12).dp)
