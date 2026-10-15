@@ -76,18 +76,26 @@ class MainActivity : ComponentActivity() {
         val splashscreen = installSplashScreen()
         var isAppReady by mutableStateOf(false)
         super.onCreate(savedInstanceState)
-                getSharedPreferences("crash_prefs", 0).getString("last_crash", null)?.let { crash ->
-            getSharedPreferences("crash_prefs", 0).edit().remove("last_crash").apply()
+        val crashPrefs = getSharedPreferences("crash_prefs", MODE_PRIVATE)
+        crashPrefs.getString("last_crash", null)?.let { crash ->
             android.app.AlertDialog.Builder(this)
-                .setTitle("检测到上次闪退")
-                .setMessage(crash.take(2000) + if (crash.length > 2000) "\\n\\n……日志较长，点“复制完整日志”获取全部内容。" else "")
+                .setTitle("检测到上次异常退出")
+                .setMessage(
+                    crash.take(2500) +
+                        if (crash.length > 2500) "\\n\\n……日志较长，点“复制完整日志”获取全部内容。" else ""
+                )
                 .setNeutralButton("复制完整日志") { _, _ ->
                     val clipboard = getSystemService(ClipboardManager::class.java)
                     clipboard?.setPrimaryClip(
                         ClipData.newPlainText("ANONERO 崩溃日志", crash)
                     )
                 }
-                .setPositiveButton("知道了", null)
+                .setPositiveButton("知道了") { _, _ ->
+                    crashPrefs.edit()
+                        .remove("last_crash")
+                        .remove("last_crash_timestamp")
+                        .apply()
+                }
                 .show()
         }
 
