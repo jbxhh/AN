@@ -104,8 +104,17 @@ class AnonApplication : Application(), Thread.UncaughtExceptionHandler {
         try {
             val sw = java.io.StringWriter()
             e.printStackTrace(java.io.PrintWriter(sw))
+            val report = buildString {
+                appendLine("ANONERO crash report")
+                appendLine("Time: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", java.util.Locale.US).format(java.util.Date())}")
+                appendLine("Thread: ${t.name}")
+                appendLine("Android: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
+                appendLine("App version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+                appendLine()
+                append(sw.toString())
+            }
             getSharedPreferences("crash_prefs", 0).edit()
-                .putString("last_crash", sw.toString()).commit()
+                .putString("last_crash", report).commit()
         } catch (_: Throwable) {}
         defaultHandler?.uncaughtException(t, e)
     }
