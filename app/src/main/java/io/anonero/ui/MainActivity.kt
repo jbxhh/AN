@@ -79,9 +79,9 @@ class MainActivity : ComponentActivity() {
                 getSharedPreferences("crash_prefs", 0).getString("last_crash", null)?.let { crash ->
             getSharedPreferences("crash_prefs", 0).edit().remove("last_crash").apply()
             android.app.AlertDialog.Builder(this)
-                .setTitle("上次崩溃日志（截图发我）")
-                .setMessage(crash.take(2000))
-                .setNeutralButton("复制") { _, _ ->
+                .setTitle("检测到上次闪退")
+                .setMessage(crash.take(2000) + if (crash.length > 2000) "\\n\\n……日志较长，点“复制完整日志”获取全部内容。" else "")
+                .setNeutralButton("复制完整日志") { _, _ ->
                     val clipboard = getSystemService(ClipboardManager::class.java)
                     clipboard?.setPrimaryClip(
                         ClipData.newPlainText("ANONERO 崩溃日志", crash)
