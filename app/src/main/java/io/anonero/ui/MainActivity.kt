@@ -77,6 +77,32 @@ class MainActivity : ComponentActivity() {
         var isAppReady by mutableStateOf(false)
         super.onCreate(savedInstanceState)
         val crashPrefs = getSharedPreferences("crash_prefs", MODE_PRIVATE)
+        if (crashPrefs.getBoolean("diagnostic_mode", false)) {
+            val crash = crashPrefs.getString("last_crash", null)
+                ?: "上次异常退出已被系统检测到，但没有可读取的详细堆栈。"
+            android.app.AlertDialog.Builder(this)
+                .setTitle("已进入闪退诊断模式")
+                .setMessage(
+                    "为了避免应用再次立即闪退，当前已暂时跳过钱包和 Tor 初始化。\\n\\n" +
+                        crash.take(2500) +
+                        if (crash.length > 2500) "\\n\\n……日志较长，请点“复制完整日志”获取全部内容。" else ""
+                )
+                .setNeutralButton("复制完整日志") { _, _ ->
+                    val clipboard = getSystemService(ClipboardManager::class.java)
+                    clipboard?.setPrimaryClip(
+                        ClipData.newPlainText("ANONERO 崩溃日志", crash)
+                    )
+                }
+                .setPositiveButton("关闭应用，稍后重开") { _, _ ->
+                    crashPrefs.edit().putBoolean("diagnostic_mode", false).commit()
+                    finishAffinity()
+                    android.os.Process.killProcess(android.os.Process.myPid())
+                }
+                .setCancelable(false)
+                .show()
+            return
+        }
+
         crashPrefs.getString("last_crash", null)?.let { crash ->
             android.app.AlertDialog.Builder(this)
                 .setTitle("检测到上次异常退出")
