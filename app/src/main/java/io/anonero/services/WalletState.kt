@@ -37,6 +37,7 @@ import java.util.concurrent.atomic.AtomicReference
 data class SyncProgress(val progress: Float, val left: Long)
 
 private const val TAG = "WalletState"
+const val PREF_FORCE_FRESH_WALLET_SCAN = "anonero_force_fresh_wallet_scan"
 
 class WalletState(private val prefs: SharedPreferences) {
     private var _blockUpdates = AtomicBoolean(false)
@@ -66,6 +67,7 @@ class WalletState(private val prefs: SharedPreferences) {
     // Keep this request off the UI thread and avoid duplicate startup height RPCs.
     private val scanHeightScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val daemonHeightQueryInFlight = AtomicBoolean(false)
+    private val forcedRestoreScanInFlight = AtomicBoolean(false)
 
     val transactions: Flow<List<TransactionInfo>> = _transactions
 
@@ -143,6 +145,78 @@ class WalletState(private val prefs: SharedPreferences) {
             if (!backgroundSync) {
                 _nextAddress.update { wallet.getLatestSubAddress() }
                 _subAddresses.update { wallet.getAllUsedSubAddresses().reversed() }
+            }
+
+            // A newly restored wallet must perform a real native rescan from the
+            // selected restore height; updating height/progress alone is not enough.
+            maybeStartForcedRestoreScan(wallet)
+        }
+    }
+
+
+    /**
+     * Starts the pending first scan for a wallet restored from a seed.
+     *
+     * The onboarding screen persists the selected restore height before closing the
+     * temporary wallet object. On the next wallet open, force a native blockchain
+     * rescan from that height instead of inheriting a previous scan marker/hash cache.
+     * Keep the request pending until the daemon is connected and fully synchronized.
+     */
+    private fun maybeStartForcedRestoreScan(wallet: Wallet) {
+        if (!prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) return
+        if (!forcedRestoreScanInFlight.compareAndSet(false, true)) return
+
+        scanHeightScope.launch {
+            try {
+                if (getWallet !== wallet || !wallet.isInitialized) return@launch
+                if (wallet.fullStatus.connectionStatus !=
+                    Wallet.ConnectionStatus.ConnectionStatus_Connected
+                ) return@launch
+
+                val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+                val daemonTargetHeight = wallet.getDaemonBlockChainTargetHeight().coerceAtLeast(0L)
+                if (daemonHeight <= 1L || daemonTargetHeight <= 0L ||
+                    daemonHeight < daemonTargetHeight
+                ) {
+                    Timber.tag(TAG).i(
+                        "Restore scan pending until daemon is synchronized: height=%d target=%d",
+                        daemonHeight, daemonTargetHeight
+                    )
+                    return@launch
+                }
+
+                val selectedRestoreHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
+                clearSyncProgress()
+                _transactions.value = emptyList()
+                _coins.value = emptyList()
+                setLoading(true)
+
+                beginWalletScan(
+                    wallet = wallet,
+                    scanStartHeight = selectedRestoreHeight,
+                    forceStartAtSelectedHeight = true
+                )
+                updateBalanceFromWallet(wallet)
+
+                // Queue the native rescan only after the selected height is set and
+                // the real scan baseline is published.
+                wallet.rescanBlockchainAsync()
+                wallet.startRefresh()
+
+                prefs.edit(commit = true) {
+                    putBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+                }
+                Timber.tag(TAG).i(
+                    "Started restored-wallet rescan from selected height %d",
+                    selectedRestoreHeight
+                )
+            } catch (e: Exception) {
+                // Leave the preference set so a later wallet update can retry safely.
+                Timber.tag(TAG).e(e, "Unable to start restored-wallet scan")
+                clearSyncProgress()
+                setLoading(false)
+            } finally {
+                forcedRestoreScanInFlight.set(false)
             }
         }
     }
@@ -578,6 +652,9 @@ class WalletState(private val prefs: SharedPreferences) {
             status == Wallet.ConnectionStatus.ConnectionStatus_Connected) {
             setLoading(true)
             getWallet?.startRefresh()
+        }
+        if (status == Wallet.ConnectionStatus.ConnectionStatus_Connected) {
+            getWallet?.let { maybeStartForcedRestoreScan(it) }
         }
     }
 
