@@ -505,8 +505,9 @@ class WalletState(private val prefs: SharedPreferences) {
         if (wallet != null && wallet.isInitialized) {
             // A callback can report the daemon tip before the fresh restore's native
             // rescan is queued. Never treat that startup race as a completed wallet scan.
-            if (pendingSelectedRestoreHeight(wallet) != null && !forcedRestoreScanStarted.get()) {
-                val selectedHeight = pendingSelectedRestoreHeight(wallet)!!.coerceAtLeast(0L)
+            val pendingRestoreHeight = pendingSelectedRestoreHeight(wallet)
+            if (pendingRestoreHeight != null && !forcedRestoreScanStarted.get()) {
+                val selectedHeight = pendingRestoreHeight.coerceAtLeast(0L)
                 _scanStartHeight.set(selectedHeight)
                 _walletHeight.value = selectedHeight
                 _scanTracking.set(true)
