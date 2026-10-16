@@ -73,7 +73,6 @@ import com.dokar.sonner.Toaster
 import com.dokar.sonner.rememberToasterState
 import io.anonero.AnonConfig
 import io.anonero.R
-import io.anonero.ui.home.graph.routes.ProxySettingsRoute
 import io.anonero.model.WalletManager
 import io.anonero.model.node.Node
 import io.anonero.model.node.NodeFields
@@ -377,14 +376,6 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
                                     ),
                                 onDismissRequest = { showMenu = false }
                             ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.settings_proxy_settings)) },
-                                    onClick = {
-                                        showMenu = false
-                                        navigateTo(ProxySettingsRoute)
-                                    }
-                                )
-                                HorizontalDivider()
                                 DropdownMenuItem(
                                     text = { Text("重置同步区块") },
                                     onClick = {
