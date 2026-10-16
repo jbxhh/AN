@@ -126,10 +126,12 @@
     <string name="settings_connection">连接</string>
     <string name="settings_node_settings">节点设置</string>
     <string name="settings_proxy_settings">代理设置</string>
+    <string name="settings_proxy_subtitle">配置 Tor 和手动代理</string>
     <string name="settings_security">安全</string>
     <string name="settings_wallet_section">钱包</string>
     <string name="settings_trade_section">交易</string>
     <string name="settings_data_section">数据</string>
+    <string name="settings_security">安全</string>
     <string name="settings_seed">助记词</string>
     <string name="settings_change_pin">修改PIN</string>
     <string name="settings_export_backup">导出备份</string>
