@@ -723,6 +723,24 @@ class WalletState(private val prefs: SharedPreferences) {
             return Result.failure(Exception("Exit background sync before resetting the scan"))
         }
 
+        // Monero's native doRefresh() clears its queued rescan flag before checking
+        // daemonSynced(). If the connected node is still syncing, the rescan request
+        // can be discarded while the UI already believes a scan from the selected
+        // height has started. Require the same height/target condition as native Monero.
+        val daemonHeight = runCatching { wallet.getDaemonBlockChainHeight() }
+            .getOrDefault(0L)
+            .coerceAtLeast(0L)
+        val daemonTargetHeight = runCatching { wallet.getDaemonBlockChainTargetHeight() }
+            .getOrDefault(0L)
+            .coerceAtLeast(0L)
+        if (daemonHeight <= 1L || daemonTargetHeight <= 0L || daemonHeight < daemonTargetHeight) {
+            clearSyncProgress()
+            setLoading(false)
+            return Result.failure(
+                Exception("节点尚未同步完成，请等待节点同步完成后再重置同步")
+            )
+        }
+
         // Existing balances and history belong to the pre-rescan scan and must not
         // be presented as current while the wallet rebuilds them from the chosen height.
         clearSyncProgress()
