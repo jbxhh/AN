@@ -279,6 +279,7 @@ class NodeSettingsViewModel(
 fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit = {}) {
     val nodeSettingsVM = koinViewModel<NodeSettingsViewModel>()
     var showNodeDetails by remember { mutableStateOf(false) }
+    var editingNode by remember { mutableStateOf<Node?>(null) }
     val walletState = koinInject<WalletState>()
     var showMenu by remember { mutableStateOf(false) }
     val availableNodes by nodeSettingsVM.nodes.collectAsState(arrayListOf())
@@ -337,6 +338,18 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
         }
 
 
+    if (editingNode != null) {
+        NodeEditScreen(
+            node = editingNode!!,
+            nodeSettingsVM = nodeSettingsVM,
+            onBackPress = { editingNode = null },
+            onSave = { updatedNode ->
+                nodeSettingsVM.removeItem(editingNode!!.toNodeString())
+                nodeSettingsVM.addItem(updatedNode)
+                editingNode = null
+            }
+        )
+    } else {
     Scaffold(
         topBar = {
             Column {
@@ -460,11 +473,14 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
                                         }
                                     }
                             },
-                            onRemove = { nodeSettingsVM.removeItem(node.toNodeString()) })
+                            onRemove = { nodeSettingsVM.removeItem(node.toNodeString()) },
+                            onEdit = { editingNode = it })
                     }
                 }
         }
     }
+    }
+
     Toaster(
         state = toastState,
         maxVisibleToasts = 4,
@@ -486,12 +502,9 @@ fun NodeListItem(
     onDisconnect: (node: Node) -> Unit = {},
     onConnect: (node: Node) -> Unit = {},
     onRemove: (node: Node) -> Unit = {},
+    onEdit: (node: Node) -> Unit = {},
 ) {
     var menu by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf(false) }
-    var editHost by remember { mutableStateOf("") }
-    var editUser by remember { mutableStateOf("") }
-    var editPass by remember { mutableStateOf("") }
     val daemonStatus by nodeSettingsVM.getCurrentDaemonLive().observeAsState(null)
     val connectionError by nodeSettingsVM.connectionError.observeAsState(null)
 
@@ -569,11 +582,8 @@ fun NodeListItem(
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.edit)) },
                             onClick = {
-                                editHost = node.toNodeString()
-                                editUser = node.username
-                                editPass = node.password
-                                editing = true
                                 menu = false
+                                onEdit(node)
                             },
                         )
                         HorizontalDivider()
@@ -590,74 +600,86 @@ fun NodeListItem(
         }
     )
 
-    // Edit dialog: allows user to change host, username, password and save
-    if (editing) {
-        Dialog(
-            onDismissRequest = { editing = false },
-            properties = DialogProperties(dismissOnBackPress = true, dismissOnClickOutside = true)
-        ) {
-            Column(
-                modifier = Modifier
-                    .background(MaterialTheme.colorScheme.background)
-                    .padding(16.dp)
-                    .fillMaxWidth()
+
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NodeEditScreen(
+    node: Node,
+    nodeSettingsVM: NodeSettingsViewModel,
+    onBackPress: () -> Unit,
+    onSave: (Node) -> Unit,
+) {
+    var host by remember(node) { mutableStateOf(node.toNodeString()) }
+    var username by remember(node) { mutableStateOf(node.username) }
+    var password by remember(node) { mutableStateOf(node.password) }
+    val connectionError by nodeSettingsVM.connectionError.observeAsState(null)
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("编辑节点") },
+                navigationIcon = {
+                    IconButton(onClick = onBackPress) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                    }
+                }
+            )
+        },
+        bottomBar = {
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Text(text = stringResource(R.string.edit), modifier = Modifier.padding(bottom = 8.dp))
-                OutlinedTextField(
-                    value = editHost,
-                    onValueChange = { editHost = it },
-                    label = { Text(stringResource(R.string.node)) },
-                    placeholder = { Text(stringResource(R.string.onion_address_example)) },
+                AnonOutlineButton(
                     modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
-                )
-                Spacer(Modifier.padding(6.dp))
-                OutlinedTextField(
-                    value = editUser,
-                    onValueChange = { editUser = it },
-                    label = { Text(stringResource(R.string.username)) },
-                    placeholder = { Text(stringResource(R.string.hint_optional)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
-                )
-                Spacer(Modifier.padding(6.dp))
-                OutlinedTextField(
-                    value = editPass,
-                    onValueChange = { editPass = it },
-                    label = { Text(stringResource(R.string.password)) },
-                    placeholder = { Text(stringResource(R.string.hint_optional)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
-                )
-
-                if (!connectionError.isNullOrEmpty()) {
-                    Text(
-                        text = connectionError ?: "",
-                        color = DangerColor,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.End,
-                    modifier = Modifier.fillMaxWidth()
+                    onClick = {
+                        val updated = nodeSettingsVM.validate(host, username, password)
+                        if (updated != null) onSave(updated)
+                    }
                 ) {
-                    TextButton(onClick = { editing = false }) {
-                        Text(stringResource(R.string.cancel))
-                    }
-                    TextButton(onClick = {
-                        // Validate and save
-                        val newNode = nodeSettingsVM.validate(editHost, editUser, editPass)
-                        if (newNode != null) {
-                            // remove old and add new
-                            nodeSettingsVM.removeItem(node.toNodeString())
-                            nodeSettingsVM.addItem(newNode)
-                        }
-                        editing = false
-                    }) {
-                        Text(stringResource(R.string.confirm))
-                    }
+                    Text(stringResource(R.string.confirm))
                 }
+            }
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp)
+        ) {
+            OutlinedTextField(
+                value = host,
+                onValueChange = { host = it },
+                label = { Text(stringResource(R.string.node)) },
+                placeholder = { Text(stringResource(R.string.onion_address_example)) },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = username,
+                onValueChange = { username = it },
+                label = { Text(stringResource(R.string.username)) },
+                placeholder = { Text(stringResource(R.string.hint_optional)) },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text(stringResource(R.string.password)) },
+                placeholder = { Text(stringResource(R.string.hint_optional)) },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
+            )
+            if (!connectionError.isNullOrEmpty()) {
+                Text(
+                    text = connectionError.orEmpty(),
+                    color = DangerColor,
+                    modifier = Modifier.padding(top = 12.dp)
+                )
             }
         }
     }
