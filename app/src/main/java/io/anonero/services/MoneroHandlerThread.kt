@@ -42,13 +42,18 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
     }
 
     private fun updateSyncProgress(height: Long) {
-        val syncHeight = maxOf(wallet.getBlockChainHeight(), height)
-        val progress = calculateSyncProgress(
-            chainHeight = syncHeight,
-            daemonHeight = wallet.getDaemonBlockChainHeight(),
-            targetHeight = wallet.getDaemonBlockChainTargetHeight()
-        ) ?: return
-        walletState.syncUpdate(progress)
+        val syncHeight = wallet.getBlockChainHeight()
+        val deamonHeight = wallet.getDaemonBlockChainHeight()
+        val left = deamonHeight - syncHeight
+        if (syncHeight < 0 || left < 0) {
+            return
+        }
+        val progress = if (wallet.getDaemonBlockChainTargetHeight().toDouble() == 0.0) {
+            1f
+        } else {
+            (height.toDouble() / wallet.getDaemonBlockChainTargetHeight().toDouble()).toFloat()
+        }
+        walletState.syncUpdate(SyncProgress(progress, left))
     }
 
     override fun updated() {
@@ -68,10 +73,7 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
             tryRestartConnection()
         } else {
             val heightDiff = daemonHeight - chainHeight
-            if (daemonHeight <= 0L || chainHeight < 0L) {
-                // Do not infer synchronization from unknown daemon/chain heights.
-                walletState.setLoading(false)
-            } else if (heightDiff >= 2) {
+            if (heightDiff >= 2) {
                 tryRestartConnection()
             } else {
                 if (!wallet.isSynchronized) {
