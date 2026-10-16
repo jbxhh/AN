@@ -600,7 +600,7 @@ fun NodeListItem(
                             if (active) {
                                 onDisconnect(node)
                             } else {
-                                onAdd(node)
+                                onConnect(node)
                             }
                             menu = false
                         }
@@ -781,7 +781,7 @@ fun NodeForm(
                     val node = nodeSettingsVM.validate(rpcHost, rpcUsername, rpcPassPhrase)
                     if (node != null) {
                         if (initialNode == null) {
-                            onConnect(node)
+                            onAdd(node)
                         } else {
                             onSave(node)
                         }
