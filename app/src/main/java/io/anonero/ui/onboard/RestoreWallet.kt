@@ -93,6 +93,7 @@ fun RestoreWallet(
     }
     var seedList by remember { mutableStateOf(emptyList<String>()) }
     var wordsList by remember { mutableStateOf(emptyList<String>()) }
+    var moneroWordsList by remember { mutableStateOf(emptyList<String>()) }
     val resources = LocalContext.current.resources
     var invalidSeed by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
@@ -101,29 +102,29 @@ fun RestoreWallet(
         wordsList = resources.openRawResource(R.raw.words).bufferedReader().use { reader ->
             reader.readLines().map { it.trim() }.filter { it.isNotEmpty() }
         }
+        // Monero's 25-word mnemonic uses its own dictionary, not the BIP-39
+        // dictionary in words.txt. Validate each format against the right list.
+        moneroWordsList = resources.openRawResource(R.raw.monero_words).bufferedReader().use { reader ->
+            reader.readLines().map { it.trim() }.filter { it.isNotEmpty() }
+        }
     }
 
     fun validateSeed() {
-        // Monero mnemonic recovery uses 25 words; Polyseed uses 16.
         // Accept pasted phrases separated by spaces, newlines, or tabs.
         val candidate = seed.trim()
             .split(Regex("\\s+"))
             .filter { it.isNotBlank() }
-        val supportedWordCount = candidate.size == 16 || candidate.size == 25
-        val wordListReady = wordsList.isNotEmpty()
-        val containsUnknownWord = wordListReady && candidate.any { it !in wordsList }
+        val isPolyseed = candidate.size == 16 &&
+            wordsList.isNotEmpty() && candidate.all { it in wordsList }
+        val isMoneroSeed = candidate.size == 25 &&
+            moneroWordsList.isNotEmpty() && candidate.all { it in moneroWordsList }
 
-        invalidSeed = candidate.isNotEmpty() &&
-            (!supportedWordCount || (wordListReady && containsUnknownWord))
-        seedList = if (supportedWordCount && wordListReady && !containsUnknownWord) {
-            candidate
-        } else {
-            emptyList()
-        }
+        invalidSeed = candidate.isNotEmpty() && !isPolyseed && !isMoneroSeed
+        seedList = if (isPolyseed || isMoneroSeed) candidate else emptyList()
     }
 
-    LaunchedEffect(wordsList) {
-        if (wordsList.isNotEmpty()) validateSeed()
+    LaunchedEffect(wordsList, moneroWordsList) {
+        if (wordsList.isNotEmpty() && moneroWordsList.isNotEmpty()) validateSeed()
     }
 
     Scaffold { paddingValues ->
