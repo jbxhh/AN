@@ -95,33 +95,40 @@ fun RestoreWallet(
     }
     var seedList by remember { mutableStateOf(emptyList<String>()) }
     var wordsList by remember { mutableStateOf(emptyList<String>()) }
-    var moneroWordsList by remember { mutableStateOf(emptyList<String>()) }
     val resources = LocalContext.current.resources
     var invalidSeed by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
+    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(resources) {
-        wordsList = resources.openRawResource(R.raw.words).bufferedReader().use { reader ->
-            reader.readLines().map { it.trim() }.filter { it.isNotEmpty() }
-        }
-        moneroWordsList = resources.openRawResource(R.raw.monero_words).bufferedReader().use { reader ->
-            reader.readLines().map { it.trim() }.filter { it.isNotEmpty() }
+    LaunchedEffect(true) {
+        scope.launch {
+            val inputStream = resources.openRawResource(R.raw.words)
+            val reader = inputStream.bufferedReader()
+            val lines = reader.readText().split("\\n")
+            wordsList = lines
         }
     }
 
     fun validateSeed() {
-        val result = validateRestoreSeedWords(
-            rawSeed = seed,
-            polyseedWords = wordsList.toSet(),
-            moneroWords = moneroWordsList.toSet()
-        )
-        invalidSeed = result.invalid
-        seedList = result.words
-    }
+        invalidSeed = false
+        scope.launch {
+            seedList = seed.split(" ")
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
 
-    LaunchedEffect(wordsList, moneroWordsList) {
-        if (wordsList.isNotEmpty() && seed.isNotBlank()) {
-            validateSeed()
+            if (seedList.size != 16 || seedList.size != 24) {
+                invalidSeed = false
+            } else {
+                seedList.forEach {
+                    if (!wordsList.contains(it.trim())) {
+                        invalidSeed = true
+                        return@forEach
+                    }
+                }
+            }
+            if (invalidSeed) {
+                seedList = listOf()
+            }
         }
     }
 
@@ -264,21 +271,14 @@ fun RestoreWallet(
             AnonOutlineButton(
                 onClick = {
                     if (enabled) {
-                        val rawHeight = restoreHeight.trim()
-                        val parsedHeight = rawHeight.takeIf { it.isNotEmpty() }?.toLongOrNull()
-                        if (rawHeight.isNotEmpty() && (parsedHeight == null || parsedHeight < 0L)) {
-                            restoreHeightError = "Restore height must be a non-negative integer"
-                            return@AnonOutlineButton
-                        }
-                        if (seedList.size == 25 && parsedHeight == null) {
+                        if (seedList.size == 25 && restoreHeight.isEmpty()) {
                             restoreHeightError = "Restore height required for 25 word seed"
                             return@AnonOutlineButton
                         }
-                        restoreHeightError = null
                         oNextPressed(
                             RestorePayload(
                                 seed = seedList,
-                                restoreHeight = parsedHeight,
+                                restoreHeight = restoreHeight.trim().toLongOrNull(),
                             )
                         )
                     }
