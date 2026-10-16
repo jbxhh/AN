@@ -141,7 +141,9 @@ fun SettingsPage(
 @Composable
 private fun SettingsDivider() {
     HorizontalDivider(
-        thickness = 2.5.dp
+        modifier = Modifier.padding(horizontal = 4.dp),
+        thickness = 1.dp,
+        color = MaterialTheme.colorScheme.outlineVariant
     )
 }
 
