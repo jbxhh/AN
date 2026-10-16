@@ -25,21 +25,7 @@ class Coins(private val handle: Long){
     }
 
     private external fun refreshJ(): List<CoinsInfo>
-    private external fun setFrozenJ(publicKey: String)
-    private external fun thawJ(publicKey: String)
     external fun getCount(): Int
-
-    fun setFrozen(publicKey: String): Boolean {
-        setFrozenJ(publicKey)
-        refresh()
-        return all.any { it.pub_key == publicKey && it.frozen }
-    }
-
-    fun thaw(publicKey: String): Boolean {
-        thawJ(publicKey)
-        refresh()
-        return all.any { it.pub_key == publicKey && !it.frozen }
-    }
 
     companion object {
         init {
