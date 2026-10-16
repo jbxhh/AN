@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -74,7 +75,7 @@ fun ReceiveScreen(
         topBar = {
             TopAppBar(
                 title = {
-
+                    Text(stringResource(R.string.primary_address))
                 },
                 navigationIcon = {
                     IconButton(
@@ -87,7 +88,7 @@ fun ReceiveScreen(
                     IconButton(
                         onClick = navigateToSubAddresses
                     ) {
-                        Icon(AnonIcons.History, contentDescription = null)
+                        Icon(AnonIcons.History, contentDescription = stringResource(R.string.subaddress_label_list))
                     }
                 }
             )
@@ -100,8 +101,6 @@ fun ReceiveScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Top,
             ) {
-                      
-
                 item {
                     Spacer(Modifier.height(24.dp))
                 }
@@ -137,7 +136,6 @@ fun ReceiveScreen(
                 item {
                     Spacer(Modifier.height(18.dp))
                 }
-
             }
         }
     }
