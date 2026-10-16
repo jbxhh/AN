@@ -33,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -42,6 +43,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.anonero.icons.AnonIcons
+import io.anonero.R
 import io.anonero.model.Subaddress
 import io.anonero.model.TransactionInfo
 import io.anonero.services.WalletState
@@ -82,8 +84,10 @@ fun SubAddressDetailScreen(
     val transactions by subAddressDetailVm.transactions.observeAsState(listOf())
       var addressLabel by remember {
         mutableStateOf(
-            if (subAddress.label.isEmpty() || subAddress.label.startsWith("Subaddress"))
-                "" else subAddress.displayLabel
+            if (subAddress.label.isEmpty() ||
+                subAddress.label.startsWith("Subaddress", ignoreCase = true) ||
+                subAddress.label.equals("Primary address", ignoreCase = true)
+            ) "" else subAddress.displayLabel
         )
     }
     BackHandler {
@@ -169,7 +173,11 @@ fun SubAddressDetailScreen(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
-                                    addressLabel.ifEmpty { "添加标签" },
+                                    addressLabel.ifEmpty {
+                                        if (subAddress.addressIndex == 0 &&
+                                            (subAddress.label.isBlank() || subAddress.label.equals("Primary address", ignoreCase = true))
+                                        ) stringResource(R.string.primary_address) else "添加标签"
+                                    },
                                     modifier = Modifier.clickable {
                                         labelDialog = true
                                     },
