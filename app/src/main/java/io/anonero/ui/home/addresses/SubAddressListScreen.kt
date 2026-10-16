@@ -118,10 +118,20 @@ fun SubAddressesScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
+                                val generatedLabel =
+                                    address.label.isBlank() ||
+                                    Subaddress.DEFAULT_LABEL_FORMATTER.matcher(address.label).matches() ||
+                                    address.displayLabel.startsWith("SubAddress #", ignoreCase = true) ||
+                                    address.label.equals("Primary address", ignoreCase = true)
+                                val labelText = when {
+                                    generatedLabel && address.addressIndex == 0 ->
+                                        stringResource(R.string.primary_address)
+                                    generatedLabel ->
+                                        stringResource(R.string.subaddress_default_label, address.addressIndex)
+                                    else -> address.displayLabel
+                                }
                                 Text(
-                                    address.displayLabel.ifEmpty {
-                                        "${stringResource(R.string.add_subaddress_label)} ${address.addressIndex}"
-                                    },
+                                    labelText,
                                     color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.clickable { editingAddress = address }
                                 )
