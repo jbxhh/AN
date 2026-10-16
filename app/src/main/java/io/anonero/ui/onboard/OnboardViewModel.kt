@@ -177,10 +177,13 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
             throw CancellationException("unable to create wallet ${anonWallet?.status?.errorString}")
         }
         val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
-        val actualRestoreHeight = anonWallet.getRestoreHeight().coerceAtLeast(0L)
+        // For a standard Monero seed, persist the exact height chosen on the restore
+        // screen. Polyseed has no height field, so fall back to the native wallet value.
+        val actualRestoreHeight = (
+            restorePayload?.restoreHeight ?: anonWallet.getRestoreHeight()
+        ).coerceAtLeast(0L)
         prefs.edit(commit = true) {
             putString(PREFS_PASSPHRASE_HASH, crazyPass)
-            // The wallet's stored restore height is the source of truth (also for Polyseed).
             putLong(RESTORE_HEIGHT, actualRestoreHeight)
             // Mark this seed restore so wallet startup preserves the selected height
             // and queues its first native scan from that height after the daemon is synced.
