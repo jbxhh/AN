@@ -3,6 +3,7 @@ package io.anonero.ui.home.settings
 import io.anonero.ui.theme.AnonNeroTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -66,14 +67,13 @@ fun SettingsPage(
             )
         }
     ) { padding ->
-        Column(
+        Box(
             modifier = modifier
                 .padding(padding)
                 .fillMaxSize()
         ) {
             LazyColumn(
                 modifier = Modifier
-                    .weight(1f)
                     .fillMaxSize()
                     .padding(horizontal = 12.dp)
             ) {
@@ -117,25 +117,29 @@ fun SettingsPage(
                 }
             }
 
-            Text(
-                stringResource(
-                    R.string.settings_app_version,
-                    stringResource(R.string.app_name),
-                    BuildConfig.VERSION_NAME
-                ),
-                style = MaterialTheme.typography.labelLarge.copy(
-                    color = MaterialTheme.colorScheme.onSecondary.copy(alpha = 0.6f)
-                ),
-                fontSize = 12.sp,
-                textAlign = TextAlign.Center,
+            Column(
                 modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .padding(top = 8.dp, bottom = 76.dp)
-                    .clickable(
+                    .align(Alignment.BottomCenter)
+                    .padding(12.dp)
+                    .padding(bottom = 64.dp)
+            ) {
+                Text(
+                    stringResource(
+                        R.string.settings_app_version,
+                        stringResource(R.string.app_name),
+                        BuildConfig.VERSION_NAME
+                    ),
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        color = MaterialTheme.colorScheme.onSecondary.copy(alpha = 0.6f),
+                        fontSize = 12.sp
+                    ),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
                     ) { navigateTo(SettingsLogs) }
-            )
+                )
+            }
         }
     }
 }
