@@ -27,7 +27,6 @@ import androidx.core.content.edit
 class InvalidPin : Exception("invalid pin")
 
 private const val TAG = "AnonWalletHandler"
-private const val FORCE_FRESH_WALLET_SCAN = "anonero_force_fresh_wallet_scan"
 
 class UnableToCloseWallet : Exception()
 
@@ -121,27 +120,18 @@ class AnonWalletHandler(
             // the daemon tip. That destroys the user-selected restore height because the
             // native "recovering from seed" flag is not retained after this wallet is
             // closed and reopened by the service. Capture the stored value before init.
-            val forceFreshScan = prefs.getBoolean(FORCE_FRESH_WALLET_SCAN, false)
-            val selectedRestoreHeightBeforeInit = if (forceFreshScan) {
-                runCatching { wallet.getRestoreHeight().coerceAtLeast(0L) }
-                    .onFailure { Timber.tag(TAG).w(it, "Unable to read selected restore height before init") }
-                    .getOrNull()
-            } else {
-                null
-            }
+            val forceFreshScan = prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+            val selectedRestoreHeightBeforeInit =
+                if (forceFreshScan) walletState.pendingSelectedRestoreHeight(wallet) else null
 
             val initialized = wallet.init(0)
             if (initialized && wallet.isInitialized) {
                 if (forceFreshScan && selectedRestoreHeightBeforeInit != null) {
-                    // Restore the selected height immediately after native init, before
-                    // publishing progress or starting either refresh path.
-                    wallet.setRestoreHeight(selectedRestoreHeightBeforeInit)
-                    val reappliedHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
+                    // The height entered on the restore screen is authoritative;
+                    // native init can replace the wallet's refresh start with the daemon tip.
+                    val reappliedHeight = walletState.preservePendingRestoreHeightAfterInit(wallet)
                     check(reappliedHeight == selectedRestoreHeightBeforeInit) {
-                        "Selected restore height was not preserved: expected $selectedRestoreHeightBeforeInit, got $reappliedHeight"
-                    }
-                    check(wallet.store()) {
-                        "Unable to persist the selected restore height"
+                        "Selected restore height changed during native init"
                     }
                     Timber.tag(TAG).i(
                         "Preserved selected restore height after wallet init: %d",
@@ -159,21 +149,15 @@ class AnonWalletHandler(
                     scanStartHeight = actualRestoreHeight,
                     forceStartAtSelectedHeight = forceFreshScan
                 )
-                if (forceFreshScan) {
-                    prefs.edit { remove(FORCE_FRESH_WALLET_SCAN) }
-                }
                 // Publish local data and start the refresh/rescan immediately after the
                 // selected restore height is recorded. Never wait for refreshHistory()
                 // before starting the scan and allowing refreshed() to publish the live tip.
                 walletState.publishWalletSnapshot(wallet)
                 if (forceFreshScan) {
-                    // Seed recovery created a new wallet whose native chain cache
-                    // contains only genesis. A normal refresh honors
-                    // m_refresh_from_block_height and fast-forwards the hash cache to
-                    // the chosen height before processing wallet transactions.
-                    // Do not request a full rescan here: it needlessly clears/rebuilds
-                    // that cache and can lose the queued rescan while the daemon is not
-                    // yet fully synced.
+                    // Keep a normal refresh running so we can monitor daemon sync,
+                    // but leave the fresh-restore marker set. WalletState will queue a
+                    // native rescan from the chosen height after the daemon fully syncs;
+                    // init may already have advanced the native hash cache to the node tip.
                     Timber.tag(TAG).i(
                         "Starting fresh wallet scan from selected restore height: %d",
                         actualRestoreHeight
