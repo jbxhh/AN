@@ -83,6 +83,30 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Load persistent APK signing key
+        shell: bash
+        env:
+          ANONERO_KEYSTORE_BASE64: ${{ secrets.ANONERO_KEYSTORE_BASE64 }}
+          ANONERO_KEYSTORE_PASSWORD: ${{ secrets.ANONERO_KEYSTORE_PASSWORD }}
+          ANONERO_KEY_ALIAS: ${{ secrets.ANONERO_KEY_ALIAS }}
+          ANONERO_KEY_PASSWORD: ${{ secrets.ANONERO_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in ANONERO_KEYSTORE_BASE64 ANONERO_KEYSTORE_PASSWORD ANONERO_KEY_ALIAS ANONERO_KEY_PASSWORD; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing GitHub Actions secret: $name"
+              exit 1
+            fi
+          done
+          keystore="$RUNNER_TEMP/anonero-release.jks"
+          printf '%s' "$ANONERO_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          test -s "$keystore"
+          keytool -list -keystore "$keystore" -storepass "$ANONERO_KEYSTORE_PASSWORD" -alias "$ANONERO_KEY_ALIAS" >/dev/null
+          printf 'ANONERO_KEYSTORE_PATH=%s\n' "$keystore" >> "$GITHUB_ENV"
+          printf 'ANONERO_KEYSTORE_PASSWORD=%s\n' "$ANONERO_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          printf 'ANONERO_KEY_ALIAS=%s\n' "$ANONERO_KEY_ALIAS" >> "$GITHUB_ENV"
+          printf 'ANONERO_KEY_PASSWORD=%s\n' "$ANONERO_KEY_PASSWORD" >> "$GITHUB_ENV"
+
       - name: Setup Android SDK
         run: |
           echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"

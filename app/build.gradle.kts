@@ -11,14 +11,19 @@ val nativeLibsReady =
     file("../external-libs/prebuilt/arm64-v8a/libanonero.so").isFile &&
         file("../external-libs/prebuilt/armeabi-v7a/libanonero.so").isFile
 
+val releaseSigningStoreFile = providers.environmentVariable("ANONERO_KEYSTORE_PATH").orNull
+val releaseSigningStorePassword = providers.environmentVariable("ANONERO_KEYSTORE_PASSWORD").orNull
+val releaseSigningKeyAlias = providers.environmentVariable("ANONERO_KEY_ALIAS").orNull
+val releaseSigningKeyPassword = providers.environmentVariable("ANONERO_KEY_PASSWORD").orNull
+
 android {
     namespace = "io.anonero"
     compileSdk = 35
     defaultConfig {
         versionCode = 7
-        // Include versionCode in the package ID so different published versions can coexist.
-        // Bumping versionCode intentionally installs a separate app with isolated app data.
-        applicationId = "io.anonero.jbxhh.v${versionCode}"
+        // Keep one stable package identity so signed builds update in place.
+        // Old version-suffixed packages remain installed until the user migrates safely.
+        applicationId = "io.anonero.jbxhh"
         minSdk = 26
         targetSdk = 35
         versionName = if (nativeLibsReady) "1.0.4" else "1.0.4-ui"
@@ -37,6 +42,21 @@ android {
             jniLibs.srcDir("../external-libs/prebuilt")
         }
     }
+    signingConfigs {
+        create("release") {
+            if (
+                !releaseSigningStoreFile.isNullOrBlank() &&
+                !releaseSigningStorePassword.isNullOrBlank() &&
+                !releaseSigningKeyAlias.isNullOrBlank() &&
+                !releaseSigningKeyPassword.isNullOrBlank()
+            ) {
+                storeFile = file(releaseSigningStoreFile)
+                storePassword = releaseSigningStorePassword
+                keyAlias = releaseSigningKeyAlias
+                keyPassword = releaseSigningKeyPassword
+            }
+        }
+    }
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -50,7 +70,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
+            // Release APKs must share one persistent signing identity across CI runs.
+            signingConfig = signingConfigs.getByName("release")
         }
         create("stageNet") {
             isMinifyEnabled = false
