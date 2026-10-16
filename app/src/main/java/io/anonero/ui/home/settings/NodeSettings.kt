@@ -83,6 +83,7 @@ import io.anonero.services.WalletState
 import io.anonero.store.NodesRepository
 import io.anonero.ui.components.DaemonStatus
 import io.anonero.ui.components.WalletProgressIndicator
+import io.anonero.ui.home.graph.routes.ResyncBlockchainRoute
 import io.anonero.ui.theme.DangerColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -288,13 +289,11 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
     val nodeSettingsVM = koinViewModel<NodeSettingsViewModel>()
     var showNodeDetails by remember { mutableStateOf(false) }
     var editingNode by remember { mutableStateOf<Node?>(null) }
-    val walletState = koinInject<WalletState>()
     var showMenu by remember { mutableStateOf(false) }
     val availableNodes by nodeSettingsVM.nodes.collectAsState(arrayListOf())
     val activeNode by nodeSettingsVM.activeNode.collectAsState(null)
     val scope = rememberCoroutineScope()
     val toastState = rememberToasterState()
-    val resyncMsg = stringResource(R.string.resync_initiated_this_may_take_a_while)
 
     if (showNodeDetails || editingNode != null)
         Dialog(
@@ -400,23 +399,7 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
                                     text = { Text("重置同步区块") },
                                     onClick = {
                                         showMenu = false
-                                        val result = walletState.resyncBlockchain()
-                                        if (result.isFailure) {
-                                            scope.launch {
-                                                toastState.show(
-                                                    "Error : ${result.exceptionOrNull()?.message}",
-                                                    type = ToastType.Warning,
-                                                    duration = 6.seconds
-                                                )
-                                            }
-                                        } else {
-                                            scope.launch {
-                                                toastState.show(
-                                                     resyncMsg,
-                                                    type = ToastType.Success,
-                                                )
-                                            }
-                                        }
+                                        navigateTo(ResyncBlockchainRoute)
                                     }
                                 )
                             }

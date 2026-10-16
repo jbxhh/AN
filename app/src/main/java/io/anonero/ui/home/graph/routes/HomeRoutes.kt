@@ -56,6 +56,9 @@ data object SettingsNodeRoute
 data object NodeManagementRoute
 
 @Serializable
+data object ResyncBlockchainRoute
+
+@Serializable
 data object ProxySettingsRoute
 
 @Serializable

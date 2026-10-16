@@ -58,6 +58,7 @@ import io.anonero.ui.home.graph.routes.SettingsExportBackUp
 import io.anonero.ui.home.graph.routes.SettingsLogs
 import io.anonero.ui.home.graph.routes.SettingsNodeRoute
 import io.anonero.ui.home.graph.routes.NodeManagementRoute
+import io.anonero.ui.home.graph.routes.ResyncBlockchainRoute
 import io.anonero.ui.home.graph.routes.SettingsRoute
 import io.anonero.ui.home.graph.routes.SettingsViewSeedRoute
 import io.anonero.ui.home.graph.routes.SubAddressesRoute
@@ -87,6 +88,7 @@ import io.anonero.AnonConfig
 @Composable
 fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHostController?) {
     var showBottomNavigation by remember { mutableStateOf(true) }
+    var resyncReturnBottomNavigation by remember { mutableStateOf(true) }
     val bottomNavController = rememberNavController()
     val context = LocalContext.current
     val navBackStackEntry by bottomNavController.currentBackStackEntryAsState()
@@ -216,12 +218,22 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                                 }
                             },
                             navigateTo = {
-                                if (it is CoinsScreenRoute) showBottomNavigation = false
+                                if (it is ResyncBlockchainRoute) resyncReturnBottomNavigation = showBottomNavigation
+                                if (it is CoinsScreenRoute || it is ResyncBlockchainRoute) showBottomNavigation = false
                                 bottomNavController.navigate(it)
                             },
                             toastState = toastState,
                             sharedTransitionScope = this@SharedTransitionLayout,
                             animatedContentScope = this@composable
+                        )
+                    }
+                    composable<ResyncBlockchainRoute> {
+                        ResyncBlockchainScreen(
+                            onBackPress = {
+                                showBottomNavigation = resyncReturnBottomNavigation
+                                bottomNavController.popBackStack()
+                            },
+                            toastState = toastState
                         )
                     }
                     composable<ReceiveRoute> {
@@ -351,6 +363,7 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                                 bottomNavController.popBackStack()
                             },
                             navigateTo = {
+                                if (it is ResyncBlockchainRoute) resyncReturnBottomNavigation = showBottomNavigation
                                 showBottomNavigation = false
                                 bottomNavController.navigate(it)
                             }
