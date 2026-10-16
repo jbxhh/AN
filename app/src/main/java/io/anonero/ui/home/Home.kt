@@ -332,7 +332,10 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                         )
                     }
                     composable<SettingsNodeRoute> {
-                        NodeSettings(onBackPress = { bottomNavController.popBackStack() })
+                        NodeSettings(
+                            onBackPress = { bottomNavController.popBackStack() },
+                            navigateTo = { bottomNavController.navigate(it) }
+                        )
                     }
                     composable<SubAddressesRoute> {
                         SubAddressesScreen(
