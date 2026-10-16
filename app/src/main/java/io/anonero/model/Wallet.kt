@@ -96,6 +96,8 @@ class Wallet {
     val address: String
         get() = getAddress(accountIndex)
 
+    //TODO virtual void hardForkInfo(uint8_t &version, uint64_t &earliest_height) const = 0;
+    //TODO virtual bool useForkRules(uint8_t version, int64_t early_blocks) const = 0;
     fun getAddress(accountIndex: Int): String {
         return getAddressJ(accountIndex, 0)
     }
@@ -113,8 +115,8 @@ class Wallet {
         return Subaddress(
             accountIndex,
             subAddressIndex,
-            getAddressJ(accountIndex, subAddressIndex),
-            getSubaddressLabel(accountIndex, subAddressIndex)
+            getSubaddress(subAddressIndex),
+            getSubaddressLabel(0, subAddressIndex)
         )
     }
 
@@ -123,10 +125,7 @@ class Wallet {
         var amount: Long = 0
         history?.let { history ->
             for (info in history.all) {
-                if (info.accountIndex == accountIndex &&
-                    info.addressIndex == subAddressIndex &&
-                    info.direction == TransactionInfo.Direction.Direction_In
-                ) {
+                if (info.addressIndex == subAddressIndex && info.direction == TransactionInfo.Direction.Direction_In) {
                     amount += info.amount
                 }
             }
@@ -142,6 +141,8 @@ class Wallet {
 
     external fun nettype(): Int
 
+    //    virtual bool createWatchOnly(const std::string &path, const std::string &password, const std::string &language) const = 0;
+    //    virtual void setRefreshFromBlockHeight(uint64_t refresh_from_block_height) = 0;
     external fun getIntegratedAddress(paymentId: String?): String?
     external fun getSecretViewKey(): String
     external fun getSecretSpendKey(): String
@@ -150,6 +151,8 @@ class Wallet {
         return store("")
     }
 
+    //TODO virtual void setTrustedDaemon(bool arg) = 0;
+    //TODO virtual bool trustedDaemon() const = 0;
     @Synchronized
     external fun store(path: String?): Boolean
     fun close(): Boolean {
@@ -159,6 +162,7 @@ class Wallet {
 
     external fun getFilename(): String
 
+    //    virtual std::string keysFilename() const = 0;
     fun init(upperTransactionSizeLimit: Long): Boolean {
         var daemonAddress = WalletManager.instance?.getDaemonAddress()
         var daemonUsername = WalletManager.instance?.daemonUsername
@@ -174,13 +178,13 @@ class Wallet {
         }
         message = "${message}\nupper_transaction_size_limit = 0 (probably)"
         if (daemonUsername != null) {
-            Timber.tag(TAG).i("Daemon username configured")
+            Timber.tag(TAG).i(daemonUsername)
         } else {
             message = "${message}\ndaemon_username == null"
             daemonUsername = ""
         }
         if (daemonPassword != null) {
-            Timber.tag(TAG).i("Daemon password configured")
+            Timber.tag(TAG).i(daemonPassword)
         } else {
             message = "${message}daemon_password == null"
             daemonPassword = ""
@@ -251,6 +255,7 @@ class Wallet {
         isSynchronized = true
     }
 
+
     external fun startRefresh()
     external fun pauseRefresh()
     external fun refresh(): Boolean
@@ -261,6 +266,8 @@ class Wallet {
         rescanBlockchainAsyncJ()
     }
 
+    //TODO virtual void setAutoRefreshInterval(int millis) = 0;
+    //TODO virtual int autoRefreshInterval() const = 0;
     private fun disposePendingTransaction() {
         if (pendingTransaction != null) {
             disposeTransaction(pendingTransaction)
@@ -301,10 +308,7 @@ class Wallet {
     ): PendingTransaction {
     	disposePendingTransaction()
         val priority: Int = priority.ordinal
-    	if (selectedUtxos.any { it.spent || it.frozen || !it.unlocked }) {
-            throw java.lang.Exception("Selected outputs must be unspent, unlocked, and unfrozen")
-    	}
-    		val preferredInputs = selectedUtxos.map { it.key }.toCollection(ArrayList())
+    	val preferredInputs = selectedUtxos.map { it.key }.toCollection(ArrayList())
     	if (selectedUtxos.isNotEmpty() && !sweepAll) {
             checkSelectedAmounts(preferredInputs, amount, false)
     	}
@@ -325,10 +329,12 @@ class Wallet {
         return pendingTransaction.commit("", overwrite = true)
     }
 
+
     @Throws(java.lang.Exception::class)
     fun getUtxos(): List<CoinsInfo> {
         return coins?.all ?: listOf()
     }
+
 
     @Throws(java.lang.Exception::class)
     private fun checkSelectedAmounts(selectedUtxos: List<String>, amount: Long, sendAll: Boolean) {
@@ -363,6 +369,7 @@ class Wallet {
     private external fun getHistoryJ(): Long
     private external fun getCoinsJ(): Long
 
+
     external fun exportOutputs(filename: String?, all: Boolean): Boolean
     external fun importOutputs(filename: String?): String?
     external fun exportKeyImages(filename: String?, all: Boolean): Boolean
@@ -379,6 +386,7 @@ class Wallet {
 
     private external fun loadUnsignedTx(inputFile: String?): Long
 
+    //virtual TransactionHistory * history() const = 0;
     fun refreshHistory() {
         history?.refreshWithNotes(this)
     }
@@ -409,6 +417,7 @@ class Wallet {
     external fun addAccount(label: String? = NEW_ACCOUNT_NAME)
     var accountLabel: String?
         get() = getAccountLabel(accountIndex)
+        //virtual std::string signMessage(const std::string &message) = 0;
         set(label) {
             setAccountLabel(accountIndex, label)
         }
@@ -461,7 +470,7 @@ class Wallet {
     val deviceType: Device
         get() {
             val device = getDeviceTypeJ()
-            return Device.values()[device + 1]
+            return Device.values()[device + 1] // mapping is monero+1=android
         }
 
     private external fun getDeviceTypeJ(): Int
@@ -477,6 +486,7 @@ class Wallet {
 
     enum class Device(val accountLookahead: Int, val subaddressLookahead: Int) {
         Device_Undefined(0, 0), Device_Software(50, 200), Device_Ledger(5, 20)
+
     }
 
     enum class StatusEnum {
@@ -489,7 +499,7 @@ class Wallet {
 
     class Status internal constructor(status: Int, val errorString: String) {
         val status: StatusEnum
-        var connectionStatus: ConnectionStatus? = null
+        var connectionStatus: ConnectionStatus? = null // optional
 
         init {
             this.status = StatusEnum.entries.toTypedArray()[status]
@@ -506,7 +516,7 @@ class Wallet {
 
     companion object {
         const val SWEEP_ALL = Long.MAX_VALUE
-        private const val NEW_ACCOUNT_NAME = "Untitled account"
+        private const val NEW_ACCOUNT_NAME = "Untitled account" // src/wallet/wallet2.cpp:941
 
         init {
             System.loadLibrary("anonero")
