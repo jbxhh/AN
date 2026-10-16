@@ -86,43 +86,55 @@ class WalletState {
                 _balanceInfo.value = null
                 _unLockedBalance.value = null
                 _walletStatus.value = null
-                _transactions.value = listOf()
+                _transactions.value = emptyList()
                 _nextAddress.value = null
-                _subAddresses.value = listOf()
-                _coins.value = listOf()
+                _subAddresses.value = emptyList()
+                _coins.value = emptyList()
                 _connectedDaemon.update { current -> current?.copy(daemonHeight = 0L) }
                 return@let
             }
 
             updateBlockHeights(wallet)
-            _balanceInfo.update { wallet.balance }
-            _unLockedBalance.update {
-                if (AnonConfig.viewOnly) wallet.viewOnlyBalance() else wallet.unlockedBalance
-            }
             _walletStatus.update { wallet.fullStatus }
             if (wallet.status.errorString.isNotEmpty()) {
                 Timber.tag(TAG).i("StatusError %s", wallet.status.errorString)
             }
 
-            val oldTxCount = _transactions.value.size
-            val updatedTxs = (wallet.history?.all?.sortedWith(comparator = { o1, o2 ->
-                o2.timestamp.compareTo(o1.timestamp)
-            }) ?: listOf()).fastDistinctBy {
-                it.getListKey()
-            }
-            _transactions.update { updatedTxs }
-            if (oldTxCount > 0 && updatedTxs.size > oldTxCount) {
-                val hasNewIncoming = updatedTxs.take(updatedTxs.size - oldTxCount).any {
-                    it.direction == TransactionInfo.Direction.Direction_In
+            if (wallet.isSynchronized) {
+                _balanceInfo.update { wallet.balance }
+                _unLockedBalance.update {
+                    if (AnonConfig.viewOnly) wallet.viewOnlyBalance() else wallet.unlockedBalance
                 }
-                if (hasNewIncoming) {
-                    _incomingTx.tryEmit(Unit)
+
+                val oldTxCount = _transactions.value.size
+                val updatedTxs = (wallet.history?.all?.sortedWith(comparator = { o1, o2 ->
+                    o2.timestamp.compareTo(o1.timestamp)
+                }) ?: emptyList()).fastDistinctBy {
+                    it.getListKey()
                 }
+                _transactions.update { updatedTxs }
+                if (oldTxCount > 0 && updatedTxs.size > oldTxCount) {
+                    val hasNewIncoming = updatedTxs.take(updatedTxs.size - oldTxCount).any {
+                        it.direction == TransactionInfo.Direction.Direction_In
+                    }
+                    if (hasNewIncoming) {
+                        _incomingTx.tryEmit(Unit)
+                    }
+                }
+                if (!backgroundSync) {
+                    _coins.update { (wallet.coins?.all ?: emptyList()).fastFilter { !it.spent } }
+                }
+            } else {
+                // Do not present partial balances or history as final while rescanning.
+                _balanceInfo.value = null
+                _unLockedBalance.value = null
+                _transactions.value = emptyList()
+                _coins.value = emptyList()
             }
+
             if (!backgroundSync) {
                 _nextAddress.update { wallet.getLatestSubAddress() }
                 _subAddresses.update { wallet.getAllUsedSubAddresses().reversed() }
-                _coins.update { (wallet.coins?.all ?: listOf()).fastFilter { !it.spent } }
             }
         }
     }
@@ -179,6 +191,9 @@ class WalletState {
             return
         }
 
+        // The latest real wallet height is still behind the daemon.
+        // Do not expose partial balance/history until refreshed() confirms completion.
+        wallet.isSynchronized = false
         val targetHeight = wallet.getDaemonBlockChainTargetHeight()
         val progress = if (targetHeight > 0L) {
             (chainHeight.toDouble() / targetHeight.toDouble()).toFloat().coerceIn(0f, 0.999f)
