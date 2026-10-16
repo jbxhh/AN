@@ -26,11 +26,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import io.anonero.AnonConfig
 import io.anonero.BuildConfig
 import io.anonero.R
@@ -40,7 +38,6 @@ import io.anonero.ui.home.graph.routes.SettingsLogs
 import io.anonero.ui.home.graph.routes.SettingsNodeRoute
 import io.anonero.ui.home.graph.routes.SettingsTradeRoute
 import io.anonero.ui.home.graph.routes.SettingsViewSeedRoute
-import io.anonero.ui.components.AnonWordmark
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,24 +50,15 @@ fun SettingsPage(
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onBackPress) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = null,
-                                tint = Color.White
-                            )
-                        }
-                        AnonWordmark(
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                color = Color.White,
-                                fontSize = 26.sp,
-                                fontWeight = FontWeight.Medium
-                            )
+                    IconButton(onClick = onBackPress) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = null,
+                            tint = Color.White
                         )
                     }
                 },
-                title = { Text("") }
+                title = { Text("ΛИ0И") }
             )
         }
     ) { padding ->
