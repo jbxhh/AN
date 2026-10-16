@@ -15,12 +15,12 @@ android {
     namespace = "io.anonero"
     compileSdk = 35
     defaultConfig {
+        versionCode = 7
         // Include versionCode in the package ID so different published versions can coexist.
         // Bumping versionCode intentionally installs a separate app with isolated app data.
-        applicationId = "io.anonero.jbxhh.v$versionCode"
+        applicationId = "io.anonero.jbxhh.v${versionCode}"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
         versionName = if (nativeLibsReady) "1.0.4" else "1.0.4-ui"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
