@@ -45,7 +45,7 @@ class AnonWalletHandler(
         scope.launch {
             torService.socksFlow.collect {
                 val wallet = WalletManager.instance?.wallet
-                if (prefs.getBoolean(WALLET_USE_TOR, false) && wallet?.isInitialized == true) {
+                if (prefs.getBoolean(WALLET_USE_TOR, true) && wallet?.isInitialized == true) {
                     setProxy(it.address.toString(), it.port.value)
                 }
             }
@@ -88,18 +88,45 @@ class AnonWalletHandler(
             val proxyPort = prefs.getInt(WALLET_PROXY_PORT, -1)
             val useTor = prefs.getBoolean(WALLET_USE_TOR, true)
 
-            // —— 真实 Tor/代理流程，最多等 10 秒，等不到就继续往下走 ——
-            withTimeoutOrNull(10_000L) {
-                if (useTor || proxyHost.isNullOrBlank()) {
-                    torService.start()
-                    while (torService.socks == null) {
-                        delay(200)
+            // Tor must be ready before wallet RPC starts. If Tor is requested but
+            // cannot start in time, stop here rather than silently connecting directly.
+            val proxyReady = withTimeoutOrNull(10_000L) {
+                when {
+                    useTor -> {
+                        if (torService.socks == null) {
+                            torService.start()
+                        }
+                        while (torService.socks == null) {
+                            delay(200)
+                        }
+                        val socket = checkNotNull(torService.socks) {
+                            "Tor SOCKS endpoint was not available"
+                        }
+                        WalletManager.instance?.setProxy(socket.value)
                     }
-                    val socket = torService.socks
-                    WalletManager.instance?.setProxy("${socket?.value}")
-                } else if (proxyHost.isNotEmpty() && proxyPort != -1) {
-                    WalletManager.instance?.setProxy("${proxyHost}:$proxyPort")
+                    !proxyHost.isNullOrBlank() && proxyPort in 1..65535 -> {
+                        WalletManager.instance?.setProxy("${proxyHost}:$proxyPort")
+                    }
+                    else -> {
+                        // Explicit direct mode with no manual proxy: remove stale proxy
+                        // configuration inherited from an earlier Tor/manual-proxy session.
+                        WalletManager.instance?.setProxy("")
+                    }
                 }
+                true
+            } ?: false
+
+            if (useTor && !proxyReady) {
+                Timber.tag(TAG).e("Tor SOCKS proxy did not become ready; refusing direct wallet connection")
+                walletState.setLoading(false)
+                walletState.updateDaemon(
+                    DaemonInfo(
+                        daemon = WalletManager.instance?.getDaemonAddress(),
+                        Wallet.ConnectionStatus.ConnectionStatus_Disconnected,
+                        daemonHeight = 0L
+                    )
+                )
+                return
             }
 
             // —— 真实节点配置 ——
@@ -229,21 +256,27 @@ class AnonWalletHandler(
                 remove(WALLET_PROXY)
                 remove(WALLET_PROXY_PORT)
             }
-        } else {
-            prefs.edit {
-                putString(WALLET_PROXY, proxy)
-                putInt(WALLET_PROXY_PORT, port ?: -1)
-            }
-            val proxyHost = prefs.getString(WALLET_PROXY, "")
-            val proxyPort = prefs.getInt(WALLET_PROXY_PORT, -1)
-            val proxyStr = if (proxyHost?.isNotEmpty() == true && proxyPort != -1) {
-                "${proxyHost}:$proxyPort"
-            } else {
-                return
-            }
-            WalletManager.instance?.setProxy(proxyStr)
-            WalletManager.instance?.wallet?.setProxy(proxyStr)
+            // Clearing preferences alone leaves the native wallet using the old proxy.
+            WalletManager.instance?.setProxy("")
+            WalletManager.instance?.wallet?.setProxy("")
+            return
         }
+
+        prefs.edit {
+            putString(WALLET_PROXY, proxy)
+            putInt(WALLET_PROXY_PORT, port ?: -1)
+        }
+        val proxyHost = prefs.getString(WALLET_PROXY, "")?.trim().orEmpty()
+        val proxyPort = prefs.getInt(WALLET_PROXY_PORT, -1)
+        if (proxyHost.isBlank() || proxyPort !in 1..65535) {
+            Timber.tag(TAG).w("Invalid proxy endpoint; clearing native proxy configuration")
+            WalletManager.instance?.setProxy("")
+            WalletManager.instance?.wallet?.setProxy("")
+            return
+        }
+        val proxyStr = "$proxyHost:$proxyPort"
+        WalletManager.instance?.setProxy(proxyStr)
+        WalletManager.instance?.wallet?.setProxy(proxyStr)
     }
 
     fun getProxy(): Pair<String, Int>? {
