@@ -96,10 +96,10 @@ fun CoinsScreen(
     fun selectCoin(coin: CoinsInfo) {
         if (coin.frozen || !coin.unlocked) return
 
-        selectedCoins = if (selectedCoins.contains(coin.pub_key)) {
-            selectedCoins - coin.pub_key
+        selectedCoins = if (selectedCoins.contains(coin.key)) {
+            selectedCoins - coin.key
         } else {
-            selectedCoins + coin.pub_key
+            selectedCoins + coin.key
         }
     }
 
@@ -149,7 +149,7 @@ fun CoinsScreen(
         }
         detailCoin = updatedCoin
         if (shouldFreeze) {
-            selectedCoins = selectedCoins - coin.pub_key
+            selectedCoins = selectedCoins - coin.key
         }
     }
 
@@ -285,7 +285,7 @@ fun CoinsScreen(
                                         )
                                     } else {
                                         Checkbox(
-                                            checked = selectedCoins.contains(coin.pub_key),
+                                            checked = selectedCoins.contains(coin.key),
                                             onCheckedChange = {
                                                 selectCoin(coin)
                                             }
