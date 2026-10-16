@@ -105,7 +105,7 @@ fun WalletProgressIndicator(modifier: Modifier = Modifier, refreshIndicatorProgr
                     color = MaterialTheme.colorScheme.primary
                 )
             }
-        } else if (refreshIndicatorProgress != 0.0f && !showIndefiniteLoading && isConnected && isNetworkConnected) {
+        } else if (refreshIndicatorProgress != 0.0f && isConnected && isNetworkConnected) {
             LinearProgressIndicator(
                 modifier = Modifier
                     .fillMaxWidth()
