@@ -227,7 +227,6 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                     composable<ReceiveRoute> {
                         ReceiveScreen(
                             modifier = Modifier.padding(paddingValues),
-                            onBackPress = { bottomNavController.popBackStack() },
                             navigateToSubAddresses = {
                                 showBottomNavigation = false
                                 bottomNavController.navigate(SubAddressesRoute)
