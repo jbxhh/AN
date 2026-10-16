@@ -76,7 +76,6 @@ import io.anonero.ui.components.qr.QrCodeColors
 import io.anonero.ui.components.qr.QrCodeView
 import io.anonero.util.KeyStoreHelper
 import io.anonero.util.PREFS_PASSPHRASE_HASH
-import io.anonero.util.isWalletPassphraseValid
 import io.anonero.util.ShakeConfig
 import io.anonero.util.WALLET_PREFERENCES
 import io.anonero.util.rememberShakeController
@@ -155,26 +154,33 @@ fun SeedSettingsPage(onBackPress: () -> Unit = {}) {
     }
     fun getSeed() {
         scope.launch(Dispatchers.IO) {
-            val context = AnonConfig.context
-            if (context == null || !isWalletPassphraseValid(context, prefs, passPhrase)) {
-                scope.launch {
-                    errorShake.shake(ShakeConfig(iterations = 4, translateX = 12f))
+            val hash = prefs.getString(PREFS_PASSPHRASE_HASH, "")
+            val hashedPass = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
+            if (hash == hashedPass) {
+                val seed = getWalletSeed(passPhrase)?.split(" ")
+                val legacy = getLegacySeed(passPhrase)?.split(" ")
+                if (seed != null) {
+                    seedWords = seed
+                    passPhraseDialog = false
                 }
-                return@launch
-            }
-            val seed = getWalletSeed(passPhrase)?.split(" ")
-            val legacy = getLegacySeed(passPhrase)?.split(" ")
-            if (seed != null) {
-                seedWords = seed
-                passPhraseDialog = false
+                if (legacy != null) {
+                    legacySeed = legacy
+                }
             } else {
-                scope.launch {
-                    errorShake.shake(ShakeConfig(iterations = 4, translateX = 12f))
+                errorShake.shake(
+                    ShakeConfig(
+                        6, translateX = 5f
+                    )
+                )
+                repeat(6) {
+                    delay(50)
+                    view.performHapticFeedback(
+                        HapticFeedbackConstants.CONTEXT_CLICK
+                    )
                 }
+                delay(100)
             }
-            if (legacy != null) {
-                legacySeed = legacy
-            }
+
         }
     }
     if (neroPayload.isNotEmpty()) {
