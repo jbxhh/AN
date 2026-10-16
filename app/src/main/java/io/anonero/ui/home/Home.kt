@@ -60,6 +60,7 @@ import io.anonero.ui.home.graph.routes.SettingsNodeRoute
 import io.anonero.ui.home.graph.routes.NodeManagementRoute
 import io.anonero.ui.home.graph.routes.ResyncBlockchainRoute
 import io.anonero.ui.home.graph.routes.SettingsRoute
+import io.anonero.ui.home.graph.routes.SettingsWalletRoute
 import io.anonero.ui.home.graph.routes.SettingsViewSeedRoute
 import io.anonero.ui.home.graph.routes.SubAddressesRoute
 import io.anonero.ui.home.graph.routes.TransactionDetailRoute
@@ -74,6 +75,7 @@ import io.anonero.ui.home.settings.SeedSettingsPage
 import io.anonero.ui.home.settings.SettingsDataPage
 import io.anonero.ui.home.settings.SettingsTradePage
 import io.anonero.ui.home.settings.SettingsPage
+import io.anonero.ui.home.settings.WalletSettingsPage
 import io.anonero.ui.home.spend.ReviewTransactionScreen
 import io.anonero.ui.onboard.graph.LandingScreenRoute
 import io.anonero.util.isIgnoringBatteryOptimizations
@@ -294,7 +296,7 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                             }
                         )
                     }
-                    composable<SettingsViewSeedRoute> {
+                    composable<SettingsWalletRoute> {\n                        WalletSettingsPage(\n                            onBackPress = { bottomNavController.popBackStack() },\n                            onViewSeed = { bottomNavController.navigate(SettingsViewSeedRoute) }\n                        )\n                    }\n                    composable<SettingsViewSeedRoute> {
                         SeedSettingsPage(onBackPress = { bottomNavController.popBackStack() })
                     }
                     composable<SettingsTradeRoute> {
