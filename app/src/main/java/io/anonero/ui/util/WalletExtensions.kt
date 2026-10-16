@@ -50,14 +50,11 @@ fun Wallet.getLatestSubAddress(): Subaddress {
 }
 
 fun Wallet.getAllUsedSubAddresses(): List<Subaddress> {
+    // Listing existing child addresses must be read-only. Calling getLatestSubAddress()
+    // here can create another address as a side effect and make "add" appear unreliable.
     val subAddresses = arrayListOf<Subaddress>()
     for (i in 0 until numSubAddresses) {
         subAddresses.add(getSubaddressObject(i))
-    }
-    getLatestSubAddress().let {
-        if (subAddresses.none { existing -> existing.address == it.address }) {
-            subAddresses.add(it)
-        }
     }
     return subAddresses
         .apply {
