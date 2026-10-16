@@ -15,55 +15,55 @@
  */
 
 #include <inttypes.h>
+#include <cstring>
 #include <mutex>
-#include <string>
 #include "anonero.h"
 #include "wallet2_api.h"
 
 //TODO explicit casting jlong, jint, jboolean to avoid warnings
-
-
-// Releases JNI UTF buffers on every return path. Nullable Kotlin strings are
-// converted to an empty string, matching the native wallet API's string inputs.
-class ScopedUtfChars {
-public:
-    ScopedUtfChars(JNIEnv *env, jstring value) : env_(env), value_(value), chars_(nullptr) {
-        if (value_ != nullptr) {
-            chars_ = env_->GetStringUTFChars(value_, nullptr);
-        }
-    }
-
-    ~ScopedUtfChars() {
-        if (env_ != nullptr && value_ != nullptr && chars_ != nullptr) {
-            env_->ReleaseStringUTFChars(value_, chars_);
-        }
-    }
-
-    ScopedUtfChars(const ScopedUtfChars &) = delete;
-    ScopedUtfChars &operator=(const ScopedUtfChars &) = delete;
-
-    const char *get() const {
-        return value_ == nullptr ? "" : chars_;
-    }
-
-private:
-    JNIEnv *env_;
-    jstring value_;
-    const char *chars_;
-};
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-#include <android/log.h>
 #define LOG_TAG "WalletNDK"
+#ifdef __ANDROID__
+#include <android/log.h>
 #define LOGV(...) __android_log_print(ANDROID_LOG_VERBOSE, LOG_TAG,__VA_ARGS__)
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG  , LOG_TAG,__VA_ARGS__)
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO   , LOG_TAG,__VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN   , LOG_TAG,__VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR  , LOG_TAG,__VA_ARGS__)
+#else
+// Desktop has no logcat; same five macros over stderr.
+#include <stdio.h>
+#define ANON_LOG(lvl, ...) do { \
+        fprintf(stderr, "%s/" LOG_TAG ": ", lvl); \
+        fprintf(stderr, __VA_ARGS__); \
+        fputc('\n', stderr); \
+    } while (0)
+#define LOGV(...) ANON_LOG("V", __VA_ARGS__)
+#define LOGD(...) ANON_LOG("D", __VA_ARGS__)
+#define LOGI(...) ANON_LOG("I", __VA_ARGS__)
+#define LOGW(...) ANON_LOG("W", __VA_ARGS__)
+#define LOGE(...) ANON_LOG("E", __VA_ARGS__)
+#endif
+
+// Android's jni.h declares AttachCurrentThread(JNIEnv**); the desktop JDK's takes void**.
+#ifdef __ANDROID__
+#define ANON_ATTACH_ARG(e) (e)
+#else
+#define ANON_ATTACH_ARG(e) reinterpret_cast<void **>(e)
+#endif
+
+// android.util.Pair is framework-only. extract_pair() just reads its first/second
+// Object fields, so the desktop source set supplies a class of the same shape.
+#ifdef __ANDROID__
+#define ANON_PAIR_CLASS "android/util/Pair"
+#else
+#define ANON_PAIR_CLASS "io/anonero/model/Pair"
+#endif
 
 static JavaVM *cachedJVM;
 static jclass class_ArrayList;
@@ -77,73 +77,31 @@ static jclass class_Pair;
 
 std::mutex _listenerMutex;
 
-static jclass cacheGlobalClass(JNIEnv *env, const char *className) {
-    jclass localClass = env->FindClass(className);
-    if (localClass == nullptr || env->ExceptionCheck()) {
-        LOGE("JNI_OnLoad: cannot find required class %s", className);
-        if (localClass != nullptr) env->DeleteLocalRef(localClass);
-        if (env->ExceptionCheck()) env->ExceptionClear();
-        return nullptr;
-    }
-
-    jclass globalClass = static_cast<jclass>(env->NewGlobalRef(localClass));
-    env->DeleteLocalRef(localClass);
-    if (globalClass == nullptr || env->ExceptionCheck()) {
-        LOGE("JNI_OnLoad: cannot cache required class %s", className);
-        if (globalClass != nullptr) env->DeleteGlobalRef(globalClass);
-        if (env->ExceptionCheck()) env->ExceptionClear();
-        return nullptr;
-    }
-    return globalClass;
-}
-
-static void clearCachedClasses(JNIEnv *env) {
-    if (class_ArrayList != nullptr) env->DeleteGlobalRef(class_ArrayList);
-    if (class_WalletListener != nullptr) env->DeleteGlobalRef(class_WalletListener);
-    if (class_TransactionInfo != nullptr) env->DeleteGlobalRef(class_TransactionInfo);
-    if (class_Transfer != nullptr) env->DeleteGlobalRef(class_Transfer);
-    if (class_Ledger != nullptr) env->DeleteGlobalRef(class_Ledger);
-    if (class_WalletStatus != nullptr) env->DeleteGlobalRef(class_WalletStatus);
-    if (class_CoinsInfo != nullptr) env->DeleteGlobalRef(class_CoinsInfo);
-    if (class_Pair != nullptr) env->DeleteGlobalRef(class_Pair);
-    class_ArrayList = nullptr;
-    class_WalletListener = nullptr;
-    class_TransactionInfo = nullptr;
-    class_Transfer = nullptr;
-    class_Ledger = nullptr;
-    class_WalletStatus = nullptr;
-    class_CoinsInfo = nullptr;
-    class_Pair = nullptr;
-}
-
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *jvm, void *reserved) {
     cachedJVM = jvm;
     LOGI("JNI_OnLoad");
-    JNIEnv *jenv = nullptr;
-    if (jvm->GetEnv(reinterpret_cast<void **>(&jenv), JNI_VERSION_1_6) != JNI_OK || jenv == nullptr) {
-        LOGE("JNI_OnLoad: JNI 1.6 environment is unavailable");
-        return JNI_ERR;
+    JNIEnv *jenv;
+    if (jvm->GetEnv(reinterpret_cast<void **>(&jenv), JNI_VERSION_1_6) != JNI_OK) {
+        return -1;
     }
+    //LOGI("JNI_OnLoad ok");
 
-#define CACHE_REQUIRED_CLASS(target, name) \
-    do { \
-        target = cacheGlobalClass(jenv, name); \
-        if (target == nullptr) { \
-            clearCachedClasses(jenv); \
-            return JNI_ERR; \
-        } \
-    } while (0)
-
-    CACHE_REQUIRED_CLASS(class_ArrayList, "java/util/ArrayList");
-    CACHE_REQUIRED_CLASS(class_TransactionInfo, "io/anonero/model/TransactionInfo");
-    CACHE_REQUIRED_CLASS(class_Transfer, "io/anonero/model/Transfer");
-    CACHE_REQUIRED_CLASS(class_WalletListener, "io/anonero/model/WalletListener");
-    CACHE_REQUIRED_CLASS(class_WalletStatus, "io/anonero/model/Wallet$Status");
-    CACHE_REQUIRED_CLASS(class_CoinsInfo, "io/anonero/model/CoinsInfo");
-    CACHE_REQUIRED_CLASS(class_Pair, "android/util/Pair");
-
-#undef CACHE_REQUIRED_CLASS
-
+    class_ArrayList = static_cast<jclass>(jenv->NewGlobalRef(
+            jenv->FindClass("java/util/ArrayList")));
+    class_TransactionInfo = static_cast<jclass>(jenv->NewGlobalRef(
+            jenv->FindClass("io/anonero/model/TransactionInfo")));
+    class_Transfer = static_cast<jclass>(jenv->NewGlobalRef(
+            jenv->FindClass("io/anonero/model/Transfer")));
+    class_WalletListener = static_cast<jclass>(jenv->NewGlobalRef(
+            jenv->FindClass("io/anonero/model/WalletListener")));
+//    class_Ledger = static_cast<jclass>(jenv->NewGlobalRef(
+//            jenv->FindClass("io/anonero/wallet/ledger/Ledger")));
+    class_WalletStatus = static_cast<jclass>(jenv->NewGlobalRef(
+            jenv->FindClass("io/anonero/model/Wallet$Status")));
+    class_CoinsInfo = static_cast<jclass>(jenv->NewGlobalRef(
+            jenv->FindClass("io/anonero/model/CoinsInfo")));
+    class_Pair = static_cast<jclass>(jenv->NewGlobalRef(
+            jenv->FindClass(ANON_PAIR_CLASS)));
     return JNI_VERSION_1_6;
 }
 #ifdef __cplusplus
@@ -153,7 +111,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *jvm, void *reserved) {
 int attachJVM(JNIEnv **jenv) {
     int envStat = cachedJVM->GetEnv((void **) jenv, JNI_VERSION_1_6);
     if (envStat == JNI_EDETACHED) {
-        if (cachedJVM->AttachCurrentThread(jenv, nullptr) != 0) {
+        if (cachedJVM->AttachCurrentThread(ANON_ATTACH_ARG(jenv), nullptr) != 0) {
             LOGE("Failed to attach");
             return JNI_ERR;
         }
@@ -169,7 +127,6 @@ void detachJVM(JNIEnv *jenv, int envStat) {
     //LOGI("envStat=%i", envStat);
     if (jenv->ExceptionCheck()) {
         jenv->ExceptionDescribe();
-        jenv->ExceptionClear();
     }
 
     if (envStat == JNI_EDETACHED) {
@@ -315,10 +272,9 @@ std::vector<std::string> java2cpp(JNIEnv *env, jobject arrayList) {
     for (jint i = 0; i < len; i++) {
         jstring element = static_cast<jstring>(env->CallObjectMethod(arrayList,
                                                                      java_util_ArrayList_get, i));
-        ScopedUtfChars utf_pchars(env, element);
-    const char *pchars = utf_pchars.get();
+        const char *pchars = env->GetStringUTFChars(element, nullptr);
         result.emplace_back(pchars);
-
+        env->ReleaseStringUTFChars(element, pchars);
         env->DeleteLocalRef(element);
     }
     return result;
@@ -352,10 +308,9 @@ std::set<std::string> java2cpp_set(JNIEnv *env, jobject arrayList) {
     for (jint i = 0; i < len; i++) {
         jstring element = static_cast<jstring>(env->CallObjectMethod(arrayList,
                                                                      java_util_ArrayList_get, i));
-        ScopedUtfChars utf_pchars(env, element);
-    const char *pchars = utf_pchars.get();
+        const char *pchars = env->GetStringUTFChars(element, nullptr);
         result.emplace(pchars);
-
+        env->ReleaseStringUTFChars(element, pchars);
         env->DeleteLocalRef(element);
     }
     return result;
@@ -364,57 +319,11 @@ std::set<std::string> java2cpp_set(JNIEnv *env, jobject arrayList) {
 std::pair<std::string, uint64_t> extract_pair(JNIEnv *env, jobject p) {
     jfieldID first = env->GetFieldID(class_Pair, "first", "Ljava/lang/Object;");
     jfieldID second = env->GetFieldID(class_Pair, "second", "Ljava/lang/Object;");
-    if (first == nullptr || second == nullptr) {
-        return {};
-    }
-
-    jobject stringObject = env->GetObjectField(p, first);
-    jobject valueObject = env->GetObjectField(p, second);
-    if (stringObject == nullptr || valueObject == nullptr) {
-        if (stringObject != nullptr) env->DeleteLocalRef(stringObject);
-        if (valueObject != nullptr) env->DeleteLocalRef(valueObject);
-        jclass exceptionClass = env->FindClass("java/lang/IllegalArgumentException");
-        if (exceptionClass != nullptr) {
-            env->ThrowNew(exceptionClass, "Transaction destination and amount must not be null");
-            env->DeleteLocalRef(exceptionClass);
-        }
-        return {};
-    }
-
-    auto string = static_cast<jstring>(stringObject);
-    ScopedUtfChars utf_chars(env, string);
-    const char *chars = utf_chars.get();
-    if (chars == nullptr) {
-        env->DeleteLocalRef(stringObject);
-        env->DeleteLocalRef(valueObject);
-        return {};
-    }
-    std::string convertedString(chars);
-
-    // Pair.second is a boxed java.lang.Long, not a native pointer. Unbox it
-    // before passing the amount to Monero's fee estimator.
-    jclass longClass = env->FindClass("java/lang/Long");
-    if (longClass == nullptr) {
-        env->DeleteLocalRef(stringObject);
-        env->DeleteLocalRef(valueObject);
-        return {};
-    }
-    jmethodID longValueMethod = env->GetMethodID(longClass, "longValue", "()J");
-    if (longValueMethod == nullptr) {
-        env->DeleteLocalRef(longClass);
-        env->DeleteLocalRef(stringObject);
-        env->DeleteLocalRef(valueObject);
-        return {};
-    }
-    jlong boxedValue = env->CallLongMethod(valueObject, longValueMethod);
-    env->DeleteLocalRef(longClass);
-    env->DeleteLocalRef(stringObject);
-    env->DeleteLocalRef(valueObject);
-    if (env->ExceptionCheck()) {
-        return {};
-    }
-
-    return std::make_pair(convertedString, static_cast<uint64_t>(boxedValue));
+    jstring string = static_cast<jstring>(env->GetObjectField(p, first));
+    std::string converted_string = env->GetStringUTFChars(string, nullptr);
+    uint64_t value = reinterpret_cast<uint64_t>(env->GetObjectField(p, second));
+    auto pair = std::make_pair(converted_string, value);
+    return pair;
 }
 
 
@@ -454,14 +363,6 @@ jobject cpp2java(JNIEnv *env, const std::vector<std::string> &vector) {
 
 /// end helpers
 
-static void throwWalletCreationError(JNIEnv *env, const char *message) {
-    jclass exceptionClass = env->FindClass("java/lang/IllegalStateException");
-    if (exceptionClass != nullptr) {
-        env->ThrowNew(exceptionClass, message);
-        env->DeleteLocalRef(exceptionClass);
-    }
-}
-
 #ifdef __cplusplus
 extern "C"
 {
@@ -483,23 +384,14 @@ Java_io_anonero_model_WalletManager_createWalletJ(JNIEnv *env, jobject instance,
     bool _polyseedCreate = Monero::Wallet::createPolyseed(seed_words, err);
     if (!_polyseedCreate) {
         LOGE("Failed to polyseedCreate");
-        jclass exceptionClass = env->FindClass("java/lang/IllegalStateException");
-        if (exceptionClass != nullptr) {
-            env->ThrowNew(exceptionClass, err.empty() ? "Failed to generate a Polyseed" : err.c_str());
-        }
-        return 0;
     }
 
 //     wallet->createPolyseed(seed_words, err);
 
-    ScopedUtfChars utf__path(env, path);
-    const char *_path = utf__path.get();
-    ScopedUtfChars utf__password(env, password);
-    const char *_password = utf__password.get();
-    ScopedUtfChars utf__passpharse(env, passpharse);
-    const char *_passpharse = utf__passpharse.get();
-    ScopedUtfChars utf__language(env, language);
-    const char *_language = utf__language.get(); // NOT USED ANYMORE?????
+    const char *_path = env->GetStringUTFChars(path, nullptr);
+    const char *_password = env->GetStringUTFChars(password, nullptr);
+    const char *_passpharse = env->GetStringUTFChars(passpharse, nullptr);
+    const char *_language = env->GetStringUTFChars(language, nullptr); // NOT USED ANYMORE?????
     Monero::NetworkType _networkType = static_cast<Monero::NetworkType>(networkType);
     Monero::Wallet *wallet =
             Monero::WalletManagerFactory::getWalletManager()->createWalletFromPolyseed(
@@ -509,14 +401,6 @@ Java_io_anonero_model_WalletManager_createWalletJ(JNIEnv *env, jobject instance,
                     seed_words,
                     std::string(_passpharse), true);
 
-    if (wallet == nullptr) {
-
-
-
-
-        throwWalletCreationError(env, "Native wallet creation returned null");
-        return 0;
-    }
     bool setupStatus = wallet->setupBackgroundSync(Monero::Wallet::BackgroundSync_ReusePassword,
                                                    std::string(_password), {});
     if (setupStatus == true) {
@@ -525,10 +409,9 @@ Java_io_anonero_model_WalletManager_createWalletJ(JNIEnv *env, jobject instance,
         LOGD("createWalletJ(): setupBackgroundSync(): failure!");
     }
 
-
-
-
-
+    env->ReleaseStringUTFChars(path, _path);
+    env->ReleaseStringUTFChars(password, _password);
+    env->ReleaseStringUTFChars(language, _language);
     return reinterpret_cast<jlong>(wallet);
 }
 
@@ -537,10 +420,8 @@ Java_io_anonero_model_WalletManager_openWalletJ(JNIEnv *env, jobject instance,
                                                 jstring path, jstring password,
                                                 jint networkType, jboolean viewOnly) {
     LOGD("openWalletJ(): start");
-    ScopedUtfChars utf__path(env, path);
-    const char *_path = utf__path.get();
-    ScopedUtfChars utf__password(env, password);
-    const char *_password = utf__password.get();
+    const char *_path = env->GetStringUTFChars(path, nullptr);
+    const char *_password = env->GetStringUTFChars(password, nullptr);
     Monero::NetworkType _networkType = static_cast<Monero::NetworkType>(networkType);
     Monero::Wallet *wallet =
             Monero::WalletManagerFactory::getWalletManager()->openWallet(
@@ -548,12 +429,6 @@ Java_io_anonero_model_WalletManager_openWalletJ(JNIEnv *env, jobject instance,
                     std::string(_password),
                     _networkType);
 
-    if (wallet == nullptr) {
-
-
-        throwWalletCreationError(env, "Unable to open wallet");
-        return 0;
-    }
     if (!viewOnly) {
         // setup background sync
         bool setupStatus = wallet->setupBackgroundSync(Monero::Wallet::BackgroundSync_ReusePassword,
@@ -564,8 +439,8 @@ Java_io_anonero_model_WalletManager_openWalletJ(JNIEnv *env, jobject instance,
             LOGD("openWalletJ(): setupBackgroundSync(): failure!");
         }
     }
-
-
+    env->ReleaseStringUTFChars(path, _path);
+    env->ReleaseStringUTFChars(password, _password);
     return reinterpret_cast<jlong>(wallet);
 }
 
@@ -575,14 +450,10 @@ Java_io_anonero_model_WalletManager_recoveryWalletJ(JNIEnv *env, jobject instanc
                                                     jstring mnemonic, jstring offset,
                                                     jint networkType,
                                                     jlong restoreHeight) {
-    ScopedUtfChars utf__path(env, path);
-    const char *_path = utf__path.get();
-    ScopedUtfChars utf__password(env, password);
-    const char *_password = utf__password.get();
-    ScopedUtfChars utf__mnemonic(env, mnemonic);
-    const char *_mnemonic = utf__mnemonic.get();
-    ScopedUtfChars utf__offset(env, offset);
-    const char *_offset = utf__offset.get();
+    const char *_path = env->GetStringUTFChars(path, nullptr);
+    const char *_password = env->GetStringUTFChars(password, nullptr);
+    const char *_mnemonic = env->GetStringUTFChars(mnemonic, nullptr);
+    const char *_offset = env->GetStringUTFChars(offset, nullptr);
     Monero::NetworkType _networkType = static_cast<Monero::NetworkType>(networkType);
 
     Monero::Wallet *wallet =
@@ -594,14 +465,6 @@ Java_io_anonero_model_WalletManager_recoveryWalletJ(JNIEnv *env, jobject instanc
                     (uint64_t) restoreHeight,
                     1, // kdf_rounds
                     std::string(_offset));
-    if (wallet == nullptr) {
-
-
-
-
-        throwWalletCreationError(env, "Unable to restore wallet from Monero seed");
-        return 0;
-    }
     bool setupStatus = wallet->setupBackgroundSync(Monero::Wallet::BackgroundSync_ReusePassword,
                                                    std::string(_password), {});
     if (setupStatus == true) {
@@ -609,10 +472,10 @@ Java_io_anonero_model_WalletManager_recoveryWalletJ(JNIEnv *env, jobject instanc
     } else {
         LOGD("recoveryWalletJ(): setupBackgroundSync(): failure!");
     }
-
-
-
-
+    env->ReleaseStringUTFChars(path, _path);
+    env->ReleaseStringUTFChars(password, _password);
+    env->ReleaseStringUTFChars(mnemonic, _mnemonic);
+    env->ReleaseStringUTFChars(offset, _offset);
     return reinterpret_cast<jlong>(wallet);
 }
 
@@ -621,14 +484,10 @@ Java_io_anonero_model_WalletManager_recoveryWalletPolyseedJ(JNIEnv *env, jobject
                                                             jstring path, jstring password,
                                                             jstring mnemonic, jstring offset,
                                                             jint networkType) {
-    ScopedUtfChars utf__path(env, path);
-    const char *_path = utf__path.get();
-    ScopedUtfChars utf__password(env, password);
-    const char *_password = utf__password.get();
-    ScopedUtfChars utf__mnemonic(env, mnemonic);
-    const char *_mnemonic = utf__mnemonic.get();
-    ScopedUtfChars utf__offset(env, offset);
-    const char *_offset = utf__offset.get();
+    const char *_path = env->GetStringUTFChars(path, nullptr);
+    const char *_password = env->GetStringUTFChars(password, nullptr);
+    const char *_mnemonic = env->GetStringUTFChars(mnemonic, nullptr);
+    const char *_offset = env->GetStringUTFChars(offset, nullptr);
     Monero::NetworkType _networkType = static_cast<Monero::NetworkType>(networkType);
 
     Monero::Wallet *wallet =
@@ -638,14 +497,6 @@ Java_io_anonero_model_WalletManager_recoveryWalletPolyseedJ(JNIEnv *env, jobject
                     _networkType,
                     std::string(_mnemonic),
                     std::string(_offset), false);
-    if (wallet == nullptr) {
-
-
-
-
-        throwWalletCreationError(env, "Unable to restore wallet from Polyseed");
-        return 0;
-    }
     bool setupStatus = wallet->setupBackgroundSync(Monero::Wallet::BackgroundSync_ReusePassword,
                                                    std::string(_password), {});
     if (setupStatus == true) {
@@ -653,10 +504,10 @@ Java_io_anonero_model_WalletManager_recoveryWalletPolyseedJ(JNIEnv *env, jobject
     } else {
         LOGD("recoveryWalletPolyseedJ(): setupBackgroundSync(): failure!");
     }
-
-
-
-
+    env->ReleaseStringUTFChars(path, _path);
+    env->ReleaseStringUTFChars(password, _password);
+    env->ReleaseStringUTFChars(mnemonic, _mnemonic);
+    env->ReleaseStringUTFChars(offset, _offset);
     return reinterpret_cast<jlong>(wallet);
 }
 
@@ -669,19 +520,13 @@ Java_io_anonero_model_WalletManager_createWalletFromKeysJ(JNIEnv *env, jobject i
                                                           jstring addressString,
                                                           jstring viewKeyString,
                                                           jstring spendKeyString) {
-    ScopedUtfChars utf__path(env, path);
-    const char *_path = utf__path.get();
-    ScopedUtfChars utf__password(env, password);
-    const char *_password = utf__password.get();
-    ScopedUtfChars utf__language(env, language);
-    const char *_language = utf__language.get();
+    const char *_path = env->GetStringUTFChars(path, nullptr);
+    const char *_password = env->GetStringUTFChars(password, nullptr);
+    const char *_language = env->GetStringUTFChars(language, nullptr);
     Monero::NetworkType _networkType = static_cast<Monero::NetworkType>(networkType);
-    ScopedUtfChars utf__addressString(env, addressString);
-    const char *_addressString = utf__addressString.get();
-    ScopedUtfChars utf__viewKeyString(env, viewKeyString);
-    const char *_viewKeyString = utf__viewKeyString.get();
-    ScopedUtfChars utf__spendKeyString(env, spendKeyString);
-    const char *_spendKeyString = utf__spendKeyString.get();
+    const char *_addressString = env->GetStringUTFChars(addressString, nullptr);
+    const char *_viewKeyString = env->GetStringUTFChars(viewKeyString, nullptr);
+    const char *_spendKeyString = env->GetStringUTFChars(spendKeyString, nullptr);
 
     Monero::Wallet *wallet =
             Monero::WalletManagerFactory::getWalletManager()->createWalletFromKeys(
@@ -693,16 +538,6 @@ Java_io_anonero_model_WalletManager_createWalletFromKeysJ(JNIEnv *env, jobject i
                     std::string(_addressString),
                     std::string(_viewKeyString),
                     std::string(_spendKeyString));
-    if (wallet == nullptr) {
-
-
-
-
-
-
-        throwWalletCreationError(env, "Unable to create wallet from keys");
-        return 0;
-    }
     bool setupStatus = wallet->setupBackgroundSync(Monero::Wallet::BackgroundSync_ReusePassword,
                                                    std::string(_password), {});
     if (setupStatus == true) {
@@ -710,12 +545,12 @@ Java_io_anonero_model_WalletManager_createWalletFromKeysJ(JNIEnv *env, jobject i
     } else {
         LOGD("createWalletFromKeysJ(): setupBackgroundSync(): failure!");
     }
-
-
-
-
-
-
+    env->ReleaseStringUTFChars(path, _path);
+    env->ReleaseStringUTFChars(password, _password);
+    env->ReleaseStringUTFChars(language, _language);
+    env->ReleaseStringUTFChars(addressString, _addressString);
+    env->ReleaseStringUTFChars(viewKeyString, _viewKeyString);
+    env->ReleaseStringUTFChars(spendKeyString, _spendKeyString);
     return reinterpret_cast<jlong>(wallet);
 }
 
@@ -730,15 +565,11 @@ Java_io_anonero_model_WalletManager_createWalletFromDeviceJ(JNIEnv *env, jobject
                                                             jstring deviceName,
                                                             jlong restoreHeight,
                                                             jstring subaddressLookahead) {
-    ScopedUtfChars utf__path(env, path);
-    const char *_path = utf__path.get();
-    ScopedUtfChars utf__password(env, password);
-    const char *_password = utf__password.get();
+    const char *_path = env->GetStringUTFChars(path, nullptr);
+    const char *_password = env->GetStringUTFChars(password, nullptr);
     Monero::NetworkType _networkType = static_cast<Monero::NetworkType>(networkType);
-    ScopedUtfChars utf__deviceName(env, deviceName);
-    const char *_deviceName = utf__deviceName.get();
-    ScopedUtfChars utf__subaddressLookahead(env, subaddressLookahead);
-    const char *_subaddressLookahead = utf__subaddressLookahead.get();
+    const char *_deviceName = env->GetStringUTFChars(deviceName, nullptr);
+    const char *_subaddressLookahead = env->GetStringUTFChars(subaddressLookahead, nullptr);
 
     Monero::Wallet *wallet =
             Monero::WalletManagerFactory::getWalletManager()->createWalletFromDevice(
@@ -748,14 +579,6 @@ Java_io_anonero_model_WalletManager_createWalletFromDeviceJ(JNIEnv *env, jobject
                     std::string(_deviceName),
                     (uint64_t) restoreHeight,
                     std::string(_subaddressLookahead));
-    if (wallet == nullptr) {
-
-
-
-
-        throwWalletCreationError(env, "Unable to create wallet from device");
-        return 0;
-    }
     bool setupStatus = wallet->setupBackgroundSync(Monero::Wallet::BackgroundSync_ReusePassword,
                                                    std::string(_password), {});
     if (setupStatus == true) {
@@ -763,21 +586,20 @@ Java_io_anonero_model_WalletManager_createWalletFromDeviceJ(JNIEnv *env, jobject
     } else {
         LOGD("createWalletFromDeviceJ(): setupBackgroundSync(): failure!");
     }
-
-
-
-
+    env->ReleaseStringUTFChars(path, _path);
+    env->ReleaseStringUTFChars(password, _password);
+    env->ReleaseStringUTFChars(deviceName, _deviceName);
+    env->ReleaseStringUTFChars(subaddressLookahead, _subaddressLookahead);
     return reinterpret_cast<jlong>(wallet);
 }
 
 JNIEXPORT jboolean JNICALL
 Java_io_anonero_model_WalletManager_walletExists(JNIEnv *env, jobject instance,
                                                  jstring path) {
-    ScopedUtfChars utf__path(env, path);
-    const char *_path = utf__path.get();
+    const char *_path = env->GetStringUTFChars(path, nullptr);
     bool exists =
             Monero::WalletManagerFactory::getWalletManager()->walletExists(std::string(_path));
-
+    env->ReleaseStringUTFChars(path, _path);
     return static_cast<jboolean>(exists);
 }
 
@@ -786,15 +608,13 @@ Java_io_anonero_model_WalletManager_verifyWalletPassword(JNIEnv *env, jobject in
                                                          jstring keys_file_name,
                                                          jstring password,
                                                          jboolean watch_only) {
-    ScopedUtfChars utf__keys_file_name(env, keys_file_name);
-    const char *_keys_file_name = utf__keys_file_name.get();
-    ScopedUtfChars utf__password(env, password);
-    const char *_password = utf__password.get();
+    const char *_keys_file_name = env->GetStringUTFChars(keys_file_name, nullptr);
+    const char *_password = env->GetStringUTFChars(password, nullptr);
     bool passwordOk =
             Monero::WalletManagerFactory::getWalletManager()->verifyWalletPassword(
                     std::string(_keys_file_name), std::string(_password), watch_only);
-
-
+    env->ReleaseStringUTFChars(keys_file_name, _keys_file_name);
+    env->ReleaseStringUTFChars(password, _password);
     return static_cast<jboolean>(passwordOk);
 }
 
@@ -803,15 +623,13 @@ JNIEXPORT jint JNICALL
 Java_io_anonero_model_WalletManager_queryWalletDeviceJ(JNIEnv *env, jobject instance,
                                                        jstring keys_file_name,
                                                        jstring password) {
-    ScopedUtfChars utf__keys_file_name(env, keys_file_name);
-    const char *_keys_file_name = utf__keys_file_name.get();
-    ScopedUtfChars utf__password(env, password);
-    const char *_password = utf__password.get();
+    const char *_keys_file_name = env->GetStringUTFChars(keys_file_name, nullptr);
+    const char *_password = env->GetStringUTFChars(password, nullptr);
     Monero::Wallet::Device device_type;
     bool ok = Monero::WalletManagerFactory::getWalletManager()->
             queryWalletDevice(device_type, std::string(_keys_file_name), std::string(_password));
-
-
+    env->ReleaseStringUTFChars(keys_file_name, _keys_file_name);
+    env->ReleaseStringUTFChars(password, _password);
     if (ok)
         return static_cast<jint>(device_type);
     else
@@ -821,11 +639,10 @@ Java_io_anonero_model_WalletManager_queryWalletDeviceJ(JNIEnv *env, jobject inst
 JNIEXPORT jobject JNICALL
 Java_io_anonero_model_WalletManager_findWallets(JNIEnv *env, jobject instance,
                                                 jstring path) {
-    ScopedUtfChars utf__path(env, path);
-    const char *_path = utf__path.get();
+    const char *_path = env->GetStringUTFChars(path, nullptr);
     std::vector<std::string> walletPaths =
             Monero::WalletManagerFactory::getWalletManager()->findWallets(std::string(_path));
-
+    env->ReleaseStringUTFChars(path, _path);
     return cpp2java(env, walletPaths);
 }
 
@@ -834,12 +651,11 @@ Java_io_anonero_model_WalletManager_findWallets(JNIEnv *env, jobject instance,
 JNIEXPORT void JNICALL
 Java_io_anonero_model_WalletManager_setDaemonAddressJ(JNIEnv *env, jobject instance,
                                                       jstring address) {
-    ScopedUtfChars utf__address(env, address);
-    const char *_address = utf__address.get();
+    const char *_address = env->GetStringUTFChars(address, nullptr);
     LOGD("setDaemonAddressJ(): start");
     Monero::WalletManagerFactory::getWalletManager()->setDaemonAddress(std::string(_address));
     LOGD("setDaemonAddressJ(): end");
-
+    env->ReleaseStringUTFChars(address, _address);
 }
 
 // returns whether the daemon can be reached, and its version number
@@ -889,13 +705,12 @@ Java_io_anonero_model_WalletManager_startMining(JNIEnv *env, jobject instance,
                                                 jstring address,
                                                 jboolean background_mining,
                                                 jboolean ignore_battery) {
-    ScopedUtfChars utf__address(env, address);
-    const char *_address = utf__address.get();
+    const char *_address = env->GetStringUTFChars(address, nullptr);
     bool success =
             Monero::WalletManagerFactory::getWalletManager()->startMining(std::string(_address),
                                                                           background_mining,
                                                                           ignore_battery);
-
+    env->ReleaseStringUTFChars(address, _address);
     return static_cast<jboolean>(success);
 }
 
@@ -908,25 +723,23 @@ JNIEXPORT jstring JNICALL
 Java_io_anonero_model_WalletManager_resolveOpenAlias(JNIEnv *env, jobject instance,
                                                      jstring address,
                                                      jboolean dnssec_valid) {
-    ScopedUtfChars utf__address(env, address);
-    const char *_address = utf__address.get();
+    const char *_address = env->GetStringUTFChars(address, nullptr);
     bool _dnssec_valid = (bool) dnssec_valid;
     std::string resolvedAlias =
             Monero::WalletManagerFactory::getWalletManager()->resolveOpenAlias(
                     std::string(_address),
                     _dnssec_valid);
-
+    env->ReleaseStringUTFChars(address, _address);
     return env->NewStringUTF(resolvedAlias.c_str());
 }
 
 JNIEXPORT jboolean JNICALL
 Java_io_anonero_model_WalletManager_setProxyJ(JNIEnv *env, jobject instance,
                                               jstring address) {
-    ScopedUtfChars utf__address(env, address);
-    const char *_address = utf__address.get();
+    const char *_address = env->GetStringUTFChars(address, nullptr);
     bool rc =
             Monero::WalletManagerFactory::getWalletManager()->setProxy(std::string(_address));
-
+    env->ReleaseStringUTFChars(address, _address);
     return rc;
 }
 
@@ -965,8 +778,7 @@ Java_io_anonero_model_WalletManager_closeJ(JNIEnv *env, jobject instance,
 // can't backup.
 JNIEXPORT jstring JNICALL
 Java_io_anonero_model_Wallet_getSeed(JNIEnv *env, jobject instance, jstring seedOffset) {
-    ScopedUtfChars utf__seedOffset(env, seedOffset);
-    const char *_seedOffset = utf__seedOffset.get();
+    const char *_seedOffset = env->GetStringUTFChars(seedOffset, nullptr);
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
 
     std::string _seed;
@@ -982,6 +794,7 @@ Java_io_anonero_model_Wallet_getSeed(JNIEnv *env, jobject instance, jstring seed
         _seed = wallet->seed(std::string(_seedOffset));
     }
 
+    env->ReleaseStringUTFChars(seedOffset, _seedOffset);
 
     jstring seed = env->NewStringUTF(_seed.c_str());
     return seed;
@@ -989,14 +802,14 @@ Java_io_anonero_model_Wallet_getSeed(JNIEnv *env, jobject instance, jstring seed
 
 JNIEXPORT jstring JNICALL
 Java_io_anonero_model_Wallet_getLegacySeed(JNIEnv *env, jobject instance, jstring seedOffset) {
-    ScopedUtfChars utf__seedOffset(env, seedOffset);
-    const char *_seedOffset = utf__seedOffset.get();
+    const char *_seedOffset = env->GetStringUTFChars(seedOffset, nullptr);
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
 
     std::string _seed;
     std::string seedOffsetStr(_seedOffset);
     _seed = wallet->seed(std::string(_seedOffset));
 
+    env->ReleaseStringUTFChars(seedOffset, _seedOffset);
 
     jstring seed = env->NewStringUTF(_seed.c_str());
     return seed;
@@ -1005,15 +818,14 @@ Java_io_anonero_model_Wallet_getLegacySeed(JNIEnv *env, jobject instance, jstrin
 JNIEXPORT jboolean JNICALL
 Java_io_anonero_model_Wallet_isPolyseedSupported(JNIEnv *env, jobject instance,
                                                  jstring seedOffset) {
-    ScopedUtfChars utf__seedOffset(env, seedOffset);
-    const char *_seedOffset = utf__seedOffset.get();
+    const char *_seedOffset = env->GetStringUTFChars(seedOffset, nullptr);
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
 
     std::string _seed;
     std::string seedOffsetStr(_seedOffset);
     bool _getPolyseed = wallet->getPolyseed(_seed, seedOffsetStr);
 
-
+    env->ReleaseStringUTFChars(seedOffset, _seedOffset);
     return _getPolyseed;
 }
 
@@ -1027,11 +839,10 @@ Java_io_anonero_model_Wallet_getSeedLanguage(JNIEnv *env, jobject instance) {
 JNIEXPORT void JNICALL
 Java_io_anonero_model_Wallet_setSeedLanguage(JNIEnv *env, jobject instance,
                                              jstring language) {
-    ScopedUtfChars utf__language(env, language);
-    const char *_language = utf__language.get();
+    const char *_language = env->GetStringUTFChars(language, nullptr);
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
     wallet->setSeedLanguage(std::string(_language));
-
+    env->ReleaseStringUTFChars(language, _language);
 }
 
 JNIEXPORT jint JNICALL
@@ -1064,11 +875,10 @@ Java_io_anonero_model_Wallet_statusWithErrorString(JNIEnv *env, jobject instance
 JNIEXPORT jboolean JNICALL
 Java_io_anonero_model_Wallet_setPassword(JNIEnv *env, jobject instance,
                                          jstring password) {
-    ScopedUtfChars utf__password(env, password);
-    const char *_password = utf__password.get();
+    const char *_password = env->GetStringUTFChars(password, nullptr);
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
     bool success = wallet->setPassword(std::string(_password));
-
+    env->ReleaseStringUTFChars(password, _password);
     return static_cast<jboolean>(success);
 }
 
@@ -1099,11 +909,10 @@ Java_io_anonero_model_Wallet_nettype(JNIEnv *env, jobject instance) {
 JNIEXPORT jstring JNICALL
 Java_io_anonero_model_Wallet_getIntegratedAddress(JNIEnv *env, jobject instance,
                                                   jstring payment_id) {
-    ScopedUtfChars utf__payment_id(env, payment_id);
-    const char *_payment_id = utf__payment_id.get();
+    const char *_payment_id = env->GetStringUTFChars(payment_id, nullptr);
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
     std::string address = wallet->integratedAddress(_payment_id);
-
+    env->ReleaseStringUTFChars(payment_id, _payment_id);
     return env->NewStringUTF(address.c_str());
 }
 
@@ -1122,14 +931,13 @@ Java_io_anonero_model_Wallet_getSecretSpendKey(JNIEnv *env, jobject instance) {
 JNIEXPORT jboolean JNICALL
 Java_io_anonero_model_Wallet_store(JNIEnv *env, jobject instance,
                                    jstring path) {
-    ScopedUtfChars utf__path(env, path);
-    const char *_path = utf__path.get();
+    const char *_path = env->GetStringUTFChars(path, nullptr);
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
     bool success = wallet->store(std::string(_path));
     if (!success) {
         LOGE("store(): %s", wallet->errorString().c_str());
     }
-
+    env->ReleaseStringUTFChars(path, _path);
     return static_cast<jboolean>(success);
 }
 
@@ -1147,14 +955,10 @@ Java_io_anonero_model_Wallet_initJ(JNIEnv *env, jobject instance,
                                    jlong upper_transaction_size_limit,
                                    jstring daemon_username, jstring daemon_password,
                                    jstring proxy_address) {
-    ScopedUtfChars utf__daemon_address(env, daemon_address);
-    const char *_daemon_address = utf__daemon_address.get();
-    ScopedUtfChars utf__daemon_username(env, daemon_username);
-    const char *_daemon_username = utf__daemon_username.get();
-    ScopedUtfChars utf__daemon_password(env, daemon_password);
-    const char *_daemon_password = utf__daemon_password.get();
-    ScopedUtfChars utf__proxy_address(env, proxy_address);
-    const char *_proxy_address = utf__proxy_address.get();
+    const char *_daemon_address = env->GetStringUTFChars(daemon_address, nullptr);
+    const char *_daemon_username = env->GetStringUTFChars(daemon_username, nullptr);
+    const char *_daemon_password = env->GetStringUTFChars(daemon_password, nullptr);
+    const char *_proxy_address = env->GetStringUTFChars(proxy_address, nullptr);
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
     LOGD("initJ(): start");
     bool status = wallet->init(_daemon_address, (uint64_t) upper_transaction_size_limit,
@@ -1163,10 +967,10 @@ Java_io_anonero_model_Wallet_initJ(JNIEnv *env, jobject instance,
                                false,
                                false,
                                _proxy_address);
-
-
-
-
+    env->ReleaseStringUTFChars(daemon_address, _daemon_address);
+    env->ReleaseStringUTFChars(daemon_username, _daemon_username);
+    env->ReleaseStringUTFChars(daemon_password, _daemon_password);
+    env->ReleaseStringUTFChars(daemon_password, _proxy_address);
     LOGD("initJ(): end");
     return static_cast<jboolean>(status);
 }
@@ -1208,11 +1012,10 @@ Java_io_anonero_model_Wallet_setTrustedDaemon(JNIEnv *env, jobject instance, jbo
 JNIEXPORT jboolean JNICALL
 Java_io_anonero_model_Wallet_setProxyJ(JNIEnv *env, jobject instance,
                                        jstring address) {
-    ScopedUtfChars utf__address(env, address);
-    const char *_address = utf__address.get();
+    const char *_address = env->GetStringUTFChars(address, nullptr);
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
     bool rc = wallet->setProxy(std::string(_address));
-
+    env->ReleaseStringUTFChars(address, _address);
     return rc;
 }
 
@@ -1323,10 +1126,9 @@ Java_io_anonero_model_Wallet_getDisplayAmount(JNIEnv *env, jclass clazz,
 JNIEXPORT jlong JNICALL
 Java_io_anonero_model_Wallet_getAmountFromString(JNIEnv *env, jclass clazz,
                                                  jstring amount) {
-    ScopedUtfChars utf__amount(env, amount);
-    const char *_amount = utf__amount.get();
+    const char *_amount = env->GetStringUTFChars(amount, nullptr);
     uint64_t x = Monero::Wallet::amountFromString(_amount);
-
+    env->ReleaseStringUTFChars(amount, _amount);
     return x;
 }
 
@@ -1344,21 +1146,19 @@ Java_io_anonero_model_Wallet_generatePaymentId(JNIEnv *env, jclass clazz) {
 JNIEXPORT jboolean JNICALL
 Java_io_anonero_model_Wallet_isPaymentIdValid(JNIEnv *env, jclass clazz,
                                               jstring payment_id) {
-    ScopedUtfChars utf__payment_id(env, payment_id);
-    const char *_payment_id = utf__payment_id.get();
+    const char *_payment_id = env->GetStringUTFChars(payment_id, nullptr);
     bool isValid = Monero::Wallet::paymentIdValid(_payment_id);
-
+    env->ReleaseStringUTFChars(payment_id, _payment_id);
     return static_cast<jboolean>(isValid);
 }
 
 JNIEXPORT jboolean JNICALL
 Java_io_anonero_model_Wallet_isAddressValid(JNIEnv *env, jclass clazz,
                                             jstring address, jint networkType) {
-    ScopedUtfChars utf__address(env, address);
-    const char *_address = utf__address.get();
+    const char *_address = env->GetStringUTFChars(address, nullptr);
     Monero::NetworkType _networkType = static_cast<Monero::NetworkType>(networkType);
     bool isValid = Monero::Wallet::addressValid(_address, _networkType);
-
+    env->ReleaseStringUTFChars(address, _address);
     return static_cast<jboolean>(isValid);
 }
 
@@ -1367,10 +1167,9 @@ Java_io_anonero_model_Wallet_getPaymentIdFromAddress(JNIEnv *env, jclass clazz,
                                                      jstring address,
                                                      jint networkType) {
     Monero::NetworkType _networkType = static_cast<Monero::NetworkType>(networkType);
-    ScopedUtfChars utf__address(env, address);
-    const char *_address = utf__address.get();
+    const char *_address = env->GetStringUTFChars(address, nullptr);
     std::string payment_id = Monero::Wallet::paymentIdFromAddress(_address, _networkType);
-
+    env->ReleaseStringUTFChars(address, _address);
     return env->NewStringUTF(payment_id.c_str());
 }
 
@@ -1409,15 +1208,14 @@ JNIEXPORT jboolean JNICALL
 Java_io_anonero_model_Wallet_stopBackgroundSync(JNIEnv *env, jobject instance, jstring password) {
     LOGD("stopBackgroundSync(): start");
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
-    ScopedUtfChars utf__password(env, password);
-    const char *_password = utf__password.get();
+    const char *_password = env->GetStringUTFChars(password, nullptr);
     bool bgsyncStatus = wallet->stopBackgroundSync(std::string(_password));
     if (bgsyncStatus == true) {
         LOGD("stopBackgroundSync(): end: success!");
     } else {
         LOGD("stopBackgroundSync(): end: fail!");
     }
-
+    env->ReleaseStringUTFChars(password, _password);
     return static_cast<jboolean>(bgsyncStatus);
 }
 
@@ -1453,10 +1251,8 @@ Java_io_anonero_model_Wallet_createTransactionJ(JNIEnv *env, jobject instance,
                                                 jint priority,
                                                 jint accountIndex, jobject key_images) {
     const std::set<std::string> _key_images = java2cpp_set(env, key_images);
-    ScopedUtfChars utf__dst_addr(env, dst_addr);
-    const char *_dst_addr = utf__dst_addr.get();
-    ScopedUtfChars utf__payment_id(env, payment_id);
-    const char *_payment_id = utf__payment_id.get();
+    const char *_dst_addr = env->GetStringUTFChars(dst_addr, nullptr);
+    const char *_payment_id = env->GetStringUTFChars(payment_id, nullptr);
     Monero::PendingTransaction::Priority _priority =
             static_cast<Monero::PendingTransaction::Priority>(priority);
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
@@ -1467,8 +1263,8 @@ Java_io_anonero_model_Wallet_createTransactionJ(JNIEnv *env, jobject instance,
                                                                (uint32_t) accountIndex, {},
                                                                _key_images);
 
-
-
+    env->ReleaseStringUTFChars(dst_addr, _dst_addr);
+    env->ReleaseStringUTFChars(payment_id, _payment_id);
     return reinterpret_cast<jlong>(tx);
 }
 
@@ -1492,10 +1288,8 @@ Java_io_anonero_model_Wallet_createSweepTransaction(JNIEnv *env, jobject instanc
                                                     jobject key_images) {
 
     const std::set<std::string> _key_images = java2cpp_set(env, key_images);
-    ScopedUtfChars utf__dst_addr(env, dst_addr);
-    const char *_dst_addr = utf__dst_addr.get();
-    ScopedUtfChars utf__payment_id(env, payment_id);
-    const char *_payment_id = utf__payment_id.get();
+    const char *_dst_addr = env->GetStringUTFChars(dst_addr, nullptr);
+    const char *_payment_id = env->GetStringUTFChars(payment_id, nullptr);
     Monero::PendingTransaction::Priority _priority =
             static_cast<Monero::PendingTransaction::Priority>(priority);
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
@@ -1507,8 +1301,8 @@ Java_io_anonero_model_Wallet_createSweepTransaction(JNIEnv *env, jobject instanc
                                                                _priority,
                                                                (uint32_t) accountIndex, {},
                                                                _key_images);
-
-
+    env->ReleaseStringUTFChars(dst_addr, _dst_addr);
+    env->ReleaseStringUTFChars(payment_id, _payment_id);
     return reinterpret_cast<jlong>(tx);
 }
 
@@ -1538,8 +1332,7 @@ Java_io_anonero_model_Wallet_exportKeyImages(JNIEnv *env, jobject instance, jstr
                                              jboolean all) {
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
     LOGD("monerujo.cpp: Exporting key images");
-    ScopedUtfChars utf__filename(env, filename);
-    const char *_filename = utf__filename.get();
+    const char *_filename = env->GetStringUTFChars(filename, nullptr);
     LOGD("monerujo.cpp: Exporting key images");
     return wallet->exportKeyImages(_filename, all);
 
@@ -1547,27 +1340,28 @@ Java_io_anonero_model_Wallet_exportKeyImages(JNIEnv *env, jobject instance, jstr
 }
 
 
-static std::mutex importKeyImagesMutex;
+bool isImportKeyImagesLocked = false;
 
 //virtual bool importKeyImages(const std::string &filename) = 0;
 JNIEXPORT jstring JNICALL
 Java_io_anonero_model_Wallet_importKeyImages(JNIEnv *env, jobject instance, jstring filename) {
-    std::unique_lock<std::mutex> importLock(importKeyImagesMutex, std::try_to_lock);
-    if (!importLock.owns_lock()) {
-        LOGW("importKeyImages ignored because another import is already in progress");
-        return env->NewStringUTF("A key-image import is already in progress.");
+    if (isImportKeyImagesLocked) {
+        LOGD("monerujo.cpp: importKeyImages: not starting because importKeyImages is already in progress");
+        return env->NewStringUTF("Import request ignored. This is a Bug. Please report it.");
     }
-    ScopedUtfChars utf__filename(env, filename);
-    const char *_filename = utf__filename.get();
+    isImportKeyImagesLocked = true;
+    const char *_filename = env->GetStringUTFChars(filename, nullptr);
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
     LOGD("monerujo.cpp: importKeyImages: start");
     bool success = wallet->importKeyImages(_filename);
     if (success) {
         LOGD("monerujo.cpp: importKeyImages: success!");
+        isImportKeyImagesLocked = false;
         return env->NewStringUTF("Imported");
     }
     LOGD("monerujo.cpp: importKeyImages: error");
     //LOGD(wallet->errorString().c_str());
+    isImportKeyImagesLocked = false;
     return env->NewStringUTF(wallet->errorString().c_str());
 }
 
@@ -1575,8 +1369,7 @@ Java_io_anonero_model_Wallet_importKeyImages(JNIEnv *env, jobject instance, jstr
 // virtual bool submitTransaction(const std::string &fileName) = 0;
 JNIEXPORT jstring JNICALL
 Java_io_anonero_model_Wallet_submitTransaction(JNIEnv *env, jobject instance, jstring filename) {
-    ScopedUtfChars utf__filename(env, filename);
-    const char *_filename = utf__filename.get();
+    const char *_filename = env->GetStringUTFChars(filename, nullptr);
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
 
     bool success = wallet->submitTransaction(_filename);
@@ -1591,14 +1384,13 @@ JNIEXPORT jboolean JNICALL
 Java_io_anonero_model_Wallet_exportOutputs(JNIEnv *env, jobject instance, jstring filename,
                                            jboolean all) {
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
-    ScopedUtfChars utf__filename(env, filename);
-    const char *_filename = utf__filename.get();
+    const char *_filename = env->GetStringUTFChars(filename, nullptr);
     return wallet->exportOutputs(_filename, all);
     // return env->NewStringUTF(outputs.c_str());
 }
 
 JNIEXPORT jboolean JNICALL
-Java_io_anonero_model_Wallet_hasUnknownKeyImages(JNIEnv *env, jobject instance) {
+Java_io_anonero_model_Wallet_hasUnknownKeyImages(JNIEnv *env, jobject instance, jstring filename) {
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
     return wallet->hasUnknownKeyImages();
 }
@@ -1613,8 +1405,7 @@ Java_io_anonero_model_Wallet_viewOnlyBalance(JNIEnv *env, jobject instance) {
 JNIEXPORT jstring JNICALL
 Java_io_anonero_model_Wallet_importOutputs(JNIEnv *env, jobject instance, jstring filename) {
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
-    ScopedUtfChars utf__filename(env, filename);
-    const char *_filename = utf__filename.get();
+    const char *_filename = env->GetStringUTFChars(filename, nullptr);
     bool success = wallet->importOutputs(_filename);
     if (success) {
         return env->NewStringUTF("Imported");
@@ -1626,23 +1417,9 @@ JNIEXPORT jstring JNICALL
 Java_io_anonero_model_Wallet_signAndExportJ(JNIEnv *env, jobject instance, jstring input_file,
                                             jstring output_file) {
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
-    ScopedUtfChars utf__input_file(env, input_file);
-    const char *_input_file = utf__input_file.get();
+    const char *_input_file = env->GetStringUTFChars(input_file, nullptr);
     Monero::UnsignedTransaction *tx = wallet->loadUnsignedTx(_input_file);
-    if (tx == nullptr) {
-        const std::string error = wallet->errorString();
-        return env->NewStringUTF(error.empty() ? "Unable to load unsigned transaction." : error.c_str());
-    }
-    ScopedUtfChars utf__output_file(env, output_file);
-    if (output_file == nullptr) {
-        jclass exceptionClass = env->FindClass("java/lang/IllegalArgumentException");
-        if (exceptionClass != nullptr) {
-            env->ThrowNew(exceptionClass, "Output file path must not be null.");
-            env->DeleteLocalRef(exceptionClass);
-        }
-        return nullptr;
-    }
-    const char *_output_file = utf__output_file.get();
+    const char *_output_file = env->GetStringUTFChars(output_file, nullptr);
 
 
     bool success = tx->sign(_output_file);
@@ -1655,15 +1432,9 @@ JNIEXPORT jlong JNICALL
 Java_io_anonero_model_Wallet_loadUnsignedTx(JNIEnv *env, jobject instance, jstring input_file) {
     LOGD("monerujo.cpp: loadUnsignedTx: start");
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
-    ScopedUtfChars utf__input_file(env, input_file);
-    const char *_input_file = utf__input_file.get();
+    const char *_input_file = env->GetStringUTFChars(input_file, nullptr);
     Monero::UnsignedTransaction *tx = wallet->loadUnsignedTx(_input_file);
     LOGD("monerujo.cpp: loadUnsignedTx: end");
-    if (tx == nullptr) {
-        const std::string error = wallet->errorString();
-        throwWalletCreationError(env, error.empty() ? "Unable to load unsigned transaction" : error.c_str());
-        return 0;
-    }
     return reinterpret_cast<jlong>(tx);
 }
 
@@ -1683,7 +1454,7 @@ Java_io_anonero_model_Wallet_getCoinsJ(JNIEnv *env, jobject instance) {
 
 jobject newCoinsInfo(JNIEnv *env, Monero::CoinsInfo *info) {
     jmethodID c = env->GetMethodID(class_CoinsInfo, "<init>",
-                                   "(JZLjava/lang/String;JLjava/lang/String;Ljava/lang/String;ZZJ)V");
+                                   "(JZLjava/lang/String;JLjava/lang/String;Ljava/lang/String;ZJ)V");
     jstring _key_image = env->NewStringUTF(info->keyImage().c_str());
     jstring _pub_key = env->NewStringUTF(info->pubKey().c_str());
     jstring _hash = env->NewStringUTF(info->hash().c_str());
@@ -1694,7 +1465,6 @@ jobject newCoinsInfo(JNIEnv *env, Monero::CoinsInfo *info) {
                                     static_cast<jlong> (info->amount()),
                                     _hash,
                                     _pub_key,
-                                    info->frozen(),
                                     info->unlocked(),
                                     static_cast<jlong> (info->internalOutputIndex()));
     env->DeleteLocalRef(_key_image);
@@ -1723,28 +1493,6 @@ JNIEXPORT jint JNICALL
 Java_io_anonero_model_Coins_getCount(JNIEnv *env, jobject instance) {
     Monero::Coins *coins = getHandle<Monero::Coins>(env, instance);
     return coins->count();
-}
-
-JNIEXPORT void JNICALL
-Java_io_anonero_model_Coins_setFrozenJ(JNIEnv *env, jobject instance, jstring public_key) {
-    Monero::Coins *coins = getHandle<Monero::Coins>(env, instance);
-    if (coins == nullptr || public_key == nullptr) return;
-    ScopedUtfChars utf_key(env, public_key);
-    const char *key = utf_key.get();
-    if (key == nullptr) return;
-    coins->setFrozen(std::string(key));
-
-}
-
-JNIEXPORT void JNICALL
-Java_io_anonero_model_Coins_thawJ(JNIEnv *env, jobject instance, jstring public_key) {
-    Monero::Coins *coins = getHandle<Monero::Coins>(env, instance);
-    if (coins == nullptr || public_key == nullptr) return;
-    ScopedUtfChars utf_key(env, public_key);
-    const char *key = utf_key.get();
-    if (key == nullptr) return;
-    coins->thaw(std::string(key));
-
 }
 
 JNIEXPORT jobject JNICALL
@@ -1795,16 +1543,15 @@ JNIEXPORT jboolean JNICALL
 Java_io_anonero_model_Wallet_setUserNote(JNIEnv *env, jobject instance,
                                          jstring txid, jstring note) {
 
-    ScopedUtfChars utf__txid(env, txid);
-    const char *_txid = utf__txid.get();
-    ScopedUtfChars utf__note(env, note);
-    const char *_note = utf__note.get();
+    const char *_txid = env->GetStringUTFChars(txid, nullptr);
+    const char *_note = env->GetStringUTFChars(note, nullptr);
 
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
 
     bool success = wallet->setUserNote(_txid, _note);
 
-
+    env->ReleaseStringUTFChars(txid, _txid);
+    env->ReleaseStringUTFChars(note, _note);
 
     return static_cast<jboolean>(success);
 }
@@ -1813,14 +1560,13 @@ JNIEXPORT jstring JNICALL
 Java_io_anonero_model_Wallet_getUserNote(JNIEnv *env, jobject instance,
                                          jstring txid) {
 
-    ScopedUtfChars utf__txid(env, txid);
-    const char *_txid = utf__txid.get();
+    const char *_txid = env->GetStringUTFChars(txid, nullptr);
 
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
 
     std::string note = wallet->getUserNote(_txid);
 
-
+    env->ReleaseStringUTFChars(txid, _txid);
     return env->NewStringUTF(note.c_str());
 }
 
@@ -1828,14 +1574,13 @@ JNIEXPORT jstring JNICALL
 Java_io_anonero_model_Wallet_getTxKey(JNIEnv *env, jobject instance,
                                       jstring txid) {
 
-    ScopedUtfChars utf__txid(env, txid);
-    const char *_txid = utf__txid.get();
+    const char *_txid = env->GetStringUTFChars(txid, nullptr);
 
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
 
     std::string txKey = wallet->getTxKey(_txid);
 
-
+    env->ReleaseStringUTFChars(txid, _txid);
     return env->NewStringUTF(txKey.c_str());
 }
 
@@ -1844,13 +1589,12 @@ JNIEXPORT void JNICALL
 Java_io_anonero_model_Wallet_addAccount(JNIEnv *env, jobject instance,
                                         jstring label) {
 
-    ScopedUtfChars utf__label(env, label);
-    const char *_label = utf__label.get();
+    const char *_label = env->GetStringUTFChars(label, nullptr);
 
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
     wallet->addSubaddressAccount(_label);
 
-
+    env->ReleaseStringUTFChars(label, _label);
 }
 
 //virtual std::string getSubaddressLabel(uint32_t accountIndex, uint32_t addressIndex) const = 0;
@@ -1872,13 +1616,12 @@ Java_io_anonero_model_Wallet_setSubaddressLabel(JNIEnv *env, jobject instance,
                                                 jint accountIndex, jint addressIndex,
                                                 jstring label) {
 
-    ScopedUtfChars utf__label(env, label);
-    const char *_label = utf__label.get();
+    const char *_label = env->GetStringUTFChars(label, nullptr);
 
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
     wallet->setSubaddressLabel(accountIndex, addressIndex, _label);
 
-
+    env->ReleaseStringUTFChars(label, _label);
 }
 
 // virtual size_t numSubaddressAccounts() const = 0;
@@ -1902,11 +1645,10 @@ Java_io_anonero_model_Wallet_addSubaddress(JNIEnv *env, jobject instance,
                                            jint accountIndex,
                                            jstring label) {
 
-    ScopedUtfChars utf__label(env, label);
-    const char *_label = utf__label.get();
+    const char *_label = env->GetStringUTFChars(label, nullptr);
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
     wallet->addSubaddress(accountIndex, _label);
-
+    env->ReleaseStringUTFChars(label, _label);
 }
 
 /*JNIEXPORT jstring JNICALL
@@ -2043,13 +1785,12 @@ JNIEXPORT jboolean JNICALL
 Java_io_anonero_model_PendingTransaction_commit(JNIEnv *env, jobject instance,
                                                 jstring filename, jboolean overwrite) {
 
-    ScopedUtfChars utf__filename(env, filename);
-    const char *_filename = utf__filename.get();
+    const char *_filename = env->GetStringUTFChars(filename, nullptr);
 
     Monero::PendingTransaction *tx = getHandle<Monero::PendingTransaction>(env, instance);
     bool success = tx->commit(_filename, overwrite);
 
-
+    env->ReleaseStringUTFChars(filename, _filename);
     return static_cast<jboolean>(success);
 }
 
@@ -2168,75 +1909,65 @@ Java_io_anonero_model_WalletManager_initLogger(JNIEnv *env, jclass clazz,
                                                jstring argv0,
                                                jstring default_log_base_name) {
 
-    ScopedUtfChars utf__argv0(env, argv0);
-    const char *_argv0 = utf__argv0.get();
-    ScopedUtfChars utf__default_log_base_name(env, default_log_base_name);
-    const char *_default_log_base_name = utf__default_log_base_name.get();
+    const char *_argv0 = env->GetStringUTFChars(argv0, nullptr);
+    const char *_default_log_base_name = env->GetStringUTFChars(default_log_base_name, nullptr);
 
     Monero::Wallet::init(_argv0, _default_log_base_name);
 
-
-
+    env->ReleaseStringUTFChars(argv0, _argv0);
+    env->ReleaseStringUTFChars(default_log_base_name, _default_log_base_name);
 }
 
 JNIEXPORT void JNICALL
 Java_io_anonero_model_WalletManager_logDebug(JNIEnv *env, jclass clazz,
                                              jstring category, jstring message) {
 
-    ScopedUtfChars utf__category(env, category);
-    const char *_category = utf__category.get();
-    ScopedUtfChars utf__message(env, message);
-    const char *_message = utf__message.get();
+    const char *_category = env->GetStringUTFChars(category, nullptr);
+    const char *_message = env->GetStringUTFChars(message, nullptr);
 
     Monero::Wallet::debug(_category, _message);
 
-
-
+    env->ReleaseStringUTFChars(category, _category);
+    env->ReleaseStringUTFChars(message, _message);
 }
 
 JNIEXPORT void JNICALL
 Java_io_anonero_model_WalletManager_logInfo(JNIEnv *env, jclass clazz,
                                             jstring category, jstring message) {
 
-    ScopedUtfChars utf__category(env, category);
-    const char *_category = utf__category.get();
-    ScopedUtfChars utf__message(env, message);
-    const char *_message = utf__message.get();
+    const char *_category = env->GetStringUTFChars(category, nullptr);
+    const char *_message = env->GetStringUTFChars(message, nullptr);
 
     Monero::Wallet::info(_category, _message);
 
-
-
+    env->ReleaseStringUTFChars(category, _category);
+    env->ReleaseStringUTFChars(message, _message);
 }
 
 JNIEXPORT void JNICALL
 Java_io_anonero_model_WalletManager_logWarning(JNIEnv *env, jclass clazz,
                                                jstring category, jstring message) {
 
-    ScopedUtfChars utf__category(env, category);
-    const char *_category = utf__category.get();
-    ScopedUtfChars utf__message(env, message);
-    const char *_message = utf__message.get();
+    const char *_category = env->GetStringUTFChars(category, nullptr);
+    const char *_message = env->GetStringUTFChars(message, nullptr);
 
     Monero::Wallet::warning(_category, _message);
 
-
-
+    env->ReleaseStringUTFChars(category, _category);
+    env->ReleaseStringUTFChars(message, _message);
 }
 
 JNIEXPORT void JNICALL
 Java_io_anonero_model_WalletManager_logError(JNIEnv *env, jclass clazz,
                                              jstring category, jstring message) {
 
-    ScopedUtfChars utf__category(env, category);
-    const char *_category = utf__category.get();
-    ScopedUtfChars utf__message(env, message);
-    const char *_message = utf__message.get();
+    const char *_category = env->GetStringUTFChars(category, nullptr);
+    const char *_message = env->GetStringUTFChars(message, nullptr);
 
     Monero::Wallet::error(_category, _message);
 
-
-
+    env->ReleaseStringUTFChars(category, _category);
+    env->ReleaseStringUTFChars(message, _message);
 }
 
 JNIEXPORT void JNICALL
@@ -2323,10 +2054,9 @@ int LedgerFind(char *buffer, size_t len) {
 
     int ret;
     if (name != nullptr) {
-        ScopedUtfChars utf__name(jenv, name);
-    const char *_name = utf__name.get();
+        const char *_name = jenv->GetStringUTFChars(name, nullptr);
         strncpy(buffer, _name, len);
-
+        jenv->ReleaseStringUTFChars(name, _name);
         buffer[len - 1] = 0; // terminate in case _name is bigger
         ret = 0;
         LOGD("LedgerName is %s", buffer);
