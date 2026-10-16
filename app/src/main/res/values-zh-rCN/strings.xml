@@ -24,6 +24,8 @@
     <string name="send">确定</string>
     <string name="settings">设置</string>
     <string name="set_subaddress_label">子地址标签</string>
+    <string name="subaddress_label_list">子地址标签列表</string>
+    <string name="add_subaddress_label">添加子地址标签</string>
     <string name="node_connection"></string>
     <string name="node">节点</string>
     <string name="onion_address_example">http://onion地址:端口</string>
