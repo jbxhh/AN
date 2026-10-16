@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.sp
 import io.anonero.AnonConfig
 import io.anonero.BuildConfig
 import io.anonero.R
-import io.anonero.ui.home.graph.routes.ProxySettingsRoute
 import io.anonero.ui.home.graph.routes.SecureWipeRoute
 import io.anonero.ui.home.graph.routes.SettingsDataRoute
 import io.anonero.ui.home.graph.routes.SettingsLogs
@@ -75,12 +74,6 @@ fun SettingsPage(
                     }
                     SettingsDivider()
                 }
-                item(key = "proxy") {
-                    MenuItem(stringResource(R.string.settings_proxy_settings)) {
-                        navigateTo(ProxySettingsRoute)
-                    }
-                    SettingsDivider()
-                }
                 if (!AnonConfig.viewOnly) {
                     item(key = "wallet") {
                         MenuItem(stringResource(R.string.settings_wallet_section)) {
@@ -96,7 +89,7 @@ fun SettingsPage(
                     SettingsDivider()
                 }
                 item(key = "data") {
-                    MenuItem(stringResource(R.string.settings_data_section)) {
+                    MenuItem(stringResource(R.string.settings_security)) {
                         navigateTo(SettingsDataRoute)
                     }
                     SettingsDivider()
