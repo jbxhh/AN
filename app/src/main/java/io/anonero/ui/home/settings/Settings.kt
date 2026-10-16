@@ -108,6 +108,7 @@ fun SettingsPage(
                         navigateTo(SecureWipeRoute)
                     }
                     SettingsDivider()
+                    SettingsDivider()
                 }
             }
 
