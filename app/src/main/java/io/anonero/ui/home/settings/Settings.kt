@@ -108,6 +108,9 @@ fun SettingsPage(
                         navigateTo(SecureWipeRoute)
                     }
                     SettingsDivider()
+                    androidx.compose.foundation.layout.Spacer(
+                        modifier = Modifier.height(6.dp)
+                    )
                     SettingsDivider()
                 }
             }
