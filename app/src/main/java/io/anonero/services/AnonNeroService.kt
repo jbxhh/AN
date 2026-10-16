@@ -66,20 +66,24 @@ class AnonNeroService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "start") {
-            start()
-        }
-        if (intent?.action == "stop") {
-            stopForeground(STOP_FOREGROUND_REMOVE) // Properly removes the notification
-            stopSelf() // Stops the service completely
-            return START_NOT_STICKY
+        // Every startForegroundService() request must enter foreground promptly,
+        // including stop requests and sticky restarts with a null intent.
+        startForeground(NOTIFICATION_ID, foregroundNotification())
+
+        when (intent?.action) {
+            "stop" -> {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf(startId)
+                return START_NOT_STICKY
+            }
+            "start" -> start()
+            else -> Timber.tag(TAG).w("Service started with missing or unknown action")
         }
         return START_STICKY
     }
 
 
     private fun start() {
-        startForeground(NOTIFICATION_ID, foregroundNotification())
         scope.launch {
             walletState.walletConnectionStatus.collect {
                 updateNotificationState()
