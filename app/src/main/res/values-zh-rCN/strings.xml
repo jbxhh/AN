@@ -131,7 +131,6 @@
     <string name="settings_wallet_section">钱包</string>
     <string name="settings_trade_section">交易</string>
     <string name="settings_data_section">数据</string>
-    <string name="settings_security">安全</string>
     <string name="settings_seed">助记词</string>
     <string name="settings_change_pin">修改PIN</string>
     <string name="settings_export_backup">导出备份</string>
