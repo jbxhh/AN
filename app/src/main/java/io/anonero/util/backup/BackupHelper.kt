@@ -32,7 +32,6 @@ import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.io.IOException
 import java.util.Date
 import java.util.Locale
 import java.util.zip.ZipEntry
@@ -89,6 +88,8 @@ object BackupHelper {
         )
         val json = Json.encodeToString(backUpPayload)
 
+        context.cacheDir.deleteRecursively()
+
         val tmpBackupDir = File(context.cacheDir, "tmp_backup")
         if (tmpBackupDir.exists()) {
             tmpBackupDir.deleteRecursively()
@@ -96,36 +97,28 @@ object BackupHelper {
         val date = Date()
         val sdf = SimpleDateFormat("dd_MM_yyyy' 'HH_mm_a", Locale.getDefault())
         val timeStamp: String = sdf.format(date)
-        val backupFile = File(context.cacheDir, "${context.getString(R.string.app_name)}_backup_$timeStamp.zip")
+        val backupFile = File(context.cacheDir, "${R.string.app_name}_backup_$timeStamp.zip")
         tmpBackupDir.mkdirs()
         val tmpBackupFile = File(tmpBackupDir, "anon.json")
         tmpBackupFile.writeText(json)
         val walletDir = File(context.filesDir, "wallets")
         walletDir.copyRecursively(tmpBackupDir, true)
-        val files = tmpBackupDir.walkTopDown()
-            .filter { it.isFile }
-            .toList()
-            .toTypedArray()
-        if (files.isEmpty()) {
-            tmpBackupDir.deleteRecursively()
-            throw IOException("No wallet files available for backup")
-        }
-
+        val list = tmpBackupDir.listFiles()
+        val files = list?.map { it.absolutePath }?.toTypedArray()
         val backupCacheDir = File(context.cacheDir, "backup")
-        if (!backupCacheDir.exists() && !backupCacheDir.mkdirs()) {
-            throw IOException("Unable to create encrypted backup directory")
+        if (!backupCacheDir.exists()) {
+            backupCacheDir.mkdirs()
         }
         val backupFileEncrypted =
-            File(backupCacheDir, "${context.getString(R.string.app_name)}_backup_$timeStamp.anon")
+            File(backupCacheDir, "${R.string.app_name}_backup_$timeStamp.anon")
 
-        try {
-            zip(files, backupFile.absolutePath, tmpBackupDir)
+        if (files != null) {
+            zip(files, backupFile.absolutePath)
             EncryptUtil.encryptFile(seedPassphrase, backupFile, backupFileEncrypted)
-            return backupFileEncrypted.absolutePath
-        } finally {
             tmpBackupDir.deleteRecursively()
             backupFile.delete()
         }
+        return backupFileEncrypted.absolutePath
     }
 
     fun testBackUp(destinationDir: File): Boolean {
@@ -135,59 +128,49 @@ object BackupHelper {
         return items?.size == 2
     }
 
-    private fun zip(files: Array<File>, zipFileName: String, baseDir: File) {
-        val basePath = baseDir.canonicalFile.toPath()
+    private fun zip(_files: Array<String>, zipFileName: String?) {
         try {
-            ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFileName))).use { output ->
-                val buffer = ByteArray(BUFFER)
-                files.forEach { file ->
-                    val relativePath = basePath.relativize(file.canonicalFile.toPath())
-                        .toString()
-                        .replace(File.separatorChar, '/')
-                    if (relativePath.isBlank() || relativePath.startsWith("../")) {
-                        throw IOException("Invalid wallet backup path")
-                    }
-                    output.putNextEntry(ZipEntry(relativePath))
-                    BufferedInputStream(FileInputStream(file), BUFFER).use { input ->
-                        while (true) {
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            output.write(buffer, 0, count)
-                        }
-                    }
-                    output.closeEntry()
+            var origin: BufferedInputStream?
+            val dest = FileOutputStream(zipFileName)
+            val out = ZipOutputStream(
+                BufferedOutputStream(
+                    dest
+                )
+            )
+            val data = ByteArray(BUFFER)
+            for (i in _files.indices) {
+                val fi = FileInputStream(_files[i])
+                origin = BufferedInputStream(fi, BUFFER)
+                val entry = ZipEntry(_files[i].substring(_files[i].lastIndexOf("/") + 1))
+                out.putNextEntry(entry)
+                var count: Int
+                while (origin.read(data, 0, BUFFER).also { count = it } != -1) {
+                    out.write(data, 0, count)
                 }
+                origin.close()
             }
+            out.close()
         } catch (e: Exception) {
-            File(zipFileName).delete()
-            throw e
+            Timber.tag(TAG).e(e)
+            Timber.tag(TAG).e(e)
         }
     }
 
     fun unZip(toUnzip: File, destinationDir: File) {
-        val root = destinationDir.canonicalFile
-        if (!root.exists() && !root.mkdirs()) {
-            throw IOException("Unable to create backup extraction directory")
+        destinationDir.apply {
+            if (!exists()) {
+                mkdirs()
+            }
         }
         ZipFile(toUnzip).use { zip ->
             zip.entries().asSequence().forEach { entry ->
-                val output = File(root, entry.name).canonicalFile
-                val rootPrefix = root.path + File.separator
-                if (output.path == root.path || !output.path.startsWith(rootPrefix)) {
-                    throw IOException("Invalid backup archive path")
-                }
-                if (entry.isDirectory) {
-                    if (!output.exists() && !output.mkdirs()) {
-                        throw IOException("Unable to create backup directory")
-                    }
-                } else {
-                    output.parentFile?.let { parent ->
-                        if (!parent.exists() && !parent.mkdirs()) {
-                            throw IOException("Unable to create backup directory")
-                        }
-                    }
-                    zip.getInputStream(entry).use { input ->
-                        output.outputStream().use { stream -> input.copyTo(stream) }
+                zip.getInputStream(entry).use { input ->
+                    val filePath = "${destinationDir}${File.separator}${entry.name}"
+                    if (!entry.isDirectory) {
+                        input.copyTo(File(filePath).apply { createNewFile() }.outputStream())
+                    } else {
+                        val dir = File(filePath)
+                        dir.mkdir()
                     }
                 }
             }
@@ -195,19 +178,16 @@ object BackupHelper {
     }
 
     fun extractBackUp(backupPath: String, passPhrase: String): BackupPayload? {
-        val context = AnonConfig.context ?: throw IOException("Application context unavailable")
-        val destFile = File(context.cacheDir, "backup.anon")
-        val decryptedDestFile = File(context.cacheDir, "backup.zip")
-        val extractDestination = File(context.cacheDir, "tmp_extract")
-        val inputStream = context.contentResolver.openInputStream(backupPath.toUri())
-            ?: throw IOException("Unable to open backup file")
-        inputStream.use { input ->
-            destFile.outputStream().use { output -> input.copyTo(output) }
-        }
+        val destFile = File(AnonConfig.context?.cacheDir, "backup.anon").apply { createNewFile() }
+        val decryptedDestFile =
+            File(AnonConfig.context?.cacheDir, "backup.zip").apply { createNewFile() }
+        val extractDestination = File(AnonConfig.context?.cacheDir, "tmp_extract")
+        val inPutStream = AnonConfig.context?.contentResolver?.openInputStream(backupPath.toUri())
+        inPutStream?.copyTo(destFile.outputStream())
+        inPutStream?.close()
         val backup: BackupPayload
         try {
             EncryptUtil.decryptFile(passPhrase, destFile, decryptedDestFile)
-            extractDestination.deleteRecursively()
             unZip(decryptedDestFile, extractDestination)
 
             val anonJson = File(extractDestination, "anon.json")
@@ -227,7 +207,7 @@ object BackupHelper {
         try {
 
             val extractDestination = File(AnonConfig.context?.cacheDir, "tmp_extract")
-            if (!extractDestination.exists() || !testBackUp(extractDestination)) {
+            if (!extractDestination.exists() && !testBackUp(extractDestination)) {
                 return false
             }
 
@@ -256,7 +236,9 @@ object BackupHelper {
                     password = v1Node.password
                     networkType = AnonConfig.getNetworkType()
                 }
-                nodeRepository.addItem(node)
+                nodes.forEach {
+                    nodeRepository.addItem(node)
+                }
             }
             walletPrefs.edit(commit = true) {
                 putString(
