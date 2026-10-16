@@ -93,10 +93,6 @@ fun ResyncBlockchainScreen(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.Top
             ) {
-                if (isQuerying) {
-                    RestoreFieldLoading("高度恢复", "正在查询高度…")
-                    RestoreFieldLoading("时间恢复", "正在查询时间…")
-                } else if (queryCompleted) {
                     ListItem(
                         headlineContent = {
                             Text(
@@ -144,7 +140,6 @@ fun ResyncBlockchainScreen(
                             )
                         }
                     )
-                }
             }
 
             Box(
@@ -240,40 +235,17 @@ fun ResyncBlockchainScreen(
                         }
                     }
                 ) {
-                    Text(if (queryCompleted) "重置" else "查询")
+                    if (isQuerying) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text(if (queryCompleted) "重置" else "查询")
+                    }
                 }
             }
         }
     }
-}
-
-@Composable
-private fun RestoreFieldLoading(title: String, placeholder: String) {
-    ListItem(
-        headlineContent = {
-            Text(
-                text = title,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 4.dp)
-            )
-        },
-        supportingContent = {
-            OutlinedTextField(
-                value = "",
-                onValueChange = {},
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.medium,
-                singleLine = true,
-                readOnly = true,
-                placeholder = { Text(placeholder, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)) },
-                trailingIcon = {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp
-                    )
-                }
-            )
-        }
-    )
 }
 
