@@ -298,30 +298,31 @@ class WalletState(private val prefs: SharedPreferences) {
     }
 
     /**
-     * Called by Monero's WalletListener for a block actually processed by the
-     * wallet. The callback uses a zero-based block index; displayed height is a count.
+     * Consumes the one-based processed-block count emitted by the native JNI listener.
+     * Fast-refresh hash-cache callbacks are suppressed in the Monero C++ build patch,
+     * so this value advances only after native wallet block processing.
      */
     @Synchronized
-    fun recordScannedBlockHeight(blockIndex: Long, wallet: Wallet? = getWallet) {
-        if (wallet == null || !wallet.isInitialized || blockIndex < 0L) return
+    fun recordScannedBlockHeight(processedHeight: Long, wallet: Wallet? = getWallet) {
+        if (wallet == null || !wallet.isInitialized || processedHeight <= 0L) return
 
         // Read the live node tip once per callback and use the same value throughout.
         val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
         updateBlockHeights(wallet, daemonHeight)
-        if (_scanTracking.get() && blockIndex < _scanStartHeight.get()) {
+        if (_scanTracking.get() && processedHeight <= _scanStartHeight.get()) {
             updateSyncProgressFromWallet(wallet, daemonHeight)
+            if (daemonHeight > 0L) setLoading(false)
             return
         }
 
-        // A wallet scan callback is for the next processed block, not a general
-        // chain-height snapshot. Require strict sequential progress so a stale/native
-        // fast-refresh callback cannot jump the displayed wallet height to the node tip.
-        val processedHeight = blockIndex + 1L
+        // The native callback means the wallet has processed this block. Never replace
+        // this count with the daemon tip or the local hash-cache size.
         val currentHeight = _walletHeight.value.coerceAtLeast(0L)
         if (processedHeight <= currentHeight) {
             // Duplicate/out-of-order callbacks cannot roll progress backward or
             // imply any additional wallet scanning.
             updateSyncProgressFromWallet(wallet, daemonHeight)
+            if (daemonHeight > 0L) setLoading(false)
             return
         }
         if (processedHeight != currentHeight + 1L) {
@@ -330,6 +331,7 @@ class WalletState(private val prefs: SharedPreferences) {
                 currentHeight, processedHeight, daemonHeight
             )
             updateSyncProgressFromWallet(wallet, daemonHeight)
+            if (daemonHeight > 0L) setLoading(false)
             return
         }
 
@@ -341,6 +343,9 @@ class WalletState(private val prefs: SharedPreferences) {
         // balance as processed blocks add discovered outputs; this is not a UI change.
         updateBalanceFromWallet(wallet)
         updateSyncProgressFromWallet(wallet, daemonHeight)
+        // Once the native listener has a valid node tip, switch away from the
+        // indefinite refresh loader; WalletProgressIndicator prioritizes sync progress.
+        if (daemonHeight > 0L) setLoading(false)
     }
     /**
      * Resolve the live daemon tip without holding up restore/rescan startup.
@@ -694,7 +699,7 @@ class WalletState(private val prefs: SharedPreferences) {
         } finally {
             when {
                 connectionKnown && !connected -> setLoading(false)
-                daemonHeightKnown && _syncProgress.value == null -> setLoading(false)
+                daemonHeightKnown -> setLoading(false)
                 else -> setLoading(true)
             }
         }

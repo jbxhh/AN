@@ -231,7 +231,8 @@ struct MyWalletListener : Monero::WalletListener {
         int envStat = attachJVM(&jenv);
         if (envStat == JNI_ERR) return;
 
-        jlong h = static_cast<jlong>(height);
+        // wallet2 reports a zero-based block index. Expose the processed block count to Java.
+        jlong h = static_cast<jlong>(height + 1ULL);
         jmethodID listenerClass_newBlock = jenv->GetMethodID(class_WalletListener, "newBlock",
                                                              "(J)V");
         jenv->CallVoidMethod(jlistener, listenerClass_newBlock, h);

@@ -83,6 +83,9 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
             // The existing progress UI switches to its determinate bar as soon as it sees it.
             wallet.isSynchronized = false
             walletState.updateSyncProgressFromWallet(wallet, daemonHeight)
+            // A confirmed node tip ends the temporary loader; the determinate
+            // bar now shows real remaining blocks from the selected scan height.
+            walletState.setLoading(false)
         } else {
             walletState.completeWalletScan(wallet, daemonHeight)
             wallet.setSynchronized()

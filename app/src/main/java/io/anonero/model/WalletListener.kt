@@ -43,7 +43,7 @@ interface WalletListener {
     /**
      * newBlock      - called when new block received
      *
-     * @param height - block height
+     * @param height - one-based count of blocks actually processed by the native wallet
      */
     fun newBlock(height: Long)
 
