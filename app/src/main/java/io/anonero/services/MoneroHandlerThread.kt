@@ -15,8 +15,6 @@ import timber.log.Timber
 class MoneroHandlerThread(private val wallet: Wallet, private val walletState: WalletState) :
     Thread(null, null, "MoneroHandler", THREAD_STACK_SIZE), WalletListener {
 
-    @Volatile
-    private var lastReconnectAttemptMs = 0L
 
     @Synchronized
     override fun start() {
@@ -40,39 +38,21 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
 
     override fun newBlock(height: Long) {
         Timber.tag(name).i("newBlock: %s", height)
-        updateSyncProgress()
+        updateSyncProgress(height)
     }
 
-    private fun updateSyncProgress() {
-        val status = wallet.fullStatus.connectionStatus
-        if (status != Wallet.ConnectionStatus.ConnectionStatus_Connected) return
-
+    private fun updateSyncProgress(height: Long) {
         val syncHeight = wallet.getBlockChainHeight()
-        val daemonHeight = wallet.getDaemonBlockChainHeight()
-        if (syncHeight < 0L || daemonHeight <= 0L) return
-
-        val left = daemonHeight - syncHeight
-        if (left <= 1L) {
-            walletState.syncUpdate(SyncProgress(1f, 0L))
-            // A final new-block callback can arrive without a following refreshed()
-            // callback. Complete the wallet refresh here too, so loading, balance,
-            // coins, and transaction history cannot remain stale at the tip.
-            if (!wallet.isSynchronized) {
-                wallet.setSynchronized()
-                wallet.store()
-                refresh(true)
-            } else {
-                walletState.setLoading(false)
-                walletState.update()
-            }
+        val deamonHeight = wallet.getDaemonBlockChainHeight()
+        val left = deamonHeight - syncHeight
+        if (syncHeight < 0 || left < 0) {
             return
         }
-
-        val reportedTarget = wallet.getDaemonBlockChainTargetHeight()
-        val targetHeight = if (reportedTarget > 0L) reportedTarget else daemonHeight
-        val progress = (syncHeight.toDouble() / targetHeight.toDouble())
-            .toFloat()
-            .coerceIn(0f, 0.999f)
+        val progress = if (wallet.getDaemonBlockChainTargetHeight().toDouble() == 0.0) {
+            1f
+        } else {
+            (height.toDouble() / wallet.getDaemonBlockChainTargetHeight().toDouble()).toFloat()
+        }
         walletState.syncUpdate(SyncProgress(progress, left))
     }
 
@@ -86,78 +66,32 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
         val status = wallet.fullStatus.connectionStatus
         val daemonHeight = wallet.getDaemonBlockChainHeight()
         val chainHeight = wallet.getBlockChainHeight()
+        /// height
         Timber.tag(name)
-            .i("refreshed() status:$status daemonHeight:$daemonHeight chainHeight:$chainHeight")
-
-        if (status != null) {
-            walletState.setConnectionStatus(status)
-        }
-
-        if (status == Wallet.ConnectionStatus.ConnectionStatus_Disconnected || status == null) {
-            // Do not keep an indefinite spinner visible while the daemon is disconnected.
-            // Retry without reinitializing an already initialized wallet on every callback.
-            walletState.setLoading(false)
+            .i("refreshed() status:${status} daemonHeight:$daemonHeight chainHeight:$chainHeight ")
+        if (status === Wallet.ConnectionStatus.ConnectionStatus_Disconnected || status == null) {
             tryRestartConnection()
-            walletState.update()
-            return
-        }
-
-        if (status != Wallet.ConnectionStatus.ConnectionStatus_Connected) {
-            walletState.setLoading(false)
-            walletState.clearSyncProgress()
-            walletState.update()
-            return
-        }
-
-        if (daemonHeight <= 0L || chainHeight < 0L) {
-            Timber.tag(name).w(
-                "Cannot validate sync heights yet: daemonHeight=%s chainHeight=%s",
-                daemonHeight,
-                chainHeight
-            )
-            walletState.clearSyncProgress()
-            walletState.setLoading(false)
-            walletState.update()
-            return
-        }
-
-        val heightDiff = daemonHeight - chainHeight
-        updateSyncProgress()
-        if (heightDiff >= 2L) {
-            // Keep the refresh worker running and allow history/balance snapshots
-            // to update while the wallet catches up.
-            wallet.refreshHistory()
-            walletState.update()
         } else {
-            if (!wallet.isSynchronized) {
+            val heightDiff = daemonHeight - chainHeight
+            if (heightDiff >= 2) {
+                tryRestartConnection()
+            } else {
+                if (!wallet.isSynchronized) {
+                    updateSyncProgress(wallet.getBlockChainHeight())
+                }
                 wallet.setSynchronized()
                 wallet.store()
                 refresh(true)
-            } else {
-                refresh(true)
+                walletState.setLoading(false)
             }
-            walletState.setLoading(false)
+
         }
         walletState.update()
     }
 
-    @Synchronized
     private fun tryRestartConnection() {
-        val now = System.currentTimeMillis()
-        if (now - lastReconnectAttemptMs < RECONNECT_RETRY_INTERVAL_MS) return
-        lastReconnectAttemptMs = now
-
-        if (!wallet.isInitialized && !wallet.init(0)) {
-            Timber.tag(name).e("wallet.init(0) retry failed: %s", wallet.status.errorString)
-            walletState.setConnectionStatus(Wallet.ConnectionStatus.ConnectionStatus_Disconnected)
-            walletState.setLoading(false)
-            walletState.update()
-            return
-        }
-
-        if (wallet.isInitialized) {
-            wallet.startRefresh()
-        }
+        wallet.init(0)
+        wallet.startRefresh()
         walletState.update()
     }
 
@@ -180,7 +114,6 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
     }
 
     companion object {
-        private const val RECONNECT_RETRY_INTERVAL_MS = 15_000L
         // from src/cryptonote_config.h
         const val THREAD_STACK_SIZE = (5 * 1024 * 1024).toLong()
     }

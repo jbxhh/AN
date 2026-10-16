@@ -87,9 +87,7 @@ class WalletState {
                     }
                     wallet.unlockedBalance
                 }
-                val fullStatus = wallet.fullStatus
-                _walletStatus.update { fullStatus }
-                _connectionStatus.update { fullStatus.connectionStatus }
+                _walletStatus.update { wallet.fullStatus }
                 if (wallet.status.errorString.isNotEmpty()) {
                     Timber.tag(TAG).i("StatusError %s", wallet.status.errorString)
                 }
@@ -102,7 +100,7 @@ class WalletState {
                     _connectedDaemon.update {
                         DaemonInfo(
                             address,
-                            connectionStatus = fullStatus.connectionStatus
+                            connectionStatus = wallet.fullStatus.connectionStatus
                                 ?: Wallet.ConnectionStatus.ConnectionStatus_Disconnected,
                             WalletManager.instance?.getBlockchainHeight() ?: -1L
                         )
@@ -193,11 +191,6 @@ class WalletState {
     fun setConnectionStatus(status: Wallet.ConnectionStatus) {
         val previous = _previousConnectionStatus.getAndSet(status)
         _connectionStatus.update { status }
-        if (status != Wallet.ConnectionStatus.ConnectionStatus_Connected) {
-            _syncProgress.update { null }
-            _isSyncing.set(false)
-            setLoading(false)
-        }
         if (previous == Wallet.ConnectionStatus.ConnectionStatus_Disconnected &&
             status == Wallet.ConnectionStatus.ConnectionStatus_Connected) {
             setLoading(true)
@@ -209,19 +202,12 @@ class WalletState {
         this._connectedDaemon.update { daemonInfo }
     }
 
-    fun clearSyncProgress() {
-        _syncProgress.update { null }
-        _isSyncing.set(false)
-    }
-
     fun syncUpdate(syncProgress: SyncProgress) {
-        // The refresh handler treats a one-block gap as synchronized; use the same threshold here.
-        val done = syncProgress.left <= 1L
+        val done = syncProgress.progress == 1f || syncProgress.left == 0L
         _syncProgress.update { if (done) null else syncProgress }
         _isSyncing.set(!done)
         if (done) {
             _connectionStatus.update { Wallet.ConnectionStatus.ConnectionStatus_Connected }
-            setLoading(false)
         }
     }
 
