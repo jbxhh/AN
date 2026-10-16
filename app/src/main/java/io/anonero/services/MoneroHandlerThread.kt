@@ -18,13 +18,6 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
     @Volatile
     private var lastReconnectAttemptMs = 0L
 
-    companion object {
-        private const val RECONNECT_RETRY_INTERVAL_MS = 15_000L
-        // from src/cryptonote_config.h
-        const val THREAD_STACK_SIZE = (5 * 1024 * 1024).toLong()
-    }
-
-
     @Synchronized
     override fun start() {
         super.start()
@@ -47,10 +40,10 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
 
     override fun newBlock(height: Long) {
         Timber.tag(name).i("newBlock: %s", height)
-        updateSyncProgress(height)
+        updateSyncProgress()
     }
 
-    private fun updateSyncProgress(height: Long) {
+    private fun updateSyncProgress() {
         val status = wallet.fullStatus.connectionStatus
         if (status != Wallet.ConnectionStatus.ConnectionStatus_Connected) return
 
@@ -129,7 +122,7 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
         }
 
         val heightDiff = daemonHeight - chainHeight
-        updateSyncProgress(chainHeight)
+        updateSyncProgress()
         if (heightDiff >= 2L) {
             // Keep the refresh worker running and allow history/balance snapshots
             // to update while the wallet catches up.
@@ -186,4 +179,9 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
         fun onNewBlockFound(block: Long)
     }
 
+    companion object {
+        private const val RECONNECT_RETRY_INTERVAL_MS = 15_000L
+        // from src/cryptonote_config.h
+        const val THREAD_STACK_SIZE = (5 * 1024 * 1024).toLong()
+    }
 }
