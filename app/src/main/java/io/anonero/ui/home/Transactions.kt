@@ -103,7 +103,7 @@ import io.anonero.ui.home.spend.qr.SpendQRExchangeParam
 import io.anonero.ui.home.spend.qr.URQRScanner
 import io.anonero.util.Formats
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -552,10 +552,9 @@ fun TransactionScreen(
                                         showMenu = false
                                         scope.launch {
                                             view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                                            walletState.setLoading(true)
+
                                             walletState.refresh()
-                                            delay(2000)
-                                            walletState.setLoading(false)
+
                                         }
                                     }
                             )
@@ -603,10 +602,9 @@ fun TransactionScreen(
                            onRefresh = {
                 scope.launch {
                     view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                    walletState.setLoading(true)
+
                     walletState.refresh()
-                    delay(2000)
-                    walletState.setLoading(false)
+
                 }
             },
             indicator = { }
@@ -683,42 +681,7 @@ fun TransactionScreen(
                         }
                     }
                 }
-               val demoIncomingTransactions =
-                    listOf(
-                        TransactionInfo(
-                            direction = TransactionInfo.Direction.Direction_In.value,
-                            isPending = false,
-                            isFailed = false,
-                            amount = 123456789012L,
-                            fee = 0L,
-                            blockheight = 0L,
-                            hash = "demo-incoming-123456789012-1",
-                            timestamp = 2L,
-                            paymentId = null,
-                            accountIndex = 0,
-                            addressIndex = 0,
-                            confirmations = 10L,
-                            subaddressLabel = null,
-                            transfers = listOf()
-                        ),
-                        TransactionInfo(
-                            direction = TransactionInfo.Direction.Direction_In.value,
-                            isPending = false,
-                            isFailed = false,
-                            amount = 123456789012L,
-                            fee = 0L,
-                            blockheight = 0L,
-                            hash = "demo-incoming-123456789012-2",
-                            timestamp = 1L,
-                            paymentId = null,
-                            accountIndex = 0,
-                            addressIndex = 0,
-                            confirmations = 10L,
-                            subaddressLabel = null,
-                            transfers = listOf()
-                        )
-                    )
-                val visibleTransactions = demoIncomingTransactions + transactions.drop(1)
+                val visibleTransactions = transactions
                     item(key = "balance_space") {
                     Spacer(Modifier.height(50.dp))
                 }
