@@ -442,7 +442,13 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
                         nodeSettingsVM = nodeSettingsVM,
                         onDisconnect = {
                             nodeSettingsVM.disconnect()
-                        })
+                        },
+                        onEdit = { editingNode = it },
+                        onRemove = { node ->
+                            nodeSettingsVM.disconnect()
+                            nodeSettingsVM.removeItem(node.toNodeString())
+                        }
+                    )
                 }
             if (availableNodes.isNotEmpty())
                 item(key = "header") {
@@ -599,24 +605,22 @@ fun NodeListItem(
                             menu = false
                         }
                     )
-                    if (!active) {
-                        HorizontalDivider()
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.edit)) },
-                            onClick = {
-                                menu = false
-                                onEdit(node)
-                            },
-                        )
-                        HorizontalDivider()
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.remove)) },
-                            onClick = {
-                                onRemove(node)
-                                menu = false
-                            },
-                        )
-                    }
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.edit)) },
+                        onClick = {
+                            menu = false
+                            onEdit(node)
+                        },
+                    )
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.remove)) },
+                        onClick = {
+                            onRemove(node)
+                            menu = false
+                        },
+                    )
                 }
             }
         }
