@@ -210,13 +210,18 @@ class WalletManager {
 
     fun setDaemon(node: Node?) {
         if (node != null) {
+            // Validate before mutating manager state so a rejected cross-network node
+            // cannot leave stale credentials/address values behind.
+            require(networkType == node.networkType) { "network type does not match" }
+            setDaemonAddressJ(node.address)
             daemonAddress = node.address
-            require(networkType === node.networkType) { "network type does not match" }
             daemonUsername = node.username
             daemonPassword = node.password
-            daemonAddress?.let { addr -> setDaemonAddressJ(addr) }
-            Timber.tag(TAG).i("setDaemon:  %s", daemonAddress)
+            Timber.tag(TAG).i("setDaemon: %s", daemonAddress)
         } else {
+            // Clear the native manager too; clearing only Kotlin fields leaves the
+            // previous daemon configured in libanonero for later wallet operations.
+            setDaemonAddressJ("")
             daemonAddress = null
             daemonUsername = ""
             daemonPassword = ""
