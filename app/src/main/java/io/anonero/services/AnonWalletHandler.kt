@@ -61,6 +61,10 @@ class AnonWalletHandler(
         )
         if (anonWallet?.status?.isOk != true) {
             Timber.tag(TAG).e("openWallet error: %s", anonWallet?.status?.errorString)
+        } else {
+            // Publish balance/address from the opened wallet immediately. The asynchronous
+            // service still has to configure Tor and initialize the daemon connection.
+            walletState.publishWalletSnapshot(anonWallet)
         }
         return anonWallet?.status?.isOk ?: throw InvalidPin()
     }
@@ -121,11 +125,19 @@ class AnonWalletHandler(
                 // Recover an interrupted or legacy scan from the selected restore point.
                 // Native hash-chain height alone is not proof transactions were scanned.
                 val resumeScan = walletState.beginWalletScan(wallet, actualRestoreHeight)
-                // Publish the initialized wallet's real balance and receive address
-                // before starting async refresh/rescan. Otherwise native scan work can
-                // delay the first state update until the progress indicator disappears.
-                wallet.refreshHistory()
-                walletState.update()
+                // Publish local data before history refresh; native history work must not
+                // control whether the initial balance and receive address reach the UI.
+                walletState.publishWalletSnapshot(wallet)
+                try {
+                    wallet.refreshHistory()
+                } catch (e: Exception) {
+                    Timber.tag(TAG).w(e, "Initial history refresh failed; continuing wallet startup")
+                }
+                try {
+                    walletState.update()
+                } catch (e: Exception) {
+                    Timber.tag(TAG).w(e, "Initial wallet state refresh failed; continuing wallet startup")
+                }
                 if (resumeScan) {
                     wallet.rescanBlockchainAsync()
                 } else {

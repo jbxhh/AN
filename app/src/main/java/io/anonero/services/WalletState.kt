@@ -87,13 +87,12 @@ class WalletState(private val prefs: SharedPreferences) {
         if (_blockUpdates.get()) return
         getWallet?.let { wallet ->
             if (!wallet.isInitialized) {
+                // Wallet files are already open at this point. Publish locally available
+                // balance/address data without waiting for Tor, daemon connection, or scan.
+                publishWalletSnapshot(wallet)
                 _walletHeight.value = 0L
-                _balanceInfo.value = null
-                _unLockedBalance.value = null
                 _walletStatus.value = null
                 _transactions.value = emptyList()
-                _nextAddress.value = null
-                _subAddresses.value = emptyList()
                 _coins.value = emptyList()
                 _connectedDaemon.update { current -> current?.copy(daemonHeight = 0L) }
                 return@let
@@ -140,6 +139,60 @@ class WalletState(private val prefs: SharedPreferences) {
             if (!backgroundSync) {
                 _nextAddress.update { wallet.getLatestSubAddress() }
                 _subAddresses.update { wallet.getAllUsedSubAddresses().reversed() }
+            }
+        }
+    }
+
+    /**
+     * Publish local wallet data independently from daemon startup and blockchain scanning.
+     * The UI should not need a successful Tor/RPC connection just to show an address.
+     */
+    fun publishWalletSnapshot(wallet: Wallet? = getWallet) {
+        if (wallet == null) return
+
+        try {
+            updateBalanceFromWallet(wallet)
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "Unable to read local wallet balance during startup")
+        }
+
+        var address = try {
+            if (wallet.isInitialized) {
+                wallet.getLatestSubAddress().takeIf { it.address.isNotBlank() }
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "Unable to read the next receive subaddress during startup")
+            null
+        }
+
+        // The primary address is derived directly from the opened wallet keys and is
+        // a safe fallback when history/next-subaddress lookup isn't ready yet.
+        if (address == null) {
+            address = try {
+                val accountIndex = wallet.getAccountIndex()
+                wallet.getAddress(accountIndex).takeIf { it.isNotBlank() }?.let {
+                    Subaddress(accountIndex, 0, it, "")
+                }
+            } catch (e: Exception) {
+                Timber.tag(TAG).w(e, "Unable to read the primary receive address during startup")
+                null
+            }
+        }
+
+        if (address != null) {
+            _nextAddress.value = address
+            if (!wallet.isInitialized) {
+                _subAddresses.value = listOf(address)
+            }
+        }
+
+        if (wallet.isInitialized) {
+            try {
+                _subAddresses.value = wallet.getAllUsedSubAddresses().reversed()
+            } catch (e: Exception) {
+                Timber.tag(TAG).w(e, "Unable to load the address label list during startup")
             }
         }
     }
