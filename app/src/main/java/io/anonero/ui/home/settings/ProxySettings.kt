@@ -196,7 +196,7 @@ class ProxySettingsViewModel(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProxySettings(onBackPress: () -> Unit = {}, showTopBar: Boolean = true) {
+fun ProxySettings(onBackPress: () -> Unit = {}) {
     var proxyAddress by remember { mutableStateOf("") }
     var showLogs by remember { mutableStateOf(false) }
     val proxyViewModel = koinViewModel<ProxySettingsViewModel>()
@@ -246,8 +246,7 @@ fun ProxySettings(onBackPress: () -> Unit = {}, showTopBar: Boolean = true) {
     Scaffold(
         modifier = Modifier.animateContentSize(),
         topBar = {
-            if (showTopBar) {
-                Column {
+            Column {
                 TopAppBar(
                     navigationIcon = {
                         IconButton(
@@ -281,7 +280,6 @@ fun ProxySettings(onBackPress: () -> Unit = {}, showTopBar: Boolean = true) {
                         )
                     }
                 }
-            }
             }
         }
     ) {
