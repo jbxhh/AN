@@ -111,7 +111,7 @@ fun SettingsPage(
                 }
                 item(key = "delete-footer-divider") {
                     androidx.compose.foundation.layout.Spacer(
-                        modifier = Modifier.height(8.dp)
+                        modifier = Modifier.height(56.dp)
                     )
                     SettingsDivider()
                 }
