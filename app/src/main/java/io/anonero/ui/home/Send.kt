@@ -556,7 +556,7 @@ fun SendScreen(
                         },
                     )
                     Text(
-                        if (sweep)"${stringResource(R.string.sweeping_balance)}$unLockedAmount${
+                        if (sweep)"${stringResource(R.string.sweeping_balance)}$unLockedAmount ${
                             stringResource(
                                 R.string.minus_fees
                             )}" else "${stringResource(R.string.available_balance)}$unLockedAmount",
