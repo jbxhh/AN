@@ -547,11 +547,11 @@ fun NodeListItem(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "区块高度:${daemonStatus?.daemonHeight?.toString() ?: ""}",
+                        "区块高度：${daemonStatus?.daemonHeight?.toString() ?: ""}",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Text(
-                        "钱包高度:${if (walletStatus == null) "" else walletHeight.toString()}",
+                        "钱包高度：${if (walletStatus == null) "" else walletHeight.toString()}",
                         style = MaterialTheme.typography.bodySmall,
                         textAlign = TextAlign.End
                     )
