@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -53,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.asLiveData
 import io.anonero.R
 import io.anonero.model.CoinsInfo
@@ -179,11 +179,9 @@ fun CoinsScreen(
                 topBar = {
                     TopAppBar(
                         title = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                XmrText(style = MaterialTheme.typography.titleLarge)
-                                Spacer(Modifier.width(6.dp))
-                                Text("输出", style = MaterialTheme.typography.titleLarge)
-                            }
+                            XmrText(
+                                style = MaterialTheme.typography.titleLarge.copy(fontSize = 26.sp)
+                            )
                         },
                         navigationIcon = {
                             IconButton(onClick = onBackPress) {
@@ -334,13 +332,7 @@ private fun OutputDetailScreen(
             .background(MaterialTheme.colorScheme.background)
     ) {
         TopAppBar(
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    XmrText(style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.width(6.dp))
-                    Text("输出", style = MaterialTheme.typography.titleLarge)
-                }
-            },
+            title = { Text("输出") },
             navigationIcon = {
                 IconButton(onClick = onBackPress) {
                     Icon(
