@@ -18,8 +18,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import timber.log.Timber
-import java.io.File
-import java.io.IOException
 
 
 enum class Mode {
@@ -43,32 +41,14 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
 
     fun getSeed() = walllet?.getSeed(passPhrase) ?: ""
 
-    private fun walletArtifacts(walletFile: File): List<File> {
-        return walletFile.parentFile?.listFiles()
-            ?.filter { it.name == walletFile.name || it.name.startsWith("${walletFile.name}.") }
-            .orEmpty()
-    }
-
-    private fun deleteWalletArtifacts(walletFile: File) {
-        walletArtifacts(walletFile).forEach { it.deleteRecursively() }
-    }
-
 
     suspend fun create(pin: String) {
         if (AnonConfig.context == null) return
         withContext(Dispatchers.IO) {
             val context = AnonConfig.context!!.applicationContext
-            if (WalletManager.instance?.wallet != null) {
-                throw CancellationException("Close the current wallet before creating another wallet")
-            }
             val walletFile = AnonConfig.getDefaultWalletFile(context)
-            if (walletArtifacts(walletFile).isNotEmpty()) {
-                throw CancellationException("Wallet files already exist; refusing to overwrite the existing wallet")
-            }
-            val walletDir = AnonConfig.getDefaultWalletDir(context)
-            if (!walletDir.exists() && !walletDir.mkdirs()) {
-                throw IOException("Unable to create the wallet directory")
-            }
+            AnonConfig.getDefaultWalletDir(context).deleteRecursively()
+            AnonConfig.getDefaultWalletDir(context).mkdirs()
             val anonWallet = WalletManager.instance?.createWallet(
                 walletFile,
                 pin,
@@ -76,18 +56,27 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
                 "English",
                 1,
             )
-            val walletStored = runCatching { anonWallet?.store() == true }.getOrDefault(false)
+            anonWallet?.store()
             delay(100)
-            val walletStatusOk = runCatching { anonWallet?.status?.isOk == true }.getOrDefault(false)
-            if (!walletStored || !walletStatusOk) {
-                val closed = anonWallet == null || runCatching { anonWallet.close() }.getOrDefault(false)
-                if (closed) deleteWalletArtifacts(walletFile)
+            if (anonWallet?.status?.isOk != true) {
+                walletFile.delete()
                 throw CancellationException(context.getString(R.string.unable_to_create_wallet))
             }
-            val crazyPass: String = KeyStoreHelper.getCrazyPass(context, passPhrase)
-            prefs.edit(commit = true) {
+            val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
+            prefs.edit {
                 putString(PREFS_PASSPHRASE_HASH, crazyPass)
-                putString(PREFS_PIN_HASH, encodePinHash(pin))
+            }
+
+            //adds padding to the pin if it's less than 32 bytes
+            val pinHash = CrazyPassEncoder.encode(
+                pin.toByteArray().let { bytes ->
+                    if (bytes.size < 32) {
+                        bytes + ByteArray(32 - bytes.size)
+                    } else bytes
+                }
+            )
+            prefs.edit {
+                putString(PREFS_PIN_HASH, pinHash)
             }
             walllet = anonWallet
             delay(500)
@@ -100,17 +89,9 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
         if (AnonConfig.context == null) return
         withContext(Dispatchers.IO) {
             val context = AnonConfig.context!!.applicationContext
-            if (WalletManager.instance?.wallet != null) {
-                throw CancellationException("Close the current wallet before creating another wallet")
-            }
             val walletFile = AnonConfig.getDefaultWalletFile(context)
-            if (walletArtifacts(walletFile).isNotEmpty()) {
-                throw CancellationException("Wallet files already exist; refusing to overwrite the existing wallet")
-            }
-            val walletDir = AnonConfig.getDefaultWalletDir(context)
-            if (!walletDir.exists() && !walletDir.mkdirs()) {
-                throw IOException("Unable to create the wallet directory")
-            }
+            AnonConfig.getDefaultWalletDir(context).deleteRecursively()
+            AnonConfig.getDefaultWalletDir(context).mkdirs()
             val anonWallet = WalletManager.instance?.createWalletWithKeys(
                 walletFile,
                 pin,
@@ -120,18 +101,16 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
                 addressString = neroKeyPayload!!.primaryAddress,
                 spendKeyString = ""
             )
-            val walletStored = runCatching { anonWallet?.store() == true }.getOrDefault(false)
+            anonWallet?.setRestoreHeight(3460000);
+            anonWallet?.store()
             delay(100)
-            val walletStatusOk = runCatching { anonWallet?.status?.isOk == true }.getOrDefault(false)
-            if (!walletStored || !walletStatusOk) {
-                val closed = anonWallet == null || runCatching { anonWallet.close() }.getOrDefault(false)
-                if (closed) deleteWalletArtifacts(walletFile)
+            if (anonWallet?.status?.isOk != true) {
+                walletFile.delete()
                 throw CancellationException(context.getString(R.string.unable_to_create_wallet))
             }
-            val crazyPass: String = KeyStoreHelper.getCrazyPass(context, passPhrase)
-            prefs.edit(commit = true) {
-                putString(PREFS_PASSPHRASE_HASH, crazyPass)
-                putString(PREFS_PIN_HASH, encodePinHash(pin))
+            val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
+            prefs.edit {
+                putString("passPhraseHash", crazyPass)
             }
             walllet = anonWallet
             delay(500)
@@ -154,124 +133,60 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
         return restorePayload
     }
 
-    private fun encodePinHash(pin: String): String {
-        // Keep this byte-level encoding identical for newly created and restored wallets.
-        val bytes = pin.toByteArray(Charsets.UTF_8)
-        val paddedBytes = if (bytes.size < 32) {
-            bytes + ByteArray(32 - bytes.size)
-        } else {
-            bytes
-        }
-        return CrazyPassEncoder.encode(paddedBytes)
-    }
-
     suspend fun restoreFromSeed(pin: String) {
-        val payload = restorePayload ?: return
-        if (payload.seed.size != 16 && payload.seed.size != 25) {
-            throw CancellationException("Invalid recovery phrase length: ${payload.seed.size}")
-        }
-        if (payload.restoreHeight != null && payload.restoreHeight < 0L) {
-            throw CancellationException("Restore height must be a non-negative integer")
-        }
-        if (payload.seed.size == 25 && payload.restoreHeight == null) {
-            throw CancellationException("Restore height required for 25 word seed")
-        }
+        if (restorePayload == null) return
 
-        val context = AnonConfig.context?.applicationContext
-            ?: throw IllegalStateException("Application context unavailable")
-        val activeWallet = WalletManager.instance?.wallet
-        if (activeWallet != null) {
-            throw CancellationException("Close the current wallet before restoring another wallet")
+        val context = AnonConfig.context!!.applicationContext
+        val walletFile = AnonConfig.getDefaultWalletFile(context)
+        AnonConfig.getDefaultWalletDir(context).deleteRecursively()
+        AnonConfig.getDefaultWalletDir(context).mkdirs()
+        delay(100)
+        val anonWallet = if (restorePayload!!.seed.size == 25) {
+            WalletManager.instance?.recoveryWallet(
+                walletFile,
+                pin,
+                restorePayload!!.seed.joinToString(" "),
+                passPhrase,
+                restorePayload!!.restoreHeight ?: 0
+            )
+        } else if (restorePayload!!.seed.size == 16) {
+            WalletManager.instance?.recoveryWalletPolyseed(
+                walletFile,
+                pin,
+                restorePayload!!.seed.joinToString(" "),
+                passPhrase,
+            )
+        } else {
+            null
         }
-
-        val walletDir = File(context.filesDir, "wallets")
-        val stagingDir = File(context.filesDir, "wallets.restore-staging")
-        val previousDir = File(context.filesDir, "wallets.restore-backup")
-
-        // Recover a previous transaction if the process was interrupted between
-        // renaming the old and newly restored wallet directories.
-        if (!walletDir.exists() && previousDir.exists()) {
-            if (!previousDir.renameTo(walletDir)) {
-                throw IOException("Unable to recover the existing wallet directory")
+        if (anonWallet == null) {
+            throw Exception("unable to create wallet from seed, invalid seed length ${restorePayload!!.seed.size}")
+        }
+        delay(1000)
+        restorePayload?.restoreHeight?.let {
+            anonWallet?.setRestoreHeight(it)
+        }
+        anonWallet?.store()
+        anonWallet?.store(walletFile.path)
+        delay(100)
+        if (anonWallet?.status?.isOk != true) {
+            walletFile.delete()
+            throw CancellationException("unable to create wallet ${anonWallet?.status?.errorString}")
+        }
+        val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
+        prefs.edit(commit = true) {
+            putString(PREFS_PASSPHRASE_HASH, crazyPass)
+            restorePayload?.restoreHeight?.let {
+                putLong(RESTORE_HEIGHT, it)
             }
         }
-
-        stagingDir.deleteRecursively()
-        if (!stagingDir.mkdirs() && !stagingDir.isDirectory) {
-            throw IOException("Unable to create a temporary wallet directory")
-        }
-
-        val candidateFile = File(stagingDir, "anon")
-        var candidateWallet: Wallet? = null
-        var preserveStagingDir = false
         try {
-            val restoredWallet = when (payload.seed.size) {
-                16 -> WalletManager.instance?.recoveryWalletPolyseed(
-                    candidateFile,
-                    pin,
-                    payload.seed.joinToString(" "),
-                    passPhrase
-                )
-                25 -> WalletManager.instance?.recoveryWallet(
-                    candidateFile,
-                    pin,
-                    payload.seed.joinToString(" "),
-                    passPhrase,
-                    payload.restoreHeight ?: 0L
-                )
-                else -> null
-            } ?: throw CancellationException("Unable to create wallet from recovery phrase")
-            candidateWallet = restoredWallet
-
-            payload.restoreHeight?.let { restoredWallet.setRestoreHeight(it) }
-            if (!restoredWallet.store() || !restoredWallet.store(candidateFile.path)) {
-                throw CancellationException("Unable to save the restored wallet")
-            }
-            val status = restoredWallet.status
-            if (!status.isOk) {
-                throw CancellationException("Unable to restore wallet: ${status.errorString}")
-            }
-            if (!restoredWallet.close()) {
-                throw CancellationException("Unable to close the temporary restored wallet")
-            }
-            candidateWallet = null
-
-            // Only replace the current wallet after the candidate has recovered,
-            // passed native wallet status checks, been saved and closed.
-            previousDir.deleteRecursively()
-            val hadPreviousWallet = walletDir.exists()
-            if (hadPreviousWallet && !walletDir.renameTo(previousDir)) {
-                throw IOException("Unable to preserve the existing wallet before restore")
-            }
-            if (!stagingDir.renameTo(walletDir)) {
-                if (hadPreviousWallet && previousDir.exists()) previousDir.renameTo(walletDir)
-                throw IOException("Unable to install the restored wallet")
-            }
-            previousDir.deleteRecursively()
-
-            val crazyPass = KeyStoreHelper.getCrazyPass(context, passPhrase)
-            prefs.edit(commit = true) {
-                putString(PREFS_PASSPHRASE_HASH, crazyPass)
-                putString(PREFS_PIN_HASH, encodePinHash(pin))
-                if (payload.restoreHeight != null) {
-                    putLong(RESTORE_HEIGHT, payload.restoreHeight)
-                } else {
-                    remove(RESTORE_HEIGHT)
-                }
-            }
+            anonWallet.close()
         } catch (e: Exception) {
-            val candidateClosed = candidateWallet?.let {
-                runCatching { it.close() }.getOrDefault(false)
-            } ?: true
-            if (!candidateClosed) {
-                // Never delete files while a native wallet may still have them open.
-                preserveStagingDir = true
-                Timber.tag(TAG).e("Unable to close temporary wallet after restore failure; preserving staging files")
-            }
-            throw e
-        } finally {
-            if (!preserveStagingDir) stagingDir.deleteRecursively()
+            Timber.tag(TAG).w(e, "Unable to close wallet")
         }
+
+        delay(500)
     }
 
 }
