@@ -559,6 +559,29 @@ fun TransactionScreen(
                                     }
                             )
                         
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.resync_blockchain)) },
+                                onClick = {
+                                    showMenu = false
+                                    val result = walletState.resyncBlockchain()
+                                    if (result.isFailure) {
+                                        scope.launch {
+                                            toastState.show(
+                                                "Error : ${result.exceptionOrNull()?.message}",
+                                                type = ToastType.Warning,
+                                                duration = 6.seconds
+                                            )
+                                        }
+                                    } else {
+                                        scope.launch {
+                                            toastState.show(
+                                                context.getString(R.string.resync_initiated_this_may_take_a_while),
+                                                type = ToastType.Success,
+                                            )
+                                        }
+                                    }
+                                }
+                            )
                             if (AnonConfig.viewOnly) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.show_outputs)) },
