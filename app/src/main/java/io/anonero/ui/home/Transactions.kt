@@ -553,7 +553,7 @@ fun TransactionScreen(
                                         Text(
                                             buildAnnotatedString {
                                                 append(coinControlLabel.substring(0, xmrIndex))
-                                                withStyle(SpanStyle(fontFamily = xqzpFontFamily())) {
+                                                withStyle(SpanStyle(fontFamily = xqzpFontFamily(), fontSize = 18.sp)) {
                                                     append("XMR")
                                                 }
                                                 append(coinControlLabel.substring(xmrIndex + 3))
