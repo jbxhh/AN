@@ -223,62 +223,76 @@ fun ResyncBlockchainScreen(
                                     toastState.show("钱包尚未初始化，无法重置同步", type = ToastType.Warning)
                                 }
                             } else {
-                                val daemonHeight = wallet.getDaemonBlockChainHeight()
-                                if (daemonHeight <= 0L) {
-                                    scope.launch {
-                                        toastState.show("无法读取节点真实区块高度，请检查节点连接", type = ToastType.Warning)
-                                    }
-                                } else if (selectedHeight > daemonHeight) {
+                                // Validate against the most recently published daemon tip only.
+                                // Never block the reset button on a live height RPC: the chosen
+                                // restore height is already known, so start scanning immediately.
+                                val knownDaemonHeight = walletState.currentDaemonHeight
+                                if (knownDaemonHeight > 0L && selectedHeight > knownDaemonHeight) {
                                     scope.launch {
                                         toastState.show(
-                                            "恢复高度不能高于当前节点高度（${daemonHeight}）",
+                                            "恢复高度不能高于当前已知节点高度（${knownDaemonHeight}）",
                                             type = ToastType.Warning,
                                             duration = 6.seconds
                                         )
                                     }
                                 } else {
-                                    val previousHeight = wallet.getRestoreHeight()
-                                    try {
-                                        wallet.setRestoreHeight(selectedHeight)
-                                        if (!wallet.store()) {
-                                            throw IllegalStateException("保存恢复高度失败")
-                                        }
-                                        val result = walletState.resyncBlockchain()
-                                        if (result.isFailure) {
-                                            wallet.setRestoreHeight(previousHeight)
-                                            wallet.store()
-                                            scope.launch {
+                                    isQuerying = true
+                                    scope.launch {
+                                        var previousHeight: Long? = null
+                                        try {
+                                            previousHeight = withContext(Dispatchers.IO) {
+                                                wallet.getRestoreHeight()
+                                            }
+                                            val result = withContext(Dispatchers.IO) {
+                                                wallet.setRestoreHeight(selectedHeight)
+                                                if (!wallet.store()) {
+                                                    throw IllegalStateException("保存恢复高度失败")
+                                                }
+                                                walletState.resyncBlockchain()
+                                            }
+                                            if (result.isFailure) {
+                                                withContext(Dispatchers.IO) {
+                                                    previousHeight?.let {
+                                                        wallet.setRestoreHeight(it)
+                                                        wallet.store()
+                                                    }
+                                                }
                                                 toastState.show(
                                                     "重置失败：${result.exceptionOrNull()?.message}",
                                                     type = ToastType.Warning,
                                                     duration = 6.seconds
                                                 )
-                                            }
-                                        } else {
-                                            walletPrefs.edit(commit = true) {
-                                                putLong(RESTORE_HEIGHT, selectedHeight)
-                                            }
-                                            scope.launch {
+                                            } else {
+                                                walletPrefs.edit(commit = true) {
+                                                    putLong(RESTORE_HEIGHT, selectedHeight)
+                                                }
                                                 toastState.show(
                                                     "已从所选恢复高度开始重新扫描交易",
                                                     type = ToastType.Success
                                                 )
+                                                onBackPress()
                                             }
-                                            onBackPress()
-                                        }
-                                    } catch (e: Exception) {
-                                        try {
-                                            wallet.setRestoreHeight(previousHeight)
-                                            wallet.store()
-                                        } catch (rollbackError: Exception) {
-                                            Timber.tag("ResyncBlockchain").e(rollbackError, "Restore-height rollback failed")
-                                        }
-                                        scope.launch {
+                                        } catch (e: Exception) {
+                                            try {
+                                                withContext(Dispatchers.IO) {
+                                                    previousHeight?.let {
+                                                        wallet.setRestoreHeight(it)
+                                                        wallet.store()
+                                                    }
+                                                }
+                                            } catch (rollbackError: Exception) {
+                                                Timber.tag("ResyncBlockchain").e(
+                                                    rollbackError,
+                                                    "Restore-height rollback failed"
+                                                )
+                                            }
                                             toastState.show(
                                                 "重置失败：${e.message ?: "无法保存恢复高度"}",
                                                 type = ToastType.Warning,
                                                 duration = 6.seconds
                                             )
+                                        } finally {
+                                            isQuerying = false
                                         }
                                     }
                                 }
