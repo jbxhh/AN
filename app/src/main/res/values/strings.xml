@@ -93,7 +93,7 @@
      <string name="wallet">%1$s %2$s wallet</string>
      <string name="restore_height">RESTORE HEIGHT</string>
      <string name="private_view_key">PRIVATE VIEW KEY</string>
-     <string name="primary_address">PRIMARY ADDRESS</string>
+     <string name="primary_address">主地址</string>
      <string name="import_view_keys">IMPORT VIEW KEYS</string>
      <string name="invalid_qr_code">Invalid QR Code</string>
      <string name="loading">Loading....</string>
