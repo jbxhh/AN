@@ -246,7 +246,7 @@ fun RestoreWallet(
                             value = restoreHeight,
                             shape = MaterialTheme.shapes.medium,
                             onValueChange = { value ->
-                                if (value.isEmpty() || value.all(Char::isDigit)) {
+                                if (value.isEmpty() || value.all { it.isDigit() }) {
                                     restoreHeight = value
                                     restoreHeightError = null
                                 } else {
