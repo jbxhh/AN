@@ -24,7 +24,7 @@
     <string name="send">确定</string>
     <string name="settings">设置</string>
     <string name="set_subaddress_label">子地址标签</string>
-    <string name="subaddress_label_list">子地址标签列表</string>
+    <string name="subaddress_label_list">子地址标签</string>
     <string name="add_subaddress_label">添加子地址标签</string>
     <string name="node_connection"></string>
     <string name="node">节点</string>
@@ -59,7 +59,7 @@
     <string name="invalid_address">无效地址</string>
     <string name="amount">金额</string>
     <string name="sweeping_balance">清空余额：</string>
-    <string name="minus_fees">(扣除手续费)</string>
+    <string name="minus_fees"> (扣除手续费)</string>
     <string name="available_balance">可用余额：</string>
     <string name="_1_coin_selected">已选择1个输出</string>
     <string name="coins_selected">已选择2个输出</string>
