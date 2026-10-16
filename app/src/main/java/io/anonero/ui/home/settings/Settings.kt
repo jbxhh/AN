@@ -29,6 +29,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -43,6 +46,14 @@ import io.anonero.ui.home.graph.routes.SettingsNodeRoute
 import io.anonero.ui.home.graph.routes.SettingsTradeRoute
 import io.anonero.ui.home.graph.routes.SettingsWalletRoute
 import io.anonero.ui.home.graph.routes.SettingsViewSeedRoute
+
+private val SettingsVersionFontFamily = FontFamily(
+    Font(R.font.robotomono_light, FontWeight.Light),
+    Font(R.font.robotomono_regular, FontWeight.Normal),
+    Font(R.font.robotomono_medium, FontWeight.Medium),
+    Font(R.font.robotomono_semi_bold, FontWeight.SemiBold),
+    Font(R.font.robotomono_bold, FontWeight.Bold),
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -131,7 +142,8 @@ fun SettingsPage(
                     ),
                     style = MaterialTheme.typography.labelLarge.copy(
                         color = MaterialTheme.colorScheme.onSecondary.copy(alpha = 0.6f),
-                        fontSize = 12.sp
+                        fontSize = 12.sp,
+                        fontFamily = SettingsVersionFontFamily
                     ),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.clickable(
