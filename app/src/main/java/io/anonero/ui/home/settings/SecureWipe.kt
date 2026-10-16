@@ -67,7 +67,6 @@ import io.anonero.store.NodesRepository
 import io.anonero.ui.MainActivity
 import io.anonero.util.KeyStoreHelper
 import io.anonero.util.PREFS_PASSPHRASE_HASH
-import io.anonero.util.isWalletPassphraseValid
 import io.anonero.util.ShakeConfig
 import io.anonero.util.WALLET_PREFERENCES
 import io.anonero.util.rememberShakeController
@@ -186,34 +185,47 @@ fun SecureWipe(
     fun clearWallet() {
         scope.launch(Dispatchers.IO) {
             requestClearScreen(true)
-            val context = AnonConfig.context
-            if (context == null || !isWalletPassphraseValid(context, prefs, passPhrase)) {
-                requestClearScreen(false)
-                scope.launch {
-                    errorShake.shake(ShakeConfig(iterations = 4, translateX = 12f))
-                }
-                return@launch
-            }
-
-            val currentActivity = activity
-            if (currentActivity == null) {
-                requestClearScreen(false)
-                return@launch
-            }
-
-            passPhraseDialog = false
-            HapticFeedbackConstants.CONTEXT_CLICK
-            secureWipeViewModel.wipe(passPhrase, currentActivity)
-                .invokeOnCompletion {
-                    if (it == null) {
-                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                        scope.launch(Dispatchers.Main) { goToHome() }
-                    } else {
-                        Timber.tag(TAG).e(it)
-                        error = it.message
-                        requestClearScreen(false)
+            val hash = prefs.getString(PREFS_PASSPHRASE_HASH, "")
+            val hashedPass =
+                KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
+            if (hash == hashedPass) {
+                val seed = getWalletSeed(passPhrase)?.split(" ")
+                if (seed != null) {
+                    passPhraseDialog = false
+                    HapticFeedbackConstants.CONTEXT_CLICK
+                    activity?.let { activity ->
+                        secureWipeViewModel.wipe(passPhrase, activity)
+                            .invokeOnCompletion {
+                                if (it == null) {
+                                    view.performHapticFeedback(
+                                        HapticFeedbackConstants.CONTEXT_CLICK
+                                    )
+                                    scope.launch(Dispatchers.Main) {
+                                        goToHome()
+                                    }
+                                } else {
+                                    Timber.tag(TAG).e(it)
+                                    error = it.message
+                                    requestClearScreen(false)
+                                }
+                            }
                     }
                 }
+            } else {
+                errorShake.shake(
+                    ShakeConfig(
+                        6, translateX = 5f
+                    )
+                )
+                repeat(6) {
+                    delay(50)
+                    view.performHapticFeedback(
+                        HapticFeedbackConstants.CONTEXT_CLICK
+                    )
+                }
+                delay(100)
+            }
+
         }
     }
 
