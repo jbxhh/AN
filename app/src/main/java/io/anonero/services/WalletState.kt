@@ -62,8 +62,6 @@ class WalletState(private val prefs: SharedPreferences) {
     private val _unlockShortcut = Channel<LockScreenShortCut>(capacity = 1)
     val unlockShortcut = _unlockShortcut.receiveAsFlow()
     private val bgSyncMutex = Mutex()
-    // Serialize address creation and prevent native wallet index races on rapid taps.
-    private val subaddressMutex = Mutex()
     // Wallet scan progress needs the live daemon target as soon as a scan starts.
     // Keep this request off the UI thread and avoid duplicate startup height RPCs.
     private val scanHeightScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -187,33 +185,18 @@ class WalletState(private val prefs: SharedPreferences) {
             }
         }
 
+        if (address != null) {
+            _nextAddress.value = address
+            if (!wallet.isInitialized) {
+                _subAddresses.value = listOf(address)
+            }
+        }
+
         if (wallet.isInitialized) {
-            if (address != null) _nextAddress.value = address
             try {
                 _subAddresses.value = wallet.getAllUsedSubAddresses().reversed()
             } catch (e: Exception) {
                 Timber.tag(TAG).w(e, "Unable to load the address label list during startup")
-            }
-        } else {
-            // Opening a wallet without an initialized daemon must not collapse the address
-            // list to index 0. Child addresses are derived locally and remain usable offline.
-            val localAddresses = try {
-                readAddressSnapshot(wallet)
-            } catch (e: Exception) {
-                Timber.tag(TAG).w(e, "Unable to read local subaddresses before daemon initialization")
-                emptyList()
-            }
-            if (localAddresses.isNotEmpty()) {
-                _subAddresses.value = localAddresses
-                val currentNext = _nextAddress.value?.let { current ->
-                    localAddresses.firstOrNull { it.address == current.address }
-                }
-                _nextAddress.value = currentNext
-                    ?: localAddresses.firstOrNull { it.addressIndex == 0 }
-                    ?: address
-            } else if (address != null) {
-                _nextAddress.value = address
-                _subAddresses.value = listOf(address)
             }
         }
     }
