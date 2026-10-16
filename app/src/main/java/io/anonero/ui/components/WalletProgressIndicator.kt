@@ -23,13 +23,15 @@ import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.asLiveData
+import io.anonero.R
 import io.anonero.model.Wallet
 import io.anonero.services.WalletState
-import io.anonero.util.Formats
 import org.koin.java.KoinJavaComponent.inject
+import java.text.NumberFormat
 import java.util.Locale
 
 @Composable
@@ -93,19 +95,15 @@ fun WalletProgressIndicator(modifier: Modifier = Modifier, refreshIndicatorProgr
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
                 )
-                if (progress.left > 50) {
-                    Text(
-                        "${
-                            Formats.convertNumber(
-                                progress.left,
-                                Locale.getDefault()
-                            )
-                        } blocks left",
-                        modifier = Modifier.padding(top = 8.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
+                Text(
+                    stringResource(
+                        R.string.remaining_blocks,
+                        NumberFormat.getIntegerInstance(Locale.getDefault()).format(progress.left)
+                    ),
+                    modifier = Modifier.padding(top = 8.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         } else if (refreshIndicatorProgress != 0.0f && !showIndefiniteLoading && isConnected && isNetworkConnected) {
             LinearProgressIndicator(

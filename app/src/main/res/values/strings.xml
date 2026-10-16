@@ -153,4 +153,5 @@
      <string name="enable_notifications_title">Enable Notifications</string>
      <string name="enable_notifications_explain">Notifications are disabled for this app. Please enable them in Settings to receive important updates.</string>
      <string name="go_to_settings">Go to Settings</string>
+    <string name="remaining_blocks">%1$s blocks left</string>
 </resources>
