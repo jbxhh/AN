@@ -118,12 +118,14 @@ fun SubAddressesScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
+                                val isPrimaryAddressLabel =
+                                    address.label.trim().equals("Primary address", ignoreCase = true) ||
+                                    address.displayLabel.trim().equals("Primary address", ignoreCase = true)
                                 val generatedLabel =
                                     address.label.isBlank() ||
                                     Subaddress.DEFAULT_LABEL_FORMATTER.matcher(address.label).matches() ||
                                     address.displayLabel.startsWith("SubAddress #", ignoreCase = true) ||
-                                    address.label.equals("Primary address", ignoreCase = true) ||
-                                    address.displayLabel.equals("Primary address", ignoreCase = true)
+                                    isPrimaryAddressLabel
                                 val labelText = when {
                                     generatedLabel && address.addressIndex == 0 ->
                                         stringResource(R.string.primary_address)
@@ -160,8 +162,11 @@ fun SubAddressesScreen(
     }
 
     editingAddress?.let { addr ->
+        val isPrimaryAddressLabel =
+            addr.label.trim().equals("Primary address", ignoreCase = true) ||
+            addr.displayLabel.trim().equals("Primary address", ignoreCase = true)
         SubAddressLabelDialog(
-            label = addr.displayLabel,
+            label = if (isPrimaryAddressLabel) "" else addr.displayLabel,
             onSave = { label ->
                 vm.updateAddressLabel(label, addr.addressIndex)
                 editingAddress = null

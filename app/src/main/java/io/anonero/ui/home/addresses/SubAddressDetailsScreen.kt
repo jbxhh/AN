@@ -82,11 +82,14 @@ fun SubAddressDetailScreen(
         SubAddressDetail(subAddress)
     }
     val transactions by subAddressDetailVm.transactions.observeAsState(listOf())
-      var addressLabel by remember {
+    val isPrimaryAddressLabel =
+        subAddress.label.trim().equals("Primary address", ignoreCase = true) ||
+        subAddress.displayLabel.trim().equals("Primary address", ignoreCase = true)
+    var addressLabel by remember {
         mutableStateOf(
             if (subAddress.label.isEmpty() ||
                 subAddress.label.startsWith("Subaddress", ignoreCase = true) ||
-                subAddress.label.equals("Primary address", ignoreCase = true)
+                isPrimaryAddressLabel
             ) "" else subAddress.displayLabel
         )
     }
@@ -175,7 +178,7 @@ fun SubAddressDetailScreen(
                                 Text(
                                     addressLabel.ifEmpty {
                                         if (subAddress.addressIndex == 0 &&
-                                            (subAddress.label.isBlank() || subAddress.label.equals("Primary address", ignoreCase = true))
+                                            (subAddress.label.isBlank() || isPrimaryAddressLabel)
                                         ) stringResource(R.string.primary_address) else "添加标签"
                                     },
                                     modifier = Modifier.clickable {
