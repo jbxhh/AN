@@ -166,13 +166,25 @@ class AnonWalletHandler(
                 // selected restore height is recorded. Never wait for refreshHistory()
                 // before starting the scan and allowing refreshed() to publish the live tip.
                 walletState.publishWalletSnapshot(wallet)
-                if (resumeScan) {
-                    // Queue the rescan first, then enable the native refresh thread.
-                    // rescanBlockchainAsync() only sets m_refreshShouldRescan and signals
-                    // the worker; it does not enable m_refreshEnabled by itself.
-                    wallet.rescanBlockchainAsync()
+                if (forceFreshScan) {
+                    // Seed recovery created a new wallet whose native chain cache
+                    // contains only genesis. A normal refresh honors
+                    // m_refresh_from_block_height and fast-forwards the hash cache to
+                    // the chosen height before processing wallet transactions.
+                    // Do not request a full rescan here: it needlessly clears/rebuilds
+                    // that cache and can lose the queued rescan while the daemon is not
+                    // yet fully synced.
+                    Timber.tag(TAG).i(
+                        "Starting fresh wallet scan from selected restore height: %d",
+                        actualRestoreHeight
+                    )
                     wallet.startRefresh()
                 } else {
+                    if (resumeScan) {
+                        // Recover an interrupted or legacy scan by clearing stale scan state.
+                        // Enable the worker after queuing the asynchronous rescan.
+                        wallet.rescanBlockchainAsync()
+                    }
                     wallet.startRefresh()
                 }
                 try {
