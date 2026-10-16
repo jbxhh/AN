@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -60,7 +61,7 @@ fun SettingsPage(
                         )
                     }
                 },
-                title = { Text("ΛИ0И", modifier = Modifier.padding(start = 0.dp).then(Modifier)) }
+                title = { Text("ΛИ0И", modifier = Modifier.offset(x = (-6).dp)) }
             )
         }
     ) { padding ->
