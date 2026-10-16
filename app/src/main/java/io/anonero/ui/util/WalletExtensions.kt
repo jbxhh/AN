@@ -3,63 +3,43 @@ package io.anonero.ui.util
 import io.anonero.model.Subaddress
 import io.anonero.model.Wallet
 
-/**
- * Returns the highest subaddress index that has appeared in wallet history.
- * Subaddress indices are zero-based; index 0 is the primary address.
- */
 fun Wallet.getLastUnusedIndex(): Int {
     var lastUsedSubaddress = 0
-    for (info in history?.all ?: emptyList()) {
-        if (info.addressIndex > lastUsedSubaddress) {
-            lastUsedSubaddress = info.addressIndex
-        }
+    val subaddress = arrayListOf<Subaddress>()
+    for (i in 0 until this.numSubAddresses) {
+        subaddress.add(this.getSubaddressObject(i))
+    }
+    for (info in this.history?.all ?: listOf()) {
+        if (info.addressIndex > lastUsedSubaddress) lastUsedSubaddress = info.addressIndex
     }
     return lastUsedSubaddress
 }
 
-/**
- * Gets the next receiving address, creating it only when that index does not
- * exist yet. Never ask the native wallet for an out-of-range address index:
- * Monero's native address() call can reject an index >= numSubaddresses.
- */
+
 fun Wallet.getLatestSubAddress(): Subaddress {
-    val requestedIndex = (getLastUnusedIndex() + 1).coerceAtLeast(1)
-    val existingCount = numSubAddresses
-
-    // The wallet normally always has primary address index 0.
-    check(existingCount > 0) { "Wallet has no primary address" }
-
-    if (requestedIndex < existingCount) {
-        val existingAddress = getSubaddressObject(requestedIndex)
-        if (existingAddress.label.isBlank()) {
-            setSubaddressLabel(requestedIndex, "Subaddress #$requestedIndex")
-            store()
-            return getSubaddressObject(requestedIndex)
-        }
-        return existingAddress
+    val lastUsedSubAddress = getLastUnusedIndex()
+    //get the next address
+    val address = this.getSubaddressObject(lastUsedSubAddress + 1)
+    //if label is empty add new subaddress
+    if (address.label.isEmpty()) {
+        this.addSubaddress(getAccountIndex(), "Subaddress #${address.addressIndex}")
+        this.store()
     }
-
-    // Only append at the current count; do not read the address before it exists.
-    val newIndex = existingCount
-    addSubaddress(getAccountIndex(), "Subaddress #$newIndex")
-    check(numSubAddresses > newIndex) {
-        "Native wallet did not create subaddress index $newIndex"
-    }
-    store()
-    return getSubaddressObject(newIndex)
+    return address
 }
 
+
 fun Wallet.getAllUsedSubAddresses(): List<Subaddress> {
-    // Listing existing child addresses must be read-only. Calling getLatestSubAddress()
-    // here can create another address as a side effect and make "add" appear unreliable.
     val subAddresses = arrayListOf<Subaddress>()
-    for (i in 0 until numSubAddresses) {
-        subAddresses.add(getSubaddressObject(i))
+    for (i in 0 until this.numSubAddresses) {
+        subAddresses.add(this.getSubaddressObject(i))
+    }
+    this.getLatestSubAddress().let {
+        if (subAddresses.indexOf(it) == -1) subAddresses.add(it)
     }
     return subAddresses
         .apply {
-            removeIf { it.addressIndex == 0 && it.totalAmount != 0L }
+            this.removeIf { it.addressIndex == 0 && it.totalAmount != 0L }
         }
-        .distinctBy { it.address }
-        .sortedBy { it.addressIndex }
+        .distinctBy { it.address }.sortedBy { it.addressIndex }
 }

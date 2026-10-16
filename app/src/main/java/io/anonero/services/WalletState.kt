@@ -513,52 +513,17 @@ class WalletState(private val prefs: SharedPreferences) {
         _backgroundSync.update { startBackgroundSync }
     }
 
-    @Synchronized
     fun getNewAddress() {
-        val wallet = getWallet ?: return
-        var refreshPaused = false
-        try {
-            // Do not mutate subaddress data concurrently with the native refresh
-            // thread. Pause it when initialized, then always resume it in finally.
-            if (wallet.isInitialized) {
-                wallet.pauseRefresh()
-                refreshPaused = true
+        getWallet?.let {
+            it.addSubaddress(it.getAccountIndex(), "Subaddress #${it.numSubAddresses}")
+            it.store()
+            it.getLatestSubAddress().let { subAddresses ->
+                _nextAddress.update { subAddresses }
             }
-
-            val accountIndex = wallet.getAccountIndex()
-            val newIndex = wallet.numSubAddresses
-            wallet.addSubaddress(accountIndex, "Subaddress #$newIndex")
-
-            // Verify the native wallet appended exactly the requested address.
-            val updatedCount = wallet.numSubAddresses
-            check(updatedCount == newIndex + 1) {
-                "Native wallet did not create exactly one subaddress: index=$newIndex, count=$updatedCount"
+            it.getAllUsedSubAddresses().let { allItems ->
+                _subAddresses.update { allItems.reversed() }
             }
-
-            val createdAddress = wallet.getSubaddressObject(newIndex)
-            check(createdAddress.address.isNotBlank()) {
-                "Native wallet returned an empty address for subaddress index $newIndex"
-            }
-
-            if (!wallet.store()) {
-                Timber.tag(TAG).w("Subaddress %d created, but wallet.store() returned false", newIndex)
-            }
-
-            // Publish the explicit new index. Do not call update() or getLatestSubAddress()
-            // here: they select the next unused address and can mask the newly created one.
-            _nextAddress.value = createdAddress
-            _subAddresses.value = wallet.getAllUsedSubAddresses().reversed()
-            Timber.tag(TAG).i("Added subaddress index=%d count=%d", newIndex, updatedCount)
-        } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Failed to add subaddress")
-        } finally {
-            if (refreshPaused) {
-                try {
-                    wallet.startRefresh()
-                } catch (e: Exception) {
-                    Timber.tag(TAG).e(e, "Failed to resume wallet refresh after adding subaddress")
-                }
-            }
+            update()
         }
     }
 
