@@ -23,7 +23,7 @@
     <string name="receive">地址</string>
     <string name="send">确定</string>
     <string name="settings">设置</string>
-    <string name="set_subaddress_label">子地址标签</string>
+    <string name="set_subaddress_label">设置子地址标签</string>
     <string name="subaddress_label_list">子地址标签列表</string>
     <string name="add_subaddress_label">添加子地址标签</string>
     <string name="subaddress_default_label">子地址 %1$d</string>
