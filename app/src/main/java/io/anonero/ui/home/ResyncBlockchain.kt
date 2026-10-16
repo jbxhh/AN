@@ -7,10 +7,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,6 +29,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -35,6 +37,7 @@ import com.dokar.sonner.ToastType
 import com.dokar.sonner.ToasterState
 import io.anonero.model.WalletManager
 import io.anonero.services.WalletState
+import io.anonero.ui.theme.AnonOutlineButton
 import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.time.Duration.Companion.seconds
@@ -52,6 +55,7 @@ fun ResyncBlockchainScreen(
     var restoreDateInput by remember { mutableStateOf("") }
     val walletState = koinInject<WalletState>()
     val scope = rememberCoroutineScope()
+    val labelColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
 
     Scaffold(
         modifier = modifier,
@@ -69,52 +73,74 @@ fun ResyncBlockchainScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
+                .background(Color.Black)
                 .padding(innerPadding),
-            verticalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column {
+            Column(
+                modifier = Modifier
+                    .weight(8f)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.Top
+            ) {
                 ListItem(
                     headlineContent = {
-                        Text("高度恢复", color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            text = "高度恢复",
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
                     },
                     supportingContent = {
                         OutlinedTextField(
                             value = restoreHeightInput,
                             onValueChange = { restoreHeightInput = it.filter(Char::isDigit) },
                             modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.medium,
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Number,
                                 imeAction = ImeAction.Next
                             ),
-                            placeholder = { Text("输入恢复区块高度") }
+                            placeholder = {
+                                Text("输入恢复区块高度", color = labelColor)
+                            }
                         )
                     }
                 )
                 ListItem(
                     headlineContent = {
-                        Text("时间恢复", color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            text = "时间恢复",
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
                     },
                     supportingContent = {
                         OutlinedTextField(
                             value = restoreDateInput,
                             onValueChange = { restoreDateInput = it },
                             modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.medium,
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                            placeholder = { Text("YYYY-MM-DD") }
+                            placeholder = {
+                                Text("YYYY-MM-DD", color = labelColor)
+                            }
                         )
                     }
                 )
             }
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .weight(1.5f)
                     .padding(bottom = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Button(
+                AnonOutlineButton(
                     modifier = Modifier.fillMaxWidth(0.9f),
                     onClick = {
                         val wallet = WalletManager.instance?.wallet
