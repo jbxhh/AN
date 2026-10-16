@@ -332,7 +332,7 @@ private fun OutputDetailScreen(
             .background(MaterialTheme.colorScheme.background)
     ) {
         TopAppBar(
-            title = { Text("输出") },
+            title = { Text("冻结") },
             navigationIcon = {
                 IconButton(onClick = onBackPress) {
                     Icon(
