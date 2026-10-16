@@ -79,3 +79,11 @@ kotlinx.serialization.KSerializer serializer(...);
 -keepclassmembers public class **$$serializer {
 private ** descriptor;
 }
+
+# Jetpack Navigation's type-safe routes resolve kotlinx-serialization type names
+# reflectively. Keep the serialized class names stable in minified Release builds;
+# otherwise LockScreenShortCut's descriptor still names the original FQCN while
+# R8 renames the actual enum, causing ClassNotFoundException during composition.
+-keep,allowoptimization enum io.anonero.ui.home.LockScreenShortCut { *; }
+-keep,allowoptimization enum io.anonero.ui.home.LockScreenMode { *; }
+-keepnames @kotlinx.serialization.Serializable class io.anonero.ui.home.graph.routes.**
