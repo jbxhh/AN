@@ -118,6 +118,12 @@ fun SettingsPage(
                             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
                     )
                 }
+                item(key = "delete-divider-extra") {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(top = 6.dp),
+                        thickness = 2.5.dp
+                    )
+                }
             }
 
             Text(
