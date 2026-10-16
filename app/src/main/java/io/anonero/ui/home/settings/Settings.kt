@@ -7,13 +7,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -106,6 +107,8 @@ fun SettingsPage(
                     MenuItem(stringResource(R.string.settings_secure_wipe)) {
                         navigateTo(SecureWipeRoute)
                     }
+                }
+                item(key = "delete-divider") {
                     SettingsDivider()
                 }
             }
@@ -135,12 +138,12 @@ fun SettingsPage(
 
 @Composable
 private fun SettingsDivider() {
-    // Use an explicit, shared color so every separator—including the one
-    // below Delete—remains visible against the settings background.
-    HorizontalDivider(
-        modifier = Modifier.padding(horizontal = 4.dp),
-        thickness = 2.dp,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp)
+            .height(2.dp)
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
     )
 }
 
