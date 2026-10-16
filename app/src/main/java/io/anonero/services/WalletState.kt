@@ -257,8 +257,18 @@ class WalletState {
             return
         }
 
-        val left = (daemonHeight - chainHeight).coerceAtLeast(0L)
-        if (left <= 0L) {
+        val left = daemonHeight - chainHeight
+        if (left < 0L) {
+            // A restore point beyond the node tip is an invalid scan state, not sync success.
+            wallet.isSynchronized = false
+            clearSyncProgress()
+            Timber.tag(TAG).w(
+                "Wallet scan height %d exceeds daemon height %d",
+                chainHeight, daemonHeight
+            )
+            return
+        }
+        if (left == 0L) {
             syncUpdate(SyncProgress(progress = 1f, left = 0L))
             return
         }

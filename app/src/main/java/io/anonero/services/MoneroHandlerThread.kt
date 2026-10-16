@@ -66,6 +66,15 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
             // Unknown daemon height is not proof of synchronization.
             walletState.clearSyncProgress()
             walletState.setLoading(false)
+        } else if (scanHeight > daemonHeight) {
+            // A selected restore point beyond the daemon tip is not a completed scan.
+            wallet.isSynchronized = false
+            walletState.clearSyncProgress()
+            walletState.setLoading(false)
+            Timber.tag(name).e(
+                "Refusing sync completion: processed height %d exceeds daemon height %d",
+                scanHeight, daemonHeight
+            )
         } else if (scanHeight < daemonHeight) {
             // The native chain hash list can be ahead during fast refresh.
             // Keep syncing until processed-block callbacks catch up to the daemon.
