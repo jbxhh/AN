@@ -115,9 +115,9 @@ fun SettingsPage(
                     MenuItem(stringResource(R.string.settings_secure_wipe)) {
                         navigateTo(SecureWipeRoute)
                     }
-                    SettingsDivider()
                 }
             }
+            SettingsDivider()
 
             Text(
                 stringResource(
