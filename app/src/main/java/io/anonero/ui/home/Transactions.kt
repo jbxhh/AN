@@ -494,7 +494,7 @@ fun TransactionScreen(
                     )
                     .fillMaxWidth(),
                 title = {
-                    Text(if (AnonConfig.viewOnly) "[ИΞR0]" else "[ΛИ0И]")
+                    Text("ANON")
                 },
                 actions = {
                     IconButton(
