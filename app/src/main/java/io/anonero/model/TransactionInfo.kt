@@ -85,14 +85,14 @@ class TransactionInfo : Parcelable, Comparable<TransactionInfo> {
         addressIndex = `in`.readInt()
         confirmations = `in`.readLong()
         subaddressLabel = `in`.readString()
-        transfers = transfers?.toMutableList()?.also { transfersList ->
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                `in`.readList(transfersList, Transfer::class.java.classLoader, Transfer::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                `in`.readList(transfersList, Transfer::class.java.classLoader)
-            }
+        val transferList = arrayListOf<Transfer>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            `in`.readList(transferList, Transfer::class.java.classLoader, Transfer::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            `in`.readList(transferList, Transfer::class.java.classLoader)
         }
+        transfers = transferList
         notes = `in`.readString()
     }
 
@@ -126,9 +126,9 @@ class TransactionInfo : Parcelable, Comparable<TransactionInfo> {
         out.writeInt(addressIndex)
         out.writeLong(confirmations)
         out.writeString(subaddressLabel)
-        transfers?.let {
-            out.writeList(transfers)
-        }
+        // Always write the list (even when empty/null) because the parcel reader
+        // always consumes this field before reading notes.
+        out.writeList(transfers ?: emptyList<Transfer>())
         out.writeString(notes)
     }
 
