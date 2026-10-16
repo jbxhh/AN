@@ -68,7 +68,7 @@ fun SettingsPage(
         }
     ) { padding ->
         Box(
-            modifier = modifier
+            modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
         ) {
