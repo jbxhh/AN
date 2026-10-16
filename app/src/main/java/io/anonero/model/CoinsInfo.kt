@@ -8,7 +8,6 @@ data class CoinsInfo(
     val hash: String,
     val pub_key: String,
     val frozen: Boolean,
-    val unlocked: Boolean,
     val creationTime: Long,
 ) : Comparable<CoinsInfo> {
 
