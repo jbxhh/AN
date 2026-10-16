@@ -40,6 +40,7 @@ import io.anonero.ui.home.graph.routes.SettingsLogs
 import io.anonero.ui.home.graph.routes.SettingsNodeRoute
 import io.anonero.ui.home.graph.routes.SettingsTradeRoute
 import io.anonero.ui.home.graph.routes.SettingsViewSeedRoute
+import io.anonero.ui.components.AnonWordmark
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,8 +61,7 @@ fun SettingsPage(
                                 tint = Color.White
                             )
                         }
-                        Text(
-                            "ANON",
+                        AnonWordmark(
                             style = MaterialTheme.typography.titleLarge.copy(
                                 color = Color.White,
                                 fontSize = 26.sp,
