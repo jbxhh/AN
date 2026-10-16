@@ -104,35 +104,30 @@ class WalletState(private val prefs: SharedPreferences) {
                 Timber.tag(TAG).i("StatusError %s", wallet.status.errorString)
             }
 
-            if (wallet.isSynchronized) {
-                _balanceInfo.update { wallet.balance }
-                _unLockedBalance.update {
-                    if (AnonConfig.viewOnly) wallet.viewOnlyBalance() else wallet.unlockedBalance
-                }
+            // Publish wallet data continuously, not only after the full scan completes.
+            // Monero's history becomes available incrementally as refresh callbacks arrive.
+            val previousTransactions = _transactions.value
+            val updatedTransactions = (wallet.history?.all?.sortedWith(comparator = { o1, o2 ->
+                o2.timestamp.compareTo(o1.timestamp)
+            }) ?: emptyList()).fastDistinctBy { it.getListKey() }
+            _transactions.value = updatedTransactions
 
-                val oldTxCount = _transactions.value.size
-                val updatedTxs = (wallet.history?.all?.sortedWith(comparator = { o1, o2 ->
-                    o2.timestamp.compareTo(o1.timestamp)
-                }) ?: emptyList()).fastDistinctBy {
-                    it.getListKey()
+            // Do not fire incoming-transaction notifications for every historical output
+            // discovered during initial restore/rescan. Notifications resume once synced.
+            if (wallet.isSynchronized && previousTransactions.isNotEmpty()) {
+                val previousKeys = previousTransactions.map { it.getListKey() }.toSet()
+                val hasNewIncoming = updatedTransactions.any { transaction ->
+                    transaction.getListKey() !in previousKeys &&
+                        transaction.direction == TransactionInfo.Direction.Direction_In
                 }
-                _transactions.update { updatedTxs }
-                if (oldTxCount > 0 && updatedTxs.size > oldTxCount) {
-                    val hasNewIncoming = updatedTxs.take(updatedTxs.size - oldTxCount).any {
-                        it.direction == TransactionInfo.Direction.Direction_In
-                    }
-                    if (hasNewIncoming) {
-                        _incomingTx.tryEmit(Unit)
-                    }
-                }
-                if (!backgroundSync) {
-                    _coins.update { (wallet.coins?.all ?: emptyList()).fastFilter { !it.spent } }
-                }
+                if (hasNewIncoming) _incomingTx.tryEmit(Unit)
+            }
+
+            // Balance can change during restore and must remain visible while scanning.
+            updateBalanceFromWallet(wallet)
+            if (wallet.isSynchronized && !backgroundSync) {
+                _coins.update { (wallet.coins?.all ?: emptyList()).fastFilter { !it.spent } }
             } else {
-                // Preserve the original home balance area with the wallet's real current
-                // balance during scanning. History/coin lists stay withheld until synced.
-                updateBalanceFromWallet(wallet)
-                _transactions.value = emptyList()
                 _coins.value = emptyList()
             }
 
@@ -238,14 +233,10 @@ class WalletState(private val prefs: SharedPreferences) {
             wasInterrupted -> savedStartHeight
             legacyNeedsRescan -> restoreHeight
             hasCompletedScan && savedProcessedHeight >= restoreHeight -> savedProcessedHeight
-            else -> maxOf(restoreHeight, nativeHeight)
-        }
-        val actualScanStart = when {
-            forceStartAtSelectedHeight -> restoreHeight
-            wasInterrupted -> savedStartHeight
-            legacyNeedsRescan -> restoreHeight
             else -> restoreHeight
         }
+        // Progress must begin at the real scan position, never the native hash-cache tip.
+        val actualScanStart = initialHeight
 
         _scanStartHeight.set(actualScanStart)
         // Listener-derived height is authoritative: getBlockChainHeight() can include
@@ -365,7 +356,9 @@ class WalletState(private val prefs: SharedPreferences) {
         }
         val daemonHeight = wallet.getDaemonBlockChainHeight()
         if (daemonHeight <= 0L) {
-            clearSyncProgress()
+            // Keep the last known progress during a brief RPC disconnect; the next
+            // refresh callback will replace it with the latest daemon height.
+            if (!_scanTracking.get() || _syncProgress.value == null) clearSyncProgress()
             return
         }
 
@@ -386,8 +379,13 @@ class WalletState(private val prefs: SharedPreferences) {
         }
 
         wallet.isSynchronized = false
-        val targetHeight = wallet.getDaemonBlockChainTargetHeight().takeIf { it > 0L } ?: daemonHeight
-        val progress = (chainHeight.toDouble() / targetHeight.toDouble())
+        // Progress is relative to this scan's start: restores begin at the selected
+        // restore height; ordinary refreshes begin at the last processed wallet height.
+        // The denominator is the latest live daemon height, so a moving node tip is tracked.
+        val scanStartHeight = _scanStartHeight.get().coerceAtMost(daemonHeight)
+        val scanRange = (daemonHeight - scanStartHeight).coerceAtLeast(1L)
+        val scanned = (chainHeight - scanStartHeight).coerceAtLeast(0L)
+        val progress = (scanned.toDouble() / scanRange.toDouble())
             .toFloat()
             .coerceIn(0f, 0.999f)
         syncUpdate(SyncProgress(progress, left))
@@ -455,7 +453,8 @@ class WalletState(private val prefs: SharedPreferences) {
         val previous = _previousConnectionStatus.getAndSet(status)
         _connectionStatus.update { status }
         if (status == Wallet.ConnectionStatus.ConnectionStatus_Disconnected) {
-            clearSyncProgress()
+            // Do not make the progress UI disappear during a temporary daemon outage.
+            if (!_scanTracking.get() || _syncProgress.value == null) clearSyncProgress()
             setLoading(false)
         }
         if (previous == Wallet.ConnectionStatus.ConnectionStatus_Disconnected &&
@@ -597,8 +596,6 @@ class WalletState(private val prefs: SharedPreferences) {
         // Existing balances and history belong to the pre-rescan scan and must not
         // be presented as current while the wallet rebuilds them from the chosen height.
         clearSyncProgress()
-        _balanceInfo.value = null
-        _unLockedBalance.value = null
         _transactions.value = emptyList()
         _coins.value = emptyList()
         setLoading(true)
@@ -607,6 +604,9 @@ class WalletState(private val prefs: SharedPreferences) {
             scanStartHeight = wallet.getRestoreHeight(),
             forceStartAtSelectedHeight = true
         )
+        // Publish the wallet's current balance immediately, then keep replacing it
+        // with the live balance discovered by each processed-block callback.
+        updateBalanceFromWallet(wallet)
 
         return try {
             wallet.rescanBlockchainAsync()
