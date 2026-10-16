@@ -182,8 +182,8 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
             putString(PREFS_PASSPHRASE_HASH, crazyPass)
             // The wallet's stored restore height is the source of truth (also for Polyseed).
             putLong(RESTORE_HEIGHT, actualRestoreHeight)
-            // A newly restored wallet must not reuse scan-completion markers from an
-            // older wallet file at the same path (especially when restoring the same seed).
+            // Mark this seed restore so wallet startup preserves the selected height
+            // and queues its first native scan from that height after the daemon is synced.
             putBoolean(PREF_FORCE_FRESH_WALLET_SCAN, true)
         }
         try {
