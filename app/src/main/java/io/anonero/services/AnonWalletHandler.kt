@@ -116,16 +116,44 @@ class AnonWalletHandler(
                 updateDaemon(node)
                 walletState.setLoading(true)
             }
-            // The wallet key file is the authoritative restore-height source.
-            // Never overwrite it with a potentially stale app-wide preference.
+            // Monero's WalletImpl::doInit() treats an opened wallet with only
+            // the genesis cache as a brand-new wallet and replaces refresh_height with
+            // the daemon tip. That destroys the user-selected restore height because the
+            // native "recovering from seed" flag is not retained after this wallet is
+            // closed and reopened by the service. Capture the stored value before init.
+            val forceFreshScan = prefs.getBoolean(FORCE_FRESH_WALLET_SCAN, false)
+            val selectedRestoreHeightBeforeInit = if (forceFreshScan) {
+                runCatching { wallet.getRestoreHeight().coerceAtLeast(0L) }
+                    .onFailure { Timber.tag(TAG).w(it, "Unable to read selected restore height before init") }
+                    .getOrNull()
+            } else {
+                null
+            }
+
             val initialized = wallet.init(0)
             if (initialized && wallet.isInitialized) {
+                if (forceFreshScan && selectedRestoreHeightBeforeInit != null) {
+                    // Restore the selected height immediately after native init, before
+                    // publishing progress or starting either refresh path.
+                    wallet.setRestoreHeight(selectedRestoreHeightBeforeInit)
+                    val reappliedHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
+                    check(reappliedHeight == selectedRestoreHeightBeforeInit) {
+                        "Selected restore height was not preserved: expected $selectedRestoreHeightBeforeInit, got $reappliedHeight"
+                    }
+                    check(wallet.store()) {
+                        "Unable to persist the selected restore height"
+                    }
+                    Timber.tag(TAG).i(
+                        "Preserved selected restore height after wallet init: %d",
+                        reappliedHeight
+                    )
+                }
+
                 val actualRestoreHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
-                prefs.edit { putLong(RESTORE_HEIGHT, actualRestoreHeight) }
+                prefs.edit(commit = true) { putLong(RESTORE_HEIGHT, actualRestoreHeight) }
                 wallet.setTrustedDaemon(true)
                 // Recover an interrupted or legacy scan from the selected restore point.
                 // Native hash-chain height alone is not proof transactions were scanned.
-                val forceFreshScan = prefs.getBoolean(FORCE_FRESH_WALLET_SCAN, false)
                 val resumeScan = walletState.beginWalletScan(
                     wallet = wallet,
                     scanStartHeight = actualRestoreHeight,
@@ -139,7 +167,11 @@ class AnonWalletHandler(
                 // before starting the scan and allowing refreshed() to publish the live tip.
                 walletState.publishWalletSnapshot(wallet)
                 if (resumeScan) {
+                    // Queue the rescan first, then enable the native refresh thread.
+                    // rescanBlockchainAsync() only sets m_refreshShouldRescan and signals
+                    // the worker; it does not enable m_refreshEnabled by itself.
                     wallet.rescanBlockchainAsync()
+                    wallet.startRefresh()
                 } else {
                     wallet.startRefresh()
                 }
