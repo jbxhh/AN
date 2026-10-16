@@ -66,7 +66,6 @@ import io.anonero.ui.home.graph.routes.TransactionsRoute
 import io.anonero.ui.home.settings.ExportBackUp
 import io.anonero.ui.home.settings.LogViewer
 import io.anonero.ui.home.settings.NodeSettings
-import io.anonero.ui.home.settings.NodeSettingsMenuPage
 import io.anonero.ui.home.settings.ProxySettings
 import io.anonero.ui.home.settings.SecureWipe
 import io.anonero.ui.home.settings.SeedSettingsPage
@@ -334,7 +333,7 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                         )
                     }
                     composable<SettingsNodeRoute> {
-                        NodeSettingsMenuPage(
+                        NodeSettings(
                             onBackPress = {
                                 showBottomNavigation = true
                                 bottomNavController.popBackStack()
@@ -347,7 +346,14 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                     }
                     composable<NodeManagementRoute> {
                         NodeSettings(
-                            onBackPress = { bottomNavController.popBackStack() }
+                            onBackPress = {
+                                showBottomNavigation = true
+                                bottomNavController.popBackStack()
+                            },
+                            navigateTo = {
+                                showBottomNavigation = false
+                                bottomNavController.navigate(it)
+                            }
                         )
                     }
                     composable<SubAddressesRoute> {
