@@ -21,9 +21,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,7 +49,9 @@ import io.anonero.services.WalletState
 import io.anonero.ui.components.SubAddressLabelDialog
 import io.anonero.util.Formats
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.java.KoinJavaComponent.inject
 
 
@@ -55,11 +60,20 @@ class SubAddressListViewModel : ViewModel() {
     private val walletState: WalletState by inject(WalletState::class.java)
 
     val subAddresses = walletState.subAddresses.asLiveData()
+    private val _addAddressError = MutableStateFlow<String?>(null)
+    val addAddressError = _addAddressError.asLiveData()
 
     fun getNextAddress() {
-        viewModelScope.launch(Dispatchers.IO) {
-            walletState.getNewAddress()
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { walletState.getNewAddress() }
+            _addAddressError.value = result.exceptionOrNull()?.let {
+                it.message?.takeIf(String::isNotBlank) ?: "添加子地址失败"
+            }
         }
+    }
+
+    fun clearAddAddressError() {
+        _addAddressError.value = null
     }
 
     fun updateAddressLabel(label: String, addressIndex: Int) {
@@ -83,8 +97,18 @@ fun SubAddressesScreen(
     }
     val vm = viewModel<SubAddressListViewModel>()
     val addresses by vm.subAddresses.observeAsState(listOf())
+    val addAddressError by vm.addAddressError.observeAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
     var editingAddress by remember { mutableStateOf<Subaddress?>(null) }
+
+    LaunchedEffect(addAddressError) {
+        val message = addAddressError ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message)
+        vm.clearAddAddressError()
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             TopAppBar(
                 navigationIcon = {
