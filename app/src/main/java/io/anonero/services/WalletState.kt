@@ -300,10 +300,14 @@ class WalletState(private val prefs: SharedPreferences) {
             // Keep listener-based height tracking enabled after sync. Native fast refresh
             // can append hashes before it scans the corresponding wallet transactions.
             updateBlockHeights(wallet)
+            // Once caught up, the next ordinary refresh must measure progress from
+            // this completed wallet height, not from the original restore height.
+            _scanStartHeight.set(_walletHeight.value)
             prefs.edit {
                 putBoolean(scanPreferenceKey(wallet, "in_progress"), false)
                 putBoolean(scanPreferenceKey(wallet, "completed"), true)
                 putLong(scanPreferenceKey(wallet, "processed_height"), _walletHeight.value)
+                putLong(scanPreferenceKey(wallet, "start_height"), _walletHeight.value)
             }
         }
         clearSyncProgress()
