@@ -81,8 +81,7 @@ open class Node {
 
 
         this.networkType = if (daParts.size == 1) {
-            // A node string without an explicit network belongs to the app's active network.
-            AnonConfig.getNetworkType()
+            NetworkType.NetworkType_Mainnet
         } else {
             when (daParts[1]) {
                 MAINNET -> NetworkType.NetworkType_Mainnet
@@ -197,10 +196,11 @@ open class Node {
             jsonObject.put("password", password)
             jsonObject.put("host", host)
             jsonObject.put("rpcPort", rpcPort)
-            when (networkType ?: AnonConfig.getNetworkType()) {
+            when (networkType) {
                 NetworkType.NetworkType_Mainnet -> jsonObject.put("network", MAINNET)
                 NetworkType.NetworkType_Stagenet -> jsonObject.put("network", STAGENET)
                 NetworkType.NetworkType_Testnet -> jsonObject.put("network", TESTNET)
+                null -> TODO()
             }
             if (name?.isNotEmpty() == true) jsonObject.put("name", name)
             jsonObject.put("trusted", trusted)
@@ -217,10 +217,11 @@ open class Node {
         }
         sb.append(host).append(":").append(rpcPort)
         sb.append("/")
-        when (networkType ?: AnonConfig.getNetworkType()) {
+        when (networkType) {
             NetworkType.NetworkType_Mainnet -> sb.append(MAINNET)
             NetworkType.NetworkType_Stagenet -> sb.append(STAGENET)
             NetworkType.NetworkType_Testnet -> sb.append(TESTNET)
+            null -> TODO()
         }
         if (name != null) try {
             sb.append("/").append(URLEncoder.encode(name, "UTF-8"))
