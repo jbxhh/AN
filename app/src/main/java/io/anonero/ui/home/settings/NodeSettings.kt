@@ -73,7 +73,6 @@ import com.dokar.sonner.Toaster
 import com.dokar.sonner.rememberToasterState
 import io.anonero.AnonConfig
 import io.anonero.R
-import io.anonero.ui.home.graph.routes.ProxySettingsRoute
 import io.anonero.model.WalletManager
 import io.anonero.model.node.Node
 import io.anonero.model.node.NodeFields
@@ -277,7 +276,7 @@ class NodeSettingsViewModel(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit = {}) {
+fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit = {}, showTopBar: Boolean = true) {
     val nodeSettingsVM = koinViewModel<NodeSettingsViewModel>()
     var showNodeDetails by remember { mutableStateOf(false) }
     val walletState = koinInject<WalletState>()
@@ -340,7 +339,8 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
 
     Scaffold(
         topBar = {
-            Column {
+            if (showTopBar) {
+                Column {
                 TopAppBar(
                     navigationIcon = {
                         IconButton(
@@ -408,20 +408,13 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
                         Text("节点")
                     },
                 )
-                WalletProgressIndicator()
+                    WalletProgressIndicator()
+                }
             }
         }
     ) {
 
         LazyColumn(modifier = Modifier.padding(it)) {
-            item(key = "proxy-settings") {
-                ListItem(
-                    modifier = Modifier.clickable { navigateTo(ProxySettingsRoute) },
-                    headlineContent = { Text(stringResource(R.string.settings_proxy_settings), style = MaterialTheme.typography.titleMedium) },
-                    supportingContent = { Text(stringResource(R.string.settings_proxy_subtitle)) }
-                )
-                HorizontalDivider(thickness = 2.5.dp)
-            }
             if (activeNode != null)
                 item(key = activeNode?.toNodeString() ?: "active") {
                     NodeListItem(
