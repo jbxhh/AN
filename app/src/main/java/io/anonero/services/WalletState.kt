@@ -628,118 +628,18 @@ class WalletState(private val prefs: SharedPreferences) {
         _backgroundSync.update { startBackgroundSync }
     }
 
-    suspend fun getNewAddress(): Result<Unit> = subaddressMutex.withLock {
-        val wallet = getWallet
-            ?: return@withLock Result.failure(IllegalStateException("钱包尚未打开"))
-
-        var createdAddress: Subaddress? = null
-        var refreshPaused = false
-        try {
-            // Avoid changing native subaddress state while the wallet refresh thread is active.
-            if (wallet.isInitialized) {
-                wallet.pauseRefresh()
-                refreshPaused = true
+    fun getNewAddress() {
+        getWallet?.let {
+            it.addSubaddress(it.getAccountIndex(), "Subaddress #${it.numSubAddresses}")
+            it.store()
+            it.getLatestSubAddress().let { subAddresses ->
+                _nextAddress.update { subAddresses }
             }
-
-            val accountIndex = wallet.getAccountIndex()
-            val previousCount = wallet.numSubAddresses
-            // Adding an address is a local key-derivation operation; it does not require
-            // daemon connectivity or a completed blockchain scan.
-            wallet.addSubaddress(accountIndex, "Subaddress #$previousCount")
-            val newCount = wallet.numSubAddresses
-            check(newCount > previousCount) {
-                "钱包没有创建新的子地址，请重试"
+            it.getAllUsedSubAddresses().let { allItems ->
+                _subAddresses.update { allItems.reversed() }
             }
-
-            val newIndex = newCount - 1
-            val created = Subaddress(
-                accountIndex,
-                newIndex,
-                wallet.getSubaddress(accountIndex, newIndex),
-                runCatching { wallet.getSubaddressLabel(newIndex) }
-                    .getOrDefault("Subaddress #$newIndex")
-            )
-            check(created.address.isNotBlank()) {
-                "钱包返回的子地址为空，创建失败"
-            }
-            createdAddress = created
-
-            // Build the list from native address indexes first. If history isn't available,
-            // local address derivation still succeeds and the UI can show the new address.
-            val existingAddresses = try {
-                if (wallet.isInitialized) {
-                    wallet.getAllUsedSubAddresses()
-                } else {
-                    readAddressSnapshot(wallet)
-                }
-            } catch (e: Exception) {
-                Timber.tag(TAG).w(e, "Address history unavailable; using local subaddress snapshot")
-                readAddressSnapshot(wallet)
-            }
-
-            _subAddresses.value = (existingAddresses + created)
-                .distinctBy { it.address }
-                .sortedByDescending { it.addressIndex }
-
-            val nextReceiveAddress = if (wallet.isInitialized) {
-                runCatching { wallet.getLatestSubAddress() }
-                    .onFailure { Timber.tag(TAG).w(it, "Unable to resolve the next unused subaddress") }
-                    .getOrNull()
-            } else {
-                null
-            }
-            _nextAddress.value = nextReceiveAddress ?: created
-
-            if (!wallet.store()) {
-                Timber.tag(TAG).w("Subaddress %d was created, but wallet.store() returned false", newIndex)
-            }
-
-            if (wallet.isInitialized) {
-                runCatching { update() }
-                    .onFailure { Timber.tag(TAG).w(it, "Wallet refresh after subaddress creation failed") }
-            }
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Unable to add subaddress")
-            // If native derivation succeeded but a later lookup failed, keep the address visible.
-            createdAddress?.let { created ->
-                runCatching {
-                    _subAddresses.value = (readAddressSnapshot(wallet) + created)
-                        .distinctBy { it.address }
-                        .sortedByDescending { it.addressIndex }
-                    _nextAddress.value = created
-                }.onFailure { Timber.tag(TAG).w(it, "Unable to republish newly-created subaddress") }
-            }
-            Result.failure(e)
-        } finally {
-            if (refreshPaused) {
-                runCatching { wallet.startRefresh() }
-                    .onFailure { Timber.tag(TAG).e(it, "Failed to resume wallet refresh after adding subaddress") }
-            }
+            update()
         }
-    }
-
-    /**
-     * Reads local address keys without relying on transaction history, daemon initialization,
-     * or completed blockchain scanning. Cached amounts are retained when an index is known.
-     */
-    private fun readAddressSnapshot(wallet: Wallet): List<Subaddress> {
-        val accountIndex = wallet.getAccountIndex()
-        val existingByIndex = _subAddresses.value.associateBy { it.addressIndex }
-        val count = wallet.numSubAddresses.coerceAtLeast(1)
-        return (0 until count).mapNotNull { index ->
-            val address = wallet.getSubaddress(accountIndex, index)
-            if (address.isBlank()) {
-                null
-            } else {
-                val cached = existingByIndex[index]?.takeIf { it.address == address }
-                val label = runCatching { wallet.getSubaddressLabel(index) }
-                    .getOrDefault(cached?.label.orEmpty())
-                Subaddress(accountIndex, index, address, label).also {
-                    it.amount = cached?.totalAmount ?: 0L
-                }
-            }
-        }.distinctBy { it.address }.sortedByDescending { it.addressIndex }
     }
 
     fun setTransactionNote(note: String, transactionInfo: TransactionInfo) {
