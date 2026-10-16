@@ -38,8 +38,9 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
 
     override fun newBlock(height: Long) {
         Timber.tag(name).i("newBlock processed scan block: %s", height)
+        // Do not switch off the loading phase here. recordScannedBlockHeight publishes
+        // the syncing bar first; the progress indicator prioritizes it over loading.
         walletState.recordScannedBlockHeight(height, wallet)
-        walletState.setLoading(false)
     }
 
     override fun updated() {
@@ -50,8 +51,10 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
 
     override fun refreshed() {
         val status = wallet.fullStatus.connectionStatus
-        walletState.updateBlockHeights(wallet)
-        val daemonHeight = wallet.getDaemonBlockChainHeight()
+        // A single node-height snapshot prevents successive RPC calls from racing and
+        // clearing progress between a valid height and a transient zero/different value.
+        val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+        walletState.updateBlockHeights(wallet, daemonHeight)
         val scanHeight = walletState.currentWalletHeight
         Timber.tag(name).i(
             "refreshed() status:%s daemonHeight:%d scanHeight:%d nativeHeight:%d",
@@ -59,13 +62,13 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
         )
 
         if (status == Wallet.ConnectionStatus.ConnectionStatus_Disconnected || status == null) {
-            // Preserve the last known backlog while the node reconnects; a temporary
-            // RPC outage must not make the sync bar disappear or imply completion.
-            walletState.setLoading(false)
+            // Keep a visible loading phase while trying to restore the daemon connection.
+            // The progress indicator will still prioritize any last known sync backlog.
+            walletState.setLoading(true)
             tryRestartConnection()
         } else if (daemonHeight <= 0L) {
             // Unknown daemon height is not proof of synchronization or scan completion.
-            walletState.setLoading(false)
+            walletState.setLoading(true)
         } else if (scanHeight > daemonHeight) {
             // A selected restore point beyond the daemon tip is not a completed scan.
             wallet.isSynchronized = false
@@ -76,13 +79,12 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
                 scanHeight, daemonHeight
             )
         } else if (scanHeight < daemonHeight) {
-            // The native chain hash list can be ahead during fast refresh.
-            // Keep syncing until processed-block callbacks catch up to the daemon.
+            // Keep the loading phase active until the sync-progress flow is established.
+            // The existing progress UI switches to its determinate bar as soon as it sees it.
             wallet.isSynchronized = false
-            walletState.updateSyncProgressFromWallet(wallet)
-            walletState.setLoading(false)
+            walletState.updateSyncProgressFromWallet(wallet, daemonHeight)
         } else {
-            walletState.completeWalletScan(wallet)
+            walletState.completeWalletScan(wallet, daemonHeight)
             wallet.setSynchronized()
             wallet.store()
             refresh(true)
