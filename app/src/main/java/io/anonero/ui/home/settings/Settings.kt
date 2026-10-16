@@ -77,7 +77,6 @@ fun SettingsPage(
                     .padding(horizontal = 12.dp)
             ) {
                 item(key = "node") {
-                    SettingsDivider()
                     MenuItem(stringResource(R.string.settings_node_settings)) {
                         navigateTo(SettingsNodeRoute)
                     }
@@ -107,6 +106,10 @@ fun SettingsPage(
                     MenuItem(stringResource(R.string.settings_secure_wipe)) {
                         navigateTo(SecureWipeRoute)
                     }
+                    SettingsDivider()
+                    androidx.compose.foundation.layout.Spacer(
+                        modifier = Modifier.height(6.dp)
+                    )
                     SettingsDivider()
                 }
             }
