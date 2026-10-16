@@ -65,7 +65,18 @@ class NodesRepository(private val context: Context) {
         context.nodeDataStore.updateData { items }
     }
 
-    // Add a new item to the list
+    // Add a new node at the beginning of the list, preserving all existing entries.
+    suspend fun addItemToTop(item: Node) {
+        context.nodeDataStore.updateData { currentItems ->
+            if (currentItems.any { it.toNodeString() == item.toNodeString() }) {
+                currentItems
+            } else {
+                listOf(item) + currentItems
+            }
+        }
+    }
+
+    // Add a new item to the end of the list.
     suspend fun addItem(item: Node) {
         context.nodeDataStore.updateData { currentItems ->
             if (currentItems.find { it.toNodeString() == item.toNodeString() } == null) {

@@ -230,7 +230,14 @@ class NodeSettingsViewModel(
         }
     }
 
-    // Add a new item
+    // Add a new node at the top of the available-node list.
+    fun addItemFirst(item: Node) {
+        viewModelScope.launch {
+            nodesRepository.addItemToTop(item)
+        }
+    }
+
+    // Add an item (used when replacing an existing node).
     fun addItem(item: Node) {
         viewModelScope.launch {
             nodesRepository.addItem(item)
@@ -332,11 +339,8 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
                                 showNodeDetails = false
                             }
                         },
-                        onConnect = { node ->
-                            nodeSettingsVM.addItem(node)
-                            nodeSettingsVM.viewModelScope.launch {
-                                nodeSettingsVM.connect(node)
-                            }
+                        onAdd = { node ->
+                            nodeSettingsVM.addItemFirst(node)
                         },
                         nodeSettingsVM = nodeSettingsVM,
                         initialNode = editingNode,
@@ -590,7 +594,7 @@ fun NodeListItem(
                             if (active) {
                                 onDisconnect(node)
                             } else {
-                                onConnect(node)
+                                onAdd(node)
                             }
                             menu = false
                         }
@@ -625,7 +629,7 @@ fun NodeListItem(
 @Composable
 fun NodeForm(
     onBackPress: () -> Unit = {},
-    onConnect: (node: Node) -> Unit = {},
+    onAdd: (node: Node) -> Unit = {},
     nodeSettingsVM: NodeSettingsViewModel,
     initialNode: Node? = null,
     onSave: (node: Node) -> Unit = {},
@@ -782,7 +786,7 @@ fun NodeForm(
                 },
             ) {
                 Text(
-                    if (initialNode == null) stringResource(R.string.connect)
+                    if (initialNode == null) "添加"
                     else stringResource(R.string.save)
                 )
             }
