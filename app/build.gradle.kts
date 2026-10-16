@@ -8,8 +8,7 @@ plugins {
 // Real wallet needs libanonero.so. Enable when prebuilt static libs exist or -Panon.native=true.
 // UI-only CI (no external-libs/*.a) stays fast and skips NDK/CMake.
 val nativeLibsReady =
-    file("../external-libs/prebuilt/arm64-v8a/libanonero.so").isFile &&
-        file("../external-libs/prebuilt/armeabi-v7a/libanonero.so").isFile
+    file("../external-libs/prebuilt/arm64-v8a/libanonero.so").isFile
 
 val releaseSigningStoreFile = providers.environmentVariable("ANONERO_KEYSTORE_PATH").orNull
 val releaseSigningStorePassword = providers.environmentVariable("ANONERO_KEYSTORE_PASSWORD").orNull
