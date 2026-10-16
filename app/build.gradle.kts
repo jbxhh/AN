@@ -15,6 +15,11 @@ val releaseSigningStoreFile = providers.environmentVariable("ANONERO_KEYSTORE_PA
 val releaseSigningStorePassword = providers.environmentVariable("ANONERO_KEYSTORE_PASSWORD").orNull
 val releaseSigningKeyAlias = providers.environmentVariable("ANONERO_KEY_ALIAS").orNull
 val releaseSigningKeyPassword = providers.environmentVariable("ANONERO_KEY_PASSWORD").orNull
+val releaseSigningConfigured = !releaseSigningStoreFile.isNullOrBlank() &&
+    !releaseSigningStorePassword.isNullOrBlank() &&
+    !releaseSigningKeyAlias.isNullOrBlank() &&
+    !releaseSigningKeyPassword.isNullOrBlank()
+val ciRunNumber = providers.environmentVariable("GITHUB_RUN_NUMBER").orElse("local").get()
 
 android {
     namespace = "io.anonero"
@@ -70,8 +75,15 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // Release APKs must share one persistent signing identity across CI runs.
-            signingConfig = signingConfigs.getByName("release")
+            // Use the persistent release key when configured. Otherwise use the runner debug key
+            // and a run-specific application ID so this APK cannot signature-conflict with an
+            // installed release or another ephemeral CI build.
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                applicationIdSuffix = ".ci" + ciRunNumber
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
         create("stageNet") {
             isMinifyEnabled = false
