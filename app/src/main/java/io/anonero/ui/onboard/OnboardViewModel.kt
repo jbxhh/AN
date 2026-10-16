@@ -8,6 +8,7 @@ import io.anonero.R
 import io.anonero.model.NeroKeyPayload
 import io.anonero.model.Wallet
 import io.anonero.model.WalletManager
+import io.anonero.services.PREF_FORCE_FRESH_WALLET_SCAN
 import io.anonero.util.CrazyPassEncoder
 import io.anonero.util.KeyStoreHelper
 import io.anonero.util.PREFS_PASSPHRASE_HASH
@@ -26,7 +27,6 @@ enum class Mode {
 }
 
 private const val TAG = "OnboardViewModel"
-private const val FORCE_FRESH_WALLET_SCAN = "anonero_force_fresh_wallet_scan"
 
 class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
 
@@ -184,7 +184,7 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
             putLong(RESTORE_HEIGHT, actualRestoreHeight)
             // A newly restored wallet must not reuse scan-completion markers from an
             // older wallet file at the same path (especially when restoring the same seed).
-            putBoolean(FORCE_FRESH_WALLET_SCAN, true)
+            putBoolean(PREF_FORCE_FRESH_WALLET_SCAN, true)
         }
         try {
             anonWallet.close()
