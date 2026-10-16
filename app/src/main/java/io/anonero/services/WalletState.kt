@@ -14,6 +14,7 @@ import io.anonero.model.node.DaemonInfo
 import io.anonero.ui.util.getAllUsedSubAddresses
 import io.anonero.ui.util.getLatestSubAddress
 import io.anonero.ui.home.LockScreenShortCut
+import io.anonero.util.RESTORE_HEIGHT
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -68,6 +69,7 @@ class WalletState(private val prefs: SharedPreferences) {
     private val scanHeightScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val daemonHeightQueryInFlight = AtomicBoolean(false)
     private val forcedRestoreScanInFlight = AtomicBoolean(false)
+    private val forcedRestoreScanStarted = AtomicBoolean(false)
 
     val transactions: Flow<List<TransactionInfo>> = _transactions
 
@@ -155,6 +157,34 @@ class WalletState(private val prefs: SharedPreferences) {
 
 
     /**
+     * SharedPreferences is written by the seed-restore flow before its temporary
+     * wallet is closed. Treat that selected value as authoritative across native init.
+     */
+    fun pendingSelectedRestoreHeight(wallet: Wallet? = getWallet): Long? {
+        val currentWallet = wallet ?: return null
+        if (!prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) return null
+        return prefs.getLong(RESTORE_HEIGHT, currentWallet.getRestoreHeight()).coerceAtLeast(0L)
+    }
+
+    /**
+     * Monero's native init can replace the refresh start with the daemon tip when the
+     * wallet cache only contains genesis. Reapply the selected height after every init.
+     */
+    fun preservePendingRestoreHeightAfterInit(wallet: Wallet): Long? {
+        val selectedHeight = pendingSelectedRestoreHeight(wallet) ?: return null
+        wallet.setRestoreHeight(selectedHeight)
+        val actualHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
+        check(actualHeight == selectedHeight) {
+            "Selected restore height was not preserved: expected $selectedHeight, got $actualHeight"
+        }
+        check(wallet.store()) { "Unable to persist the selected restore height" }
+        _scanStartHeight.set(selectedHeight)
+        _walletHeight.value = selectedHeight
+        _scanTracking.set(true)
+        return selectedHeight
+    }
+
+    /**
      * Starts the pending first scan for a wallet restored from a seed.
      *
      * The onboarding screen persists the selected restore height before closing the
@@ -164,6 +194,7 @@ class WalletState(private val prefs: SharedPreferences) {
      */
     private fun maybeStartForcedRestoreScan(wallet: Wallet) {
         if (!prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) return
+        if (forcedRestoreScanStarted.get()) return
         if (!forcedRestoreScanInFlight.compareAndSet(false, true)) return
 
         scanHeightScope.launch {
@@ -185,7 +216,16 @@ class WalletState(private val prefs: SharedPreferences) {
                     return@launch
                 }
 
-                val selectedRestoreHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
+                // The saved restore height, not the native cache tip, is the source
+                // of truth. Reapply it before queuing the native rescan.
+                val selectedRestoreHeight = pendingSelectedRestoreHeight(wallet)
+                    ?: return@launch
+                wallet.setRestoreHeight(selectedRestoreHeight)
+                check(wallet.getRestoreHeight().coerceAtLeast(0L) == selectedRestoreHeight) {
+                    "Selected restore height changed before rescan"
+                }
+                check(wallet.store()) { "Unable to persist selected restore height before rescan" }
+
                 clearSyncProgress()
                 _transactions.value = emptyList()
                 _coins.value = emptyList()
@@ -198,20 +238,18 @@ class WalletState(private val prefs: SharedPreferences) {
                 )
                 updateBalanceFromWallet(wallet)
 
-                // Queue the native rescan only after the selected height is set and
-                // the real scan baseline is published.
+                // A normal refresh can fast-forward the hash cache to the node tip.
+                // Only issue the native rescan once the daemon is fully synchronized,
+                // so the selected start height cannot be discarded by native doRefresh().
                 wallet.rescanBlockchainAsync()
                 wallet.startRefresh()
-
-                prefs.edit(commit = true) {
-                    putBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
-                }
+                forcedRestoreScanStarted.set(true)
                 Timber.tag(TAG).i(
                     "Started restored-wallet rescan from selected height %d",
                     selectedRestoreHeight
                 )
             } catch (e: Exception) {
-                // Leave the preference set so a later wallet update can retry safely.
+                // Keep the preference set so a later refresh/reconnect can retry.
                 Timber.tag(TAG).e(e, "Unable to start restored-wallet scan")
                 clearSyncProgress()
                 setLoading(false)
@@ -220,6 +258,7 @@ class WalletState(private val prefs: SharedPreferences) {
             }
         }
     }
+
 
     /**
      * Publish local wallet data independently from daemon startup and blockchain scanning.
@@ -477,6 +516,10 @@ class WalletState(private val prefs: SharedPreferences) {
                 putLong(scanPreferenceKey(wallet, "processed_height"), _walletHeight.value)
                 putLong(scanPreferenceKey(wallet, "start_height"), _walletHeight.value)
             }
+            // Keep the fresh-restore marker until the selected-height scan actually
+            // catches the live daemon tip. Clearing it when merely queued is too early.
+            prefs.edit(commit = true) { remove(PREF_FORCE_FRESH_WALLET_SCAN) }
+            forcedRestoreScanStarted.set(false)
         }
         clearSyncProgress()
     }
@@ -647,6 +690,13 @@ class WalletState(private val prefs: SharedPreferences) {
             // Do not make the progress UI disappear during a temporary daemon outage.
             if (!_scanTracking.get() || _syncProgress.value == null) clearSyncProgress()
             setLoading(false)
+        }
+        if (status == Wallet.ConnectionStatus.ConnectionStatus_Disconnected &&
+            prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+        ) {
+            // A reconnect calls native init again; allow the selected-height rescan to
+            // be re-queued after the daemon comes back.
+            forcedRestoreScanStarted.set(false)
         }
         if (previous == Wallet.ConnectionStatus.ConnectionStatus_Disconnected &&
             status == Wallet.ConnectionStatus.ConnectionStatus_Connected) {
