@@ -180,7 +180,7 @@ fun CoinsScreen(
                 topBar = {
                     TopAppBar(
                         title = {
-                            Box(modifier = Modifier.offset(y = (-2).dp)) {
+                            Box(modifier = Modifier.offset(y = (-4).dp)) {
                                 XmrText(
                                     style = MaterialTheme.typography.titleLarge.copy(fontSize = 26.sp)
                                 )
