@@ -501,8 +501,20 @@ class WalletState(private val prefs: SharedPreferences) {
     fun completeWalletScan(
         wallet: Wallet? = getWallet,
         knownDaemonHeight: Long? = null
-    ) {
+    ): Boolean {
         if (wallet != null && wallet.isInitialized) {
+            // A callback can report the daemon tip before the fresh restore's native
+            // rescan is queued. Never treat that startup race as a completed wallet scan.
+            if (pendingSelectedRestoreHeight(wallet) != null && !forcedRestoreScanStarted.get()) {
+                val selectedHeight = pendingSelectedRestoreHeight(wallet)!!.coerceAtLeast(0L)
+                _scanStartHeight.set(selectedHeight)
+                _walletHeight.value = selectedHeight
+                _scanTracking.set(true)
+                val daemonHeight = (knownDaemonHeight ?: wallet.getDaemonBlockChainHeight()).coerceAtLeast(0L)
+                updateSyncProgressFromWallet(wallet, daemonHeight)
+                maybeStartForcedRestoreScan(wallet)
+                return false
+            }
             // Keep listener-based height tracking enabled after sync, and do not issue
             // another node-height RPC that might observe a different tip mid-callback.
             val daemonHeight = (knownDaemonHeight ?: wallet.getDaemonBlockChainHeight()).coerceAtLeast(0L)
@@ -522,6 +534,7 @@ class WalletState(private val prefs: SharedPreferences) {
             forcedRestoreScanStarted.set(false)
         }
         clearSyncProgress()
+        return true
     }
     /**
      * Publishes the active daemon height and (only outside a scan) the native
@@ -543,12 +556,19 @@ class WalletState(private val prefs: SharedPreferences) {
             // Monero may append hashes during fast refresh before wallet transactions
             // for those blocks have been scanned. Resume from trusted app scan state
             // when available, otherwise begin at the wallet's configured restore height.
-            val restoreHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
-            val savedProcessedHeight = prefs.getLong(
-                scanPreferenceKey(wallet, "processed_height"),
+            // While a seed restore is pending, native init may temporarily expose
+            // the daemon tip as restore height. The restore form's persisted selection
+            // remains authoritative and must be the initial wallet scan baseline.
+            val pendingRestoreHeight = pendingSelectedRestoreHeight(wallet)
+            val restoreHeight = (pendingRestoreHeight ?: wallet.getRestoreHeight()).coerceAtLeast(0L)
+            val savedProcessedHeight = if (pendingRestoreHeight != null) {
                 -1L
-            )
-            val baseline = if (savedProcessedHeight >= restoreHeight) {
+            } else {
+                prefs.getLong(scanPreferenceKey(wallet, "processed_height"), -1L)
+            }
+            val baseline = if (pendingRestoreHeight != null) {
+                restoreHeight
+            } else if (savedProcessedHeight >= restoreHeight) {
                 savedProcessedHeight
             } else {
                 restoreHeight
