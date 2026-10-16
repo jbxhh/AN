@@ -92,7 +92,7 @@ fun SubAddressesScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                     }
                 },
-                title = { Text(stringResource(R.string.subaddress_label_list)) },
+                title = {},
                 actions = {
                     IconButton(onClick = { vm.getNextAddress() }) {
                         Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_subaddress_label))
