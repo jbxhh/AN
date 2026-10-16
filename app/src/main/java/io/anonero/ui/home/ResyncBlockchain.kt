@@ -111,7 +111,10 @@ fun ResyncBlockchainScreen(
                         supportingContent = {
                             OutlinedTextField(
                                 value = restoreHeightInput,
-                                onValueChange = { restoreHeightInput = it.filter(Char::isDigit) },
+                                onValueChange = {
+                                    restoreHeightInput = it.filter(Char::isDigit)
+                                    if (restoreHeightInput.isNotBlank()) restoreDateInput = ""
+                                },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = MaterialTheme.shapes.medium,
                                 singleLine = true,
@@ -136,7 +139,10 @@ fun ResyncBlockchainScreen(
                         supportingContent = {
                             OutlinedTextField(
                                 value = restoreDateInput,
-                                onValueChange = { restoreDateInput = it },
+                                onValueChange = {
+                                    restoreDateInput = it
+                                    if (restoreDateInput.isNotBlank()) restoreHeightInput = ""
+                                },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = MaterialTheme.shapes.medium,
                                 singleLine = true,
@@ -161,7 +167,11 @@ fun ResyncBlockchainScreen(
                     onClick = {
                         if (isQuerying) {
                             // Avoid starting duplicate queries while the progress indicators are visible.
-                        } else if (!queryCompleted) {
+                        } else if (
+                            !queryCompleted &&
+                            restoreHeightInput.isBlank() &&
+                            restoreDateInput.isBlank()
+                        ) {
                             isQuerying = true
                             scope.launch {
                                 try {
@@ -306,7 +316,13 @@ fun ResyncBlockchainScreen(
                             strokeWidth = 2.dp
                         )
                     } else {
-                        Text(if (queryCompleted) "重置" else "查询")
+                        Text(
+                        if (queryCompleted || restoreHeightInput.isNotBlank() || restoreDateInput.isNotBlank()) {
+                            "重置"
+                        } else {
+                            "查询"
+                        }
+                    )
                     }
                 }
             }
