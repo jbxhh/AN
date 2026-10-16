@@ -36,7 +36,6 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
-import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
@@ -60,20 +59,11 @@ import timber.log.Timber;
 public class KeyStoreHelper {
     private static final String TAG = "KeyStoreHelper";
 
-        static {
-        try { System.loadLibrary("anonero"); } catch (Throwable ignored) {}
+    static {
+        System.loadLibrary("anonero");
     }
 
-        public static byte[] slowHash(byte[] data, int brokenVariant) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] h = data;
-            for (int i = 0; i < 1000; i++) h = md.digest(h);
-            return h;
-        } catch (NoSuchAlgorithmException e) {
-            return data;
-        }
-    }
+    public static native byte[] slowHash(byte[] data, int brokenVariant);
 
     static final private String RSA_ALIAS = "MonerujoRSA";
 
