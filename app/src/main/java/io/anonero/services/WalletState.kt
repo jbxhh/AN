@@ -14,7 +14,10 @@ import io.anonero.model.node.DaemonInfo
 import io.anonero.ui.util.getAllUsedSubAddresses
 import io.anonero.ui.util.getLatestSubAddress
 import io.anonero.ui.home.LockScreenShortCut
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -59,6 +62,10 @@ class WalletState(private val prefs: SharedPreferences) {
     private val _unlockShortcut = Channel<LockScreenShortCut>(capacity = 1)
     val unlockShortcut = _unlockShortcut.receiveAsFlow()
     private val bgSyncMutex = Mutex()
+    // Wallet scan progress needs the live daemon target as soon as a scan starts.
+    // Keep this request off the UI thread and avoid duplicate startup height RPCs.
+    private val scanHeightScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val daemonHeightQueryInFlight = AtomicBoolean(false)
 
     val transactions: Flow<List<TransactionInfo>> = _transactions
 
@@ -270,10 +277,14 @@ class WalletState(private val prefs: SharedPreferences) {
         if (daemonHeight > 0L) {
             updateSyncProgressFromWallet(wallet, daemonHeight)
         } else {
-            // Keep loading active until a real daemon height arrives. Do not invent
-            // a remaining-block count from an unknown node tip.
+            // Keep the temporary refresh/loading indicator visible until the live
+            // daemon tip arrives. Never invent a target or remaining-block count.
             setLoading(true)
         }
+        // Always fetch a fresh target in parallel with the scan. When it returns,
+        // switch from the temporary loading indicator to real remaining-blocks
+        // progress using latest daemon height minus actual processed wallet height.
+        requestLatestDaemonHeightAsync(wallet)
         return requiresRescan
     }
 
@@ -313,6 +324,35 @@ class WalletState(private val prefs: SharedPreferences) {
         updateBalanceFromWallet(wallet)
         updateSyncProgressFromWallet(wallet, daemonHeight)
     }
+    /**
+     * Resolve the live daemon tip without holding up restore/rescan startup.
+     * The wallet height is never copied from the daemon: progress is computed
+     * from the listener-confirmed processed height against this real target.
+     */
+    private fun requestLatestDaemonHeightAsync(wallet: Wallet) {
+        if (!daemonHeightQueryInFlight.compareAndSet(false, true)) return
+
+        scanHeightScope.launch {
+            try {
+                if (!wallet.isInitialized) return@launch
+                val latestDaemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+                if (latestDaemonHeight > 0L && wallet.isInitialized) {
+                    updateBlockHeights(wallet, latestDaemonHeight)
+                    updateSyncProgressFromWallet(wallet, latestDaemonHeight)
+                    // Once a real target exists, the UI should show the determinate
+                    // sync bar (when blocks remain), not stay in the temporary loader.
+                    setLoading(false)
+                }
+            } catch (e: Exception) {
+                // Keep the temporary loader active; refreshed()/newBlock callbacks
+                // continue trying to obtain a real daemon target.
+                Timber.tag(TAG).w(e, "Unable to fetch live daemon height for scan progress")
+            } finally {
+                daemonHeightQueryInFlight.set(false)
+            }
+        }
+    }
+
     private fun updateBalanceFromWallet(wallet: Wallet) {
         _balanceInfo.value = wallet.balance
         _unLockedBalance.value = if (AnonConfig.viewOnly) {
