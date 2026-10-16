@@ -24,6 +24,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
@@ -31,6 +36,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -41,6 +47,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -115,6 +122,9 @@ import io.anonero.util.WALLET_USE_TOR
 import org.koin.java.KoinJavaComponent.inject
 import timber.log.Timber
 import kotlin.time.Duration.Companion.seconds
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.compose.ui.res.painterResource
 
 
@@ -157,6 +167,9 @@ fun TransactionScreen(
     var broadcastSignedTxPath by remember { mutableStateOf<String?>(null) }
     var broadcastProgree by remember { mutableStateOf(false) }
     var settingBSync by remember { mutableStateOf(false) }
+    var showResyncPage by remember { mutableStateOf(false) }
+    var restoreHeightInput by remember { mutableStateOf("") }
+    var restoreDateInput by remember { mutableStateOf("") }
     var showScanner by remember { mutableStateOf(false) }
     var qrScannerParam by remember { mutableStateOf<SpendQRExchangeParam?>(null) }
     var showMenu by remember { mutableStateOf(false) }
@@ -167,6 +180,124 @@ fun TransactionScreen(
     val hideAmounts by walletState.hideAmountsFlow.asLiveData().observeAsState(false)
     val scope = rememberCoroutineScope()
     val activity = LocalActivity.current;
+
+    if (showResyncPage) {
+        Dialog(
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                dismissOnClickOutside = false,
+                dismissOnBackPress = true,
+                decorFitsSystemWindows = false,
+            ),
+            onDismissRequest = { showResyncPage = false }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    TopAppBar(
+                        title = {},
+                        navigationIcon = {
+                            IconButton(onClick = { showResyncPage = false }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                            }
+                        }
+                    )
+                    ListItem(
+                        headlineContent = { Text("高度恢复", color = MaterialTheme.colorScheme.primary) },
+                        supportingContent = {
+                            OutlinedTextField(
+                                value = restoreHeightInput,
+                                onValueChange = { restoreHeightInput = it.filter(Char::isDigit) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Next
+                                ),
+                                placeholder = { Text("输入恢复区块高度") }
+                            )
+                        }
+                    )
+                    ListItem(
+                        headlineContent = { Text("时间恢复", color = MaterialTheme.colorScheme.primary) },
+                        supportingContent = {
+                            OutlinedTextField(
+                                value = restoreDateInput,
+                                onValueChange = { restoreDateInput = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                placeholder = { Text("YYYY-MM-DD") }
+                            )
+                        }
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Button(
+                        modifier = Modifier.fillMaxWidth(0.9f),
+                        onClick = {
+                            val wallet = WalletManager.instance?.wallet
+                            val selectedHeight = when {
+                                restoreHeightInput.isNotBlank() -> restoreHeightInput.toLongOrNull()
+                                restoreDateInput.isNotBlank() -> try {
+                                    val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                                        isLenient = false
+                                    }.parse(restoreDateInput)
+                                    date?.let {
+                                        ((it.time / 1000L - 1397818193L).coerceAtLeast(0L) / 120L)
+                                    }
+                                } catch (_: Exception) {
+                                    null
+                                }
+                                else -> wallet?.restoreHeight
+                            }
+                            if (wallet == null || selectedHeight == null || selectedHeight < 0L) {
+                                scope.launch {
+                                    toastState.show(
+                                        "请输入有效的区块高度或日期（YYYY-MM-DD）",
+                                        type = ToastType.Warning
+                                    )
+                                }
+                            } else {
+                                wallet.setRestoreHeight(selectedHeight)
+                                showResyncPage = false
+                                restoreHeightInput = ""
+                                restoreDateInput = ""
+                                val result = walletState.resyncBlockchain()
+                                if (result.isFailure) {
+                                    scope.launch {
+                                        toastState.show(
+                                            "重置失败：${result.exceptionOrNull()?.message}",
+                                            type = ToastType.Warning,
+                                            duration = 6.seconds
+                                        )
+                                    }
+                                } else {
+                                    scope.launch {
+                                        toastState.show(
+                                            "已开始从所选恢复位置重新同步",
+                                            type = ToastType.Success
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    ) {
+                        Text("重置")
+                    }
+                }
+            }
+        }
+    }
 
     if (broadcastSignedTxPath != null) {
         AlertDialog(
@@ -563,23 +694,9 @@ fun TransactionScreen(
                                 text = { Text(stringResource(R.string.resync_blockchain)) },
                                 onClick = {
                                     showMenu = false
-                                    val result = walletState.resyncBlockchain()
-                                    if (result.isFailure) {
-                                        scope.launch {
-                                            toastState.show(
-                                                "Error : ${result.exceptionOrNull()?.message}",
-                                                type = ToastType.Warning,
-                                                duration = 6.seconds
-                                            )
-                                        }
-                                    } else {
-                                        scope.launch {
-                                            toastState.show(
-                                                context.getString(R.string.resync_initiated_this_may_take_a_while),
-                                                type = ToastType.Success,
-                                            )
-                                        }
-                                    }
+                                    restoreHeightInput = ""
+                                    restoreDateInput = ""
+                                    showResyncPage = true
                                 }
                             )
                             if (AnonConfig.viewOnly) {
