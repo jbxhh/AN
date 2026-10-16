@@ -40,8 +40,8 @@
     <string name="update_external_proxy">更新外部代理</string>
     <string name="using_built_in_tor">使用内置 Tor</string>
     <string name="tor_logs">Tor 日志</string>
-    <string name="node_disconnected">节点已断开连接\n请连接到节点以查看余额</string>
-    <string name="no_coins_available">暂无可用余额\n收到交易后，您的余额将显示在这里</string>
+    <string name="node_disconnected">节点已断开连接，请连接到节点以查看余额</string>
+    <string name="no_coins_available">暂无可用余额收到交易后，您的余额将显示在这里</string>
     <string name="confirm">确认</string>
     <string name="spend">确认</string>
     <string name="coins">未花费输出</string>
@@ -56,9 +56,9 @@
     <string name="constructing_transaction">正在构建交易...</string>
     <string name="invalid_address">无效地址</string>
     <string name="amount">数量</string>
-    <string name="sweeping_balance">正在清空余额:</string>
+    <string name="sweeping_balance">清空余额：</string>
     <string name="minus_fees">(扣除手续费)</string>
-    <string name="available_balance">可用余额:</string>
+    <string name="available_balance">可用余额：</string>
     <string name="_1_coin_selected">已选择1个输出</string>
     <string name="coins_selected">已选择2个输出</string>
     <string name="scan_key_images">扫描私钥映像</string>
@@ -68,8 +68,8 @@
     <string name="set_transaction_description">交易备注</string>
     <string name="save">保存</string>
     <string name="dismiss">取消</string>
-    <string name="transaction_id">交易ID</string>
-    <string name="transaction_fee">手续费</string>
+    <string name="transaction_id">交易哈希</string>
+    <string name="transaction_fee">矿工费</string>
     <string name="transaction_key">交易密钥</string>
     <string name="confirmation_block">确认区块</string>
     <string name="time">时间</string>
@@ -77,7 +77,7 @@
     <string name="description">备注</string>
     <string name="pull_to_start_refresh">下拉开始刷新</string>
     <string name="export_key_images">导出私钥映像</string>
-    <string name="coin_control">输出选择</string>
+    <string name="coin_control">XMR 管理</string>
     <string name="refresh">刷新</string>
     <string name="resync_blockchain">重置同步区块</string>
     <string name="resync_initiated_this_may_take_a_while">已启动重置同步…这可能需要一些时间。</string>
