@@ -108,8 +108,10 @@ fun SettingsPage(
                         navigateTo(SecureWipeRoute)
                     }
                     SettingsDivider()
+                }
+                item(key = "delete-footer-divider") {
                     androidx.compose.foundation.layout.Spacer(
-                        modifier = Modifier.height(12.dp)
+                        modifier = Modifier.height(16.dp)
                     )
                     SettingsDivider()
                 }
