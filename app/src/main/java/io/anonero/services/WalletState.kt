@@ -186,7 +186,7 @@ class WalletState {
         }
 
         val left = (daemonHeight - chainHeight).coerceAtLeast(0L)
-        if (left <= 1L) {
+        if (left <= 0L) {
             syncUpdate(SyncProgress(progress = 1f, left = 0L))
             return
         }

@@ -68,7 +68,7 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
             walletState.setLoading(false)
         } else {
             val heightDiff = daemonHeight - chainHeight
-            if (heightDiff > 1L) {
+            if (heightDiff > 0L) {
                 // Don't publish partial balance/history while the wallet is behind.
                 wallet.isSynchronized = false
                 // Keep the wallet's existing refresh loop running. Re-running init(0)
