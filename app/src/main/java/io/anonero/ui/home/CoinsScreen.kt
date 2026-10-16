@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -179,9 +180,11 @@ fun CoinsScreen(
                 topBar = {
                     TopAppBar(
                         title = {
-                            XmrText(
-                                style = MaterialTheme.typography.titleLarge.copy(fontSize = 26.sp)
-                            )
+                            Box(modifier = Modifier.offset(y = (-2).dp)) {
+                                XmrText(
+                                    style = MaterialTheme.typography.titleLarge.copy(fontSize = 26.sp)
+                                )
+                            }
                         },
                         navigationIcon = {
                             IconButton(onClick = onBackPress) {
