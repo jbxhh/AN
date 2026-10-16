@@ -128,9 +128,9 @@ class WalletState {
                     _coins.update { (wallet.coins?.all ?: emptyList()).fastFilter { !it.spent } }
                 }
             } else {
-                // Do not present partial balances or history as final while rescanning.
-                _balanceInfo.value = null
-                _unLockedBalance.value = null
+                // Preserve the original home balance area with the wallet's real current
+                // balance during scanning. History/coin lists stay withheld until synced.
+                updateBalanceFromWallet(wallet)
                 _transactions.value = emptyList()
                 _coins.value = emptyList()
             }
@@ -194,7 +194,19 @@ class WalletState {
 
         val processedHeight = maxOf(_scanStartHeight.get(), blockIndex + 1L)
         _walletHeight.update { maxOf(it, processedHeight) }
+        // Keep the existing home balance area populated from Monero's live wallet
+        // balance as processed blocks add discovered outputs; this is not a UI change.
+        updateBalanceFromWallet(wallet)
         updateSyncProgressFromWallet(wallet)
+    }
+
+    private fun updateBalanceFromWallet(wallet: Wallet) {
+        _balanceInfo.value = wallet.balance
+        _unLockedBalance.value = if (AnonConfig.viewOnly) {
+            wallet.viewOnlyBalance()
+        } else {
+            wallet.unlockedBalance
+        }
     }
 
     fun completeWalletScan(wallet: Wallet? = getWallet) {
