@@ -292,9 +292,11 @@ class WalletState(private val prefs: SharedPreferences) {
         val path = wallet.getPath()?.takeIf { it.isNotBlank() } ?: wallet.name
         val identity = path + "|" + wallet.address
         val hash = identity.fold(0) { acc, char -> 31 * acc + char.code }
-        // v2 deliberately ignores scan heights saved by builds that could receive
-        // Monero fast-refresh hash-cache callbacks as if they were processed blocks.
-        return "anonero_scan_v2_" + hash + "_" + suffix
+        // v3 invalidates progress markers from earlier builds where the callback
+        // path could make wallet height appear to match the daemon without a trusted
+        // transaction-processing scan. Existing wallets rebuild this marker once from
+        // their configured restore height; later launches resume from v3 progress.
+        return "anonero_scan_v3_" + hash + "_" + suffix
     }
 
     /**
