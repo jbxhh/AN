@@ -703,7 +703,7 @@ fun TransactionScreen(
                                 maxLines = 1,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(end = 28.dp),
+                                    .padding(end = 23.dp),
                                 textAlign = TextAlign.End
                             )
                         }
