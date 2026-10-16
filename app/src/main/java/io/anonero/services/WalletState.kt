@@ -201,6 +201,10 @@ class WalletState(private val prefs: SharedPreferences) {
     val currentWalletHeight: Long
         get() = _walletHeight.value
 
+    /** Last known daemon tip; reading this never performs a blocking RPC. */
+    val currentDaemonHeight: Long
+        get() = _connectedDaemon.value?.daemonHeight?.coerceAtLeast(0L) ?: 0L
+
     fun beginWalletScan(
         wallet: Wallet? = getWallet,
         scanStartHeight: Long? = null,
@@ -214,7 +218,10 @@ class WalletState(private val prefs: SharedPreferences) {
         }
 
         val restoreHeight = (scanStartHeight ?: wallet.getRestoreHeight()).coerceAtLeast(0L)
-        val nativeHeight = wallet.getBlockChainHeight().takeIf { it > 1L } ?: 0L
+        // A forced scan from a user-selected restore height must not wait for
+        // the native cached chain height before recording the selected scan start.
+        val nativeHeight = if (forceStartAtSelectedHeight) 0L
+            else wallet.getBlockChainHeight().takeIf { it > 1L } ?: 0L
         val inProgressKey = scanPreferenceKey(wallet, "in_progress")
         val completedKey = scanPreferenceKey(wallet, "completed")
         val startKey = scanPreferenceKey(wallet, "start_height")
@@ -254,11 +261,19 @@ class WalletState(private val prefs: SharedPreferences) {
             }
             putLong(processedKey, initialHeight)
         }
-        // Use one node-height snapshot for both state updates. Repeated RPC height
-        // calls can briefly disagree and clear the newly-created sync progress.
-        val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+        // Start scanning immediately from the selected height. Never make the
+        // start of a restore/rescan wait on a synchronous daemon-height RPC. Use the
+        // latest already-published node tip for immediate remaining-blocks display;
+        // refreshed()/newBlock callbacks will replace it with a live daemon snapshot.
+        val daemonHeight = currentDaemonHeight
         updateBlockHeights(wallet, daemonHeight)
-        updateSyncProgressFromWallet(wallet, daemonHeight)
+        if (daemonHeight > 0L) {
+            updateSyncProgressFromWallet(wallet, daemonHeight)
+        } else {
+            // Keep loading active until a real daemon height arrives. Do not invent
+            // a remaining-block count from an unknown node tip.
+            setLoading(true)
+        }
         return requiresRescan
     }
 
