@@ -65,7 +65,7 @@ fun SettingsPage(
                             style = MaterialTheme.typography.titleLarge.copy(
                                 color = Color.White,
                                 fontSize = 26.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Medium
                             )
                         )
                     }
