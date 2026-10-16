@@ -95,7 +95,9 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
                 walletState.setLoading(false)
             } else {
                 wallet.isSynchronized = false
-                walletState.setLoading(false)
+                // If the selected height equals the current tip, keep the loader visible
+                // until the queued first rescan actually starts processing.
+                walletState.setLoading(walletState.currentWalletHeight >= daemonHeight)
             }
         }
 
