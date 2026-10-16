@@ -289,7 +289,7 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
     val toastState = rememberToasterState()
     val resyncMsg = stringResource(R.string.resync_initiated_this_may_take_a_while)
 
-    if (showNodeDetails)
+    if (showNodeDetails || editingNode != null)
         Dialog(
             properties = DialogProperties(
                 usePlatformDefaultWidth = false,
@@ -299,6 +299,7 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
             ),
             onDismissRequest = {
                 showNodeDetails = false
+                editingNode = null
             }
         ) {
             Box(
@@ -308,13 +309,15 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
             ) {
                 Column {
                     TopAppBar(
-                        title = {
-
-                        },
+                        title = {},
                         navigationIcon = {
                             IconButton(
                                 onClick = {
-                                    showNodeDetails = false
+                                    if (editingNode != null) {
+                                        editingNode = null
+                                    } else {
+                                        showNodeDetails = false
+                                    }
                                 }
                             ) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
@@ -323,34 +326,33 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
                     )
                     NodeForm(
                         onBackPress = {
-                            scope.launch {
+                            if (editingNode != null) {
+                                editingNode = null
+                            } else {
                                 showNodeDetails = false
                             }
-                        }, onConnect = {
-                            nodeSettingsVM.addItem(it)
-                            nodeSettingsVM.viewModelScope
-                                .launch {
-                                    nodeSettingsVM.connect(it)
-                                }
-                        }, nodeSettingsVM
+                        },
+                        onConnect = { node ->
+                            nodeSettingsVM.addItem(node)
+                            nodeSettingsVM.viewModelScope.launch {
+                                nodeSettingsVM.connect(node)
+                            }
+                        },
+                        nodeSettingsVM = nodeSettingsVM,
+                        initialNode = editingNode,
+                        onSave = { updatedNode ->
+                            editingNode?.let { oldNode ->
+                                nodeSettingsVM.removeItem(oldNode.toNodeString())
+                                nodeSettingsVM.addItem(updatedNode)
+                            }
+                        }
                     )
                 }
             }
         }
 
 
-    if (editingNode != null) {
-        NodeEditScreen(
-            node = editingNode!!,
-            nodeSettingsVM = nodeSettingsVM,
-            onBackPress = { editingNode = null },
-            onSave = { updatedNode ->
-                nodeSettingsVM.removeItem(editingNode!!.toNodeString())
-                nodeSettingsVM.addItem(updatedNode)
-                editingNode = null
-            }
-        )
-    } else {
+    if (editingNode == null) {
     Scaffold(
         topBar = {
             Column {
@@ -620,97 +622,18 @@ fun NodeListItem(
 }
 
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun NodeEditScreen(
-    node: Node,
-    nodeSettingsVM: NodeSettingsViewModel,
-    onBackPress: () -> Unit,
-    onSave: (Node) -> Unit,
-) {
-    var host by remember(node) { mutableStateOf(node.toNodeString()) }
-    var username by remember(node) { mutableStateOf(node.username) }
-    var password by remember(node) { mutableStateOf(node.password) }
-    val connectionError by nodeSettingsVM.connectionError.observeAsState(null)
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("编辑节点") },
-                navigationIcon = {
-                    IconButton(onClick = onBackPress) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-                    }
-                }
-            )
-        },
-        bottomBar = {
-            Box(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                AnonOutlineButton(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = {
-                        val updated = nodeSettingsVM.validate(host, username, password)
-                        if (updated != null) onSave(updated)
-                    }
-                ) {
-                    Text(stringResource(R.string.confirm))
-                }
-            }
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp)
-        ) {
-            OutlinedTextField(
-                value = host,
-                onValueChange = { host = it },
-                label = { Text(stringResource(R.string.node)) },
-                placeholder = { Text(stringResource(R.string.onion_address_example)) },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
-            )
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = username,
-                onValueChange = { username = it },
-                label = { Text(stringResource(R.string.username)) },
-                placeholder = { Text(stringResource(R.string.hint_optional)) },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
-            )
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text(stringResource(R.string.password)) },
-                placeholder = { Text(stringResource(R.string.hint_optional)) },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
-            )
-            if (!connectionError.isNullOrEmpty()) {
-                Text(
-                    text = connectionError.orEmpty(),
-                    color = DangerColor,
-                    modifier = Modifier.padding(top = 12.dp)
-                )
-            }
-        }
-    }
-}
-
 @Composable
 fun NodeForm(
     onBackPress: () -> Unit = {},
     onConnect: (node: Node) -> Unit = {},
-    nodeSettingsVM: NodeSettingsViewModel
+    nodeSettingsVM: NodeSettingsViewModel,
+    initialNode: Node? = null,
+    onSave: (node: Node) -> Unit = {},
 ) {
     val connectionError by nodeSettingsVM.connectionError.observeAsState(null)
-    var rpcHost by remember { mutableStateOf("") }
-    var rpcUsername by remember { mutableStateOf("") }
-    var rpcPassPhrase by remember { mutableStateOf("") }
+    var rpcHost by remember(initialNode) { mutableStateOf(initialNode?.toNodeString().orEmpty()) }
+    var rpcUsername by remember(initialNode) { mutableStateOf(initialNode?.username.orEmpty()) }
+    var rpcPassPhrase by remember(initialNode) { mutableStateOf(initialNode?.password.orEmpty()) }
     val labelColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
     Column(
         modifier = Modifier
@@ -849,12 +772,19 @@ fun NodeForm(
                 onClick = {
                     val node = nodeSettingsVM.validate(rpcHost, rpcUsername, rpcPassPhrase)
                     if (node != null) {
-                        onConnect(node)
+                        if (initialNode == null) {
+                            onConnect(node)
+                        } else {
+                            onSave(node)
+                        }
                         onBackPress.invoke()
                     }
                 },
             ) {
-                Text(stringResource(R.string.connect))
+                Text(
+                    if (initialNode == null) stringResource(R.string.connect)
+                    else stringResource(R.string.save)
+                )
             }
         }
     }
