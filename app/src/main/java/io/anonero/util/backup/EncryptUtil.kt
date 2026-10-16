@@ -83,91 +83,60 @@ object EncryptUtil {
     }
 
     fun encryptFile(key: String, inputFile: File, outputFile: File) {
-        val salt = ByteArray(8).also { SecureRandom().nextBytes(it) }
-        val keyMaterial = deriveKeyMaterial(key, salt)
-        val keySpec = SecretKeySpec(keyMaterial.copyOfRange(0, 32), "AES")
-        val ivSpec = IvParameterSpec(keyMaterial.copyOfRange(32, 48))
-        keyMaterial.fill(0)
-
+        val salt = SecureRandom().generateSeed(8)
+        // Derive 48 byte key
+        var keySpec: SecretKeySpec?
+        var ivSpec: IvParameterSpec?
+        PKCS5S2ParametersGenerator(SHA256Digest()).let { generator ->
+            generator.init(key.toByteArray(), salt, DEFAULT_ITR)
+            (generator.generateDerivedMacParameters(48 * 8) as KeyParameter).key.let { secretKey ->
+                val bytes = secretKey.copyOfRange(0, 32)
+                keySpec = SecretKeySpec(bytes, "AES")
+                ivSpec = IvParameterSpec(secretKey.copyOfRange(32, secretKey.size))
+                generator.password.fill('*'.code.toByte())
+                secretKey.fill('*'.code.toByte())
+            }
+        }
         val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
         cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec)
-        try {
-            FileInputStream(inputFile).use { input ->
-                FileOutputStream(outputFile).use { rawOutput ->
-                    // Preserve the existing OpenSSL-compatible file format.
-                    rawOutput.write(SALT_PREFIX.toByteArray() + salt)
-                    CipherOutputStream(BufferedOutputStream(rawOutput), cipher).use { encryptedOutput ->
-                        input.copyTo(encryptedOutput, BUFFER_SIZE)
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            outputFile.delete()
-            throw e
-        }
+        val fileInputStream = FileInputStream(inputFile)
+        val fileOutputStream = FileOutputStream(outputFile)
+        val cipherOutputStream = CipherOutputStream(BufferedOutputStream(fileOutputStream), cipher)
+        fileOutputStream.write((SALT_PREFIX.toByteArray() + salt))
+        fileInputStream.copyTo(cipherOutputStream, BUFFER_SIZE)
+        fileInputStream.close()
+        cipherOutputStream.close()
+
     }
 
     fun decryptFile(key: String, inputFile: File, outputFile: File) {
+        val fis = FileInputStream(inputFile)
         val prefix = ByteArray(16)
-        FileInputStream(inputFile).use { input ->
-            var offset = 0
-            while (offset < prefix.size) {
-                val count = input.read(prefix, offset, prefix.size - offset)
-                if (count < 0) {
-                    throw java.io.IOException("Encrypted backup header is truncated")
-                }
-                offset += count
+        fis.read(prefix)
+        //Extract salt from the input file, 0-8 is the salt prefix, 8-16 is the salt
+        val salt = prefix.copyOfRange(8, 16)
+        var keySpec: SecretKeySpec?
+        var ivSpec: IvParameterSpec?
+        PKCS5S2ParametersGenerator(SHA256Digest()).let { generator ->
+            generator.init(key.toByteArray(), salt, DEFAULT_ITR)
+            (generator.generateDerivedMacParameters(48 * 8) as KeyParameter).key.let { secretKey ->
+                val bytes = secretKey.copyOfRange(0, 32)
+                keySpec = SecretKeySpec(bytes, "AES")
+                ivSpec = IvParameterSpec(secretKey.copyOfRange(32, secretKey.size))
+                generator.password.fill('*'.code.toByte())
+                secretKey.fill('*'.code.toByte())
             }
         }
-
-        if (!prefix.copyOfRange(0, 8).contentEquals(SALT_PREFIX.toByteArray())) {
-            throw java.io.IOException("Encrypted backup header is invalid")
-        }
-        val encryptedLength = inputFile.length() - prefix.size
-        if (encryptedLength < 16L || encryptedLength % 16L != 0L) {
-            throw java.io.IOException("Encrypted backup payload is invalid")
-        }
-
-        val salt = prefix.copyOfRange(8, 16)
-        val keyMaterial = deriveKeyMaterial(key, salt)
-        val keySpec = SecretKeySpec(keyMaterial.copyOfRange(0, 32), "AES")
-        val ivSpec = IvParameterSpec(keyMaterial.copyOfRange(32, 48))
-        keyMaterial.fill(0)
-
         val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
         cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
-        try {
-            FileInputStream(inputFile).use { input ->
-                var remaining = prefix.size.toLong()
-                while (remaining > 0L) {
-                    val skipped = input.skip(remaining)
-                    if (skipped > 0L) {
-                        remaining -= skipped
-                    } else {
-                        if (input.read() < 0) {
-                            throw java.io.IOException("Encrypted backup header is truncated")
-                        }
-                        remaining--
-                    }
-                }
-                CipherInputStream(BufferedInputStream(input), cipher).use { decryptedInput ->
-                    FileOutputStream(outputFile).use { output ->
-                        decryptedInput.copyTo(output, BUFFER_SIZE)
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            outputFile.delete()
-            throw e
-        }
-    }
-
-    private fun deriveKeyMaterial(password: String, salt: ByteArray): ByteArray {
-        val generator = PKCS5S2ParametersGenerator(SHA256Digest())
-        generator.init(password.toByteArray(), salt, DEFAULT_ITR)
-        val keyMaterial = (generator.generateDerivedMacParameters(48 * 8) as KeyParameter).key
-        generator.password.fill(0)
-        return keyMaterial
+        val fileInputStream = inputFile.inputStream()
+        // Skip the salt prefix and salt
+        fileInputStream.skip(16)
+        val cis = CipherInputStream(BufferedInputStream(fileInputStream), cipher)
+        val fos = outputFile.outputStream()
+        cis.copyTo(fos, BUFFER_SIZE)
+        cis.close()
+        fos.close()
     }
 
 }
