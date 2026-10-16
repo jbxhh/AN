@@ -130,7 +130,7 @@ fun ResyncBlockchainScreen(
                             } catch (_: Exception) {
                                 null
                             }
-                            else -> wallet?.restoreHeight
+                            else -> wallet?.getRestoreHeight()
                         }
                         if (wallet == null || selectedHeight == null || selectedHeight < 0L) {
                             scope.launch {
