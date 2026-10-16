@@ -1,5 +1,6 @@
 package io.anonero.ui.onboard.graph
 
+import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.material3.AlertDialog
@@ -26,6 +27,7 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.toRoute
 import io.anonero.AnonConfig
 import io.anonero.R
+import io.anonero.model.node.NodeFields
 import io.anonero.ui.home.graph.routes.Home
 import io.anonero.ui.home.settings.LogViewer
 import io.anonero.ui.home.settings.ProxySettings
@@ -40,11 +42,13 @@ import io.anonero.ui.onboard.SetupNodeComposable
 import io.anonero.ui.onboard.SetupPassphrase
 import io.anonero.ui.onboard.restore.RestorePreview
 import io.anonero.ui.onboard.viewonly.RestoreFromKeys
+import io.anonero.ui.viewmodels.AppViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import org.koin.compose.koinInject
 
 
 @Serializable
@@ -82,6 +86,14 @@ data class OnboardRestorePreviewScreen(val backUpPath: String)
 
 @Serializable
 data object OnboardImportKeysScreen
+
+private fun startConfiguredNodeService(context: Context, appViewModel: AppViewModel) {
+    val host = context.getSharedPreferences(AnonConfig.PREFS, Context.MODE_PRIVATE)
+        .getString(NodeFields.RPC_HOST.value, "")
+    if (!host.isNullOrBlank()) {
+        appViewModel.startService()
+    }
+}
 
 //onboarding
 fun NavGraphBuilder.onboardingGraph(
@@ -201,6 +213,7 @@ fun NavGraphBuilder.onboardingGraph(
         }
 
         composable<OnboardPinScreen> {
+            val appViewModel = koinInject<AppViewModel>()
             var showErrorMessage by remember { mutableStateOf<String?>(null) }
             val context = LocalContext.current
             OnboardErrorDialog(
@@ -244,6 +257,7 @@ fun NavGraphBuilder.onboardingGraph(
                                 ) {
                                     popUpTo(LandingScreenRoute)
                                 }
+                                startConfiguredNodeService(context, appViewModel)
                             } else {
                                 if (onboardViewModel.getMode() == Mode.RESTORE) {
                                     navController.navigate(
@@ -251,6 +265,7 @@ fun NavGraphBuilder.onboardingGraph(
                                     ) {
                                         popUpTo(LandingScreenRoute)
                                     }
+                                    startConfiguredNodeService(context, appViewModel)
                                 } else {
                                     navController.navigate(OnboardSeedScreen(onboardViewModel.getSeed()))
                                 }
@@ -265,6 +280,8 @@ fun NavGraphBuilder.onboardingGraph(
         }
         composable<OnboardSeedScreen> { navBackStackEntry ->
             val state = navBackStackEntry.toRoute<OnboardSeedScreen>()
+            val context = LocalContext.current
+            val appViewModel = koinInject<AppViewModel>()
             SeedSetup(
                 seed = state.seed
                     .split(" ").toList(),
@@ -274,6 +291,7 @@ fun NavGraphBuilder.onboardingGraph(
                     ) {
                         popUpTo(LandingScreenRoute)
                     }
+                    startConfiguredNodeService(context, appViewModel)
                 },
                 onBackPressed = {
                     navController.navigate("")
