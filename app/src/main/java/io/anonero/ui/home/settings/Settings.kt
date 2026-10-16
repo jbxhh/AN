@@ -40,6 +40,7 @@ import io.anonero.ui.home.graph.routes.SettingsLogs
 import io.anonero.ui.home.graph.routes.SettingsNodeRoute
 import io.anonero.ui.home.graph.routes.SettingsTradeRoute
 import io.anonero.ui.home.graph.routes.SettingsViewSeedRoute
+import io.anonero.ui.home.XmrText
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,11 +61,12 @@ fun SettingsPage(
                                 tint = Color(0xFFFF8C00)
                             )
                         }
-                        Text(
-                            text = "XMR",
-                            color = Color(0xFFFF8C00),
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold
+                        XmrText(
+                            style = androidx.compose.material3.LocalTextStyle.current.copy(
+                                color = Color(0xFFFF8C00),
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         )
                     }
                 },
