@@ -73,7 +73,6 @@ import io.anonero.icons.AnonIcons
 import io.anonero.util.Formats
 import io.anonero.util.KeyStoreHelper
 import io.anonero.util.PREFS_PASSPHRASE_HASH
-import io.anonero.util.isWalletPassphraseValid
 import io.anonero.util.ShakeConfig
 import io.anonero.util.WALLET_PREFERENCES
 import io.anonero.util.backup.BackupHelper
@@ -128,14 +127,26 @@ fun ExportBackUp(onBackPress: () -> Unit = {}) {
 
     fun createBackUp() {
         scope.launch(Dispatchers.IO) {
-            if (!AnonConfig.viewOnly && !isWalletPassphraseValid(context, prefs, passPhrase)) {
-                scope.launch {
-                    errorShake.shake(ShakeConfig(iterations = 4, translateX = 12f))
+            val hash = prefs.getString(PREFS_PASSPHRASE_HASH, "")
+            val hashedPass = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
+            if (hash == hashedPass) {
+                passPhraseDialog = false
+                exportViewModel.createBackUp(passPhrase)
+            } else {
+                errorShake.shake(
+                    ShakeConfig(
+                        6, translateX = 5f
+                    )
+                )
+                repeat(6) {
+                    delay(50)
+                    view.performHapticFeedback(
+                        HapticFeedbackConstants.CONTEXT_CLICK
+                    )
                 }
-                return@launch
+                delay(100)
             }
-            passPhraseDialog = false
-            exportViewModel.createBackUp(passPhrase)
+
         }
     }
 
