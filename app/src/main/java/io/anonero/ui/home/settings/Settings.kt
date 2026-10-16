@@ -144,8 +144,8 @@ private fun SettingsDivider() {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 4.dp)
-            .height(2.dp)
-            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+            .height(1.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant)
     )
 }
 
