@@ -124,7 +124,7 @@
     <string name="spend_key">支出私钥 (Spend Key)</string>
     <string name="export_nero_keys">导出 [ИΞR0] 私钥</string>
     <string name="settings_connection">连接</string>
-    <string name="settings_node_settings">节点设置</string>
+    <string name="settings_node_settings">节点</string>
     <string name="settings_proxy_settings">代理设置</string>
     <string name="settings_proxy_subtitle">配置 Tor 和手动代理</string>
     <string name="settings_security">安全</string>
