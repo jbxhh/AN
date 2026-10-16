@@ -113,8 +113,7 @@ fun SettingsPage(
                     MenuItem(stringResource(R.string.settings_secure_wipe)) {
                         navigateTo(SecureWipeRoute)
                     }
-                    // Visible separator beneath the Delete row.
-                    SettingsDivider(isFinal = true)
+                    SettingsDivider()
                 }
             }
 
@@ -142,15 +141,10 @@ fun SettingsPage(
 }
 
 @Composable
-private fun SettingsDivider(isFinal: Boolean = false) {
+private fun SettingsDivider() {
     HorizontalDivider(
         modifier = Modifier.padding(horizontal = 4.dp),
-        color = if (isFinal) {
-            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
-        } else {
-            MaterialTheme.colorScheme.outlineVariant
-        },
-        thickness = if (isFinal) 1.5.dp else 2.5.dp
+        thickness = 2.5.dp
     )
 }
 
