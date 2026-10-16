@@ -125,9 +125,15 @@ class AnonWalletHandler(
                 // Recover an interrupted or legacy scan from the selected restore point.
                 // Native hash-chain height alone is not proof transactions were scanned.
                 val resumeScan = walletState.beginWalletScan(wallet, actualRestoreHeight)
-                // Publish local data before history refresh; native history work must not
-                // control whether the initial balance and receive address reach the UI.
+                // Publish local data and start the refresh/rescan immediately after the
+                // selected restore height is recorded. Never wait for refreshHistory()
+                // before starting the scan and allowing refreshed() to publish the live tip.
                 walletState.publishWalletSnapshot(wallet)
+                if (resumeScan) {
+                    wallet.rescanBlockchainAsync()
+                } else {
+                    wallet.startRefresh()
+                }
                 try {
                     wallet.refreshHistory()
                 } catch (e: Exception) {
@@ -137,11 +143,6 @@ class AnonWalletHandler(
                     walletState.update()
                 } catch (e: Exception) {
                     Timber.tag(TAG).w(e, "Initial wallet state refresh failed; continuing wallet startup")
-                }
-                if (resumeScan) {
-                    wallet.rescanBlockchainAsync()
-                } else {
-                    wallet.startRefresh()
                 }
             } else {
                 Timber.tag(TAG).e("Wallet initialization failed: %s", wallet.status.errorString)
