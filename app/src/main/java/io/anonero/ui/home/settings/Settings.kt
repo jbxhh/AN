@@ -25,8 +25,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -135,9 +135,12 @@ fun SettingsPage(
 
 @Composable
 private fun SettingsDivider() {
+    // Use an explicit, shared color so every separator—including the one
+    // below Delete—remains visible against the settings background.
     HorizontalDivider(
         modifier = Modifier.padding(horizontal = 4.dp),
-        thickness = 2.5.dp
+        thickness = 2.dp,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
     )
 }
 
