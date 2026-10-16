@@ -42,6 +42,7 @@ import io.anonero.ui.home.graph.routes.SettingsDataRoute
 import io.anonero.ui.home.graph.routes.SettingsLogs
 import io.anonero.ui.home.graph.routes.SettingsNodeRoute
 import io.anonero.ui.home.graph.routes.SettingsTradeRoute
+import io.anonero.ui.home.graph.routes.SettingsWalletRoute
 import io.anonero.ui.home.graph.routes.SettingsViewSeedRoute
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -87,7 +88,7 @@ fun SettingsPage(
                 if (!AnonConfig.viewOnly) {
                     item(key = "wallet") {
                         MenuItem(stringResource(R.string.settings_wallet_section)) {
-                            navigateTo(SettingsViewSeedRoute)
+                            navigateTo(SettingsWalletRoute)
                         }
                         SettingsDivider()
                     }
