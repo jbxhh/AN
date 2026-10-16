@@ -24,6 +24,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 data class SyncProgress(val progress: Float, val left: Long)
@@ -41,6 +42,8 @@ class WalletState {
     private val _subAddresses = MutableStateFlow<List<Subaddress>>(listOf())
     private val _balanceInfo = MutableStateFlow<Long?>(null)
     private val _walletHeight = MutableStateFlow(0L)
+    private val _scanTracking = AtomicBoolean(false)
+    private val _scanStartHeight = AtomicLong(0L)
     private val _unLockedBalance = MutableStateFlow<Long?>(null)
     private val _walletStatus = MutableStateFlow<Wallet.Status?>(null)
     private val _nextAddress = MutableStateFlow<Subaddress?>(null)
@@ -140,8 +143,71 @@ class WalletState {
     }
 
     /**
-     * Publishes both heights from the wallet's active daemon connection.
-     * The UI and sync progress must not use unrelated/stale height snapshots.
+     * Start tracking the real block-processing position. Monero's local chain
+     * height can jump during fast refresh, so it must not be used as scan progress.
+     */
+    val currentWalletHeight: Long
+        get() = _walletHeight.value
+
+    fun beginWalletScan(
+        wallet: Wallet? = getWallet,
+        scanStartHeight: Long? = null,
+        forceStartAtSelectedHeight: Boolean = false
+    ) {
+        if (wallet == null || !wallet.isInitialized) {
+            _scanTracking.set(false)
+            _walletHeight.value = 0L
+            clearSyncProgress()
+            return
+        }
+
+        val restoreHeight = (scanStartHeight ?: wallet.getRestoreHeight()).coerceAtLeast(0L)
+        val nativeHeight = wallet.getBlockChainHeight().takeIf { it > 1L } ?: 0L
+        _scanStartHeight.set(restoreHeight)
+        _scanTracking.set(true)
+        wallet.isSynchronized = false
+        _walletHeight.value = if (forceStartAtSelectedHeight) {
+            restoreHeight
+        } else {
+            maxOf(restoreHeight, nativeHeight)
+        }
+        updateBlockHeights(wallet)
+        updateSyncProgressFromWallet(wallet)
+    }
+
+    /**
+     * Called by Monero's WalletListener for a block actually processed by the
+     * wallet. The callback uses a zero-based block index; displayed height is a count.
+     */
+    fun recordScannedBlockHeight(blockIndex: Long, wallet: Wallet? = getWallet) {
+        if (wallet == null || !wallet.isInitialized || blockIndex < 0L) return
+
+        updateBlockHeights(wallet)
+        if (!_scanTracking.get()) {
+            _walletHeight.update { maxOf(it, blockIndex + 1L) }
+            updateSyncProgressFromWallet(wallet)
+            return
+        }
+
+        // Ignore fast-refresh hash callbacks before the selected restore height.
+        if (blockIndex < _scanStartHeight.get()) return
+
+        val processedHeight = maxOf(_scanStartHeight.get(), blockIndex + 1L)
+        _walletHeight.update { maxOf(it, processedHeight) }
+        updateSyncProgressFromWallet(wallet)
+    }
+
+    fun completeWalletScan(wallet: Wallet? = getWallet) {
+        _scanTracking.set(false)
+        if (wallet != null && wallet.isInitialized) {
+            updateBlockHeights(wallet)
+        }
+        clearSyncProgress()
+    }
+
+    /**
+     * Publishes the active daemon height and (only outside a scan) the native
+     * wallet height. During a scan, WalletListener callbacks are the source of truth.
      */
     fun updateBlockHeights(wallet: Wallet? = getWallet) {
         if (wallet == null || !wallet.isInitialized) {
@@ -150,9 +216,11 @@ class WalletState {
             return
         }
 
-        val chainHeight = wallet.getBlockChainHeight().takeIf { it > 1L } ?: 0L
+        val nativeWalletHeight = wallet.getBlockChainHeight().takeIf { it > 1L } ?: 0L
         val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
-        _walletHeight.update { chainHeight }
+        if (!_scanTracking.get()) {
+            _walletHeight.update { nativeWalletHeight }
+        }
 
         val address = try {
             WalletManager.instance?.getDaemonAddress()
@@ -171,16 +239,20 @@ class WalletState {
     }
 
     /**
-     * Refreshes the sync indicator from the same heights shown in node settings.
+     * Computes backlog from the actual processed scan height, not the local hash-chain size.
      */
     fun updateSyncProgressFromWallet(wallet: Wallet? = getWallet) {
         if (wallet == null || !wallet.isInitialized) {
             clearSyncProgress()
             return
         }
-        val chainHeight = wallet.getBlockChainHeight()
+        val chainHeight = if (_scanTracking.get()) {
+            _walletHeight.value
+        } else {
+            wallet.getBlockChainHeight().takeIf { it > 1L } ?: 0L
+        }
         val daemonHeight = wallet.getDaemonBlockChainHeight()
-        if (chainHeight < 0L || daemonHeight <= 0L) {
+        if (daemonHeight <= 0L) {
             clearSyncProgress()
             return
         }
@@ -191,15 +263,11 @@ class WalletState {
             return
         }
 
-        // The latest real wallet height is still behind the daemon.
-        // Do not expose partial balance/history until refreshed() confirms completion.
         wallet.isSynchronized = false
-        val targetHeight = wallet.getDaemonBlockChainTargetHeight()
-        val progress = if (targetHeight > 0L) {
-            (chainHeight.toDouble() / targetHeight.toDouble()).toFloat().coerceIn(0f, 0.999f)
-        } else {
-            0f
-        }
+        val targetHeight = wallet.getDaemonBlockChainTargetHeight().takeIf { it > 0L } ?: daemonHeight
+        val progress = (chainHeight.toDouble() / targetHeight.toDouble())
+            .toFloat()
+            .coerceIn(0f, 0.999f)
         syncUpdate(SyncProgress(progress, left))
     }
 
@@ -281,7 +349,7 @@ class WalletState {
 
     fun syncUpdate(syncProgress: SyncProgress) {
         val progress = syncProgress.progress
-        val done = syncProgress.left <= 1L
+        val done = syncProgress.left <= 0L
         if (done) {
             _syncProgress.value = null
             _isSyncing.set(false)
@@ -400,6 +468,11 @@ class WalletState {
         _transactions.value = emptyList()
         _coins.value = emptyList()
         setLoading(true)
+        beginWalletScan(
+            wallet = wallet,
+            scanStartHeight = wallet.getRestoreHeight(),
+            forceStartAtSelectedHeight = true
+        )
 
         return try {
             wallet.rescanBlockchainAsync()

@@ -117,9 +117,12 @@ class AnonWalletHandler(
             if (initialized && wallet.isInitialized) {
                 val actualRestoreHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
                 prefs.edit { putLong(RESTORE_HEIGHT, actualRestoreHeight) }
+                wallet.setTrustedDaemon(true)
+                // Initialize scan height from the wallet's selected restore point before
+                // refresh callbacks begin. The listener then advances it per processed block.
+                walletState.beginWalletScan(wallet, actualRestoreHeight)
                 // Only access native transaction history after wallet initialization.
                 wallet.refreshHistory()
-                wallet.setTrustedDaemon(true)
                 wallet.startRefresh()
                 walletState.update()
             } else {
