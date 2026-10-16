@@ -122,7 +122,8 @@ fun SubAddressesScreen(
                                     address.label.isBlank() ||
                                     Subaddress.DEFAULT_LABEL_FORMATTER.matcher(address.label).matches() ||
                                     address.displayLabel.startsWith("SubAddress #", ignoreCase = true) ||
-                                    address.label.equals("Primary address", ignoreCase = true)
+                                    address.label.equals("Primary address", ignoreCase = true) ||
+                                    address.displayLabel.equals("Primary address", ignoreCase = true)
                                 val labelText = when {
                                     generatedLabel && address.addressIndex == 0 ->
                                         stringResource(R.string.primary_address)
