@@ -40,6 +40,7 @@ class WalletState {
     private val _transactions = MutableStateFlow<List<TransactionInfo>>(listOf())
     private val _subAddresses = MutableStateFlow<List<Subaddress>>(listOf())
     private val _balanceInfo = MutableStateFlow<Long?>(null)
+    private val _walletHeight = MutableStateFlow(0L)
     private val _unLockedBalance = MutableStateFlow<Long?>(null)
     private val _walletStatus = MutableStateFlow<Wallet.Status?>(null)
     private val _nextAddress = MutableStateFlow<Subaddress?>(null)
@@ -55,6 +56,7 @@ class WalletState {
     val transactions: Flow<List<TransactionInfo>> = _transactions
 
     val balanceInfo: Flow<Long?> = _balanceInfo
+    val walletHeight: Flow<Long> = _walletHeight
     val unLockedBalance: Flow<Long?> = _unLockedBalance
     val isLoading: Flow<Boolean> = _isLoading
     val isSyncing get():Boolean = _isSyncing.get()
@@ -79,31 +81,29 @@ class WalletState {
     fun update() {
         if (_blockUpdates.get()) return
         getWallet?.let { wallet ->
-            if (wallet.isInitialized) {
-                _balanceInfo.update { wallet.balance }
-                _unLockedBalance.update {
-                    if (AnonConfig.viewOnly) wallet.viewOnlyBalance() else wallet.unlockedBalance
-                }
-                _walletStatus.update { wallet.fullStatus }
-                if (wallet.status.errorString.isNotEmpty()) {
-                    Timber.tag(TAG).i("StatusError %s", wallet.status.errorString)
-                }
-                val address = try {
-                    WalletManager.instance?.getDaemonAddress()
-                } catch (_: Exception) {
-                    null
-                }
-                address?.let {
-                    _connectedDaemon.update {
-                        DaemonInfo(
-                            address,
-                            connectionStatus = wallet.fullStatus.connectionStatus
-                                ?: Wallet.ConnectionStatus.ConnectionStatus_Disconnected,
-                            WalletManager.instance?.getBlockchainHeight() ?: -1L
-                        )
-                    }
-                }
+            if (!wallet.isInitialized) {
+                _walletHeight.value = 0L
+                _balanceInfo.value = null
+                _unLockedBalance.value = null
+                _walletStatus.value = null
+                _transactions.value = listOf()
+                _nextAddress.value = null
+                _subAddresses.value = listOf()
+                _coins.value = listOf()
+                _connectedDaemon.update { current -> current?.copy(daemonHeight = 0L) }
+                return@let
             }
+
+            updateBlockHeights(wallet)
+            _balanceInfo.update { wallet.balance }
+            _unLockedBalance.update {
+                if (AnonConfig.viewOnly) wallet.viewOnlyBalance() else wallet.unlockedBalance
+            }
+            _walletStatus.update { wallet.fullStatus }
+            if (wallet.status.errorString.isNotEmpty()) {
+                Timber.tag(TAG).i("StatusError %s", wallet.status.errorString)
+            }
+
             val oldTxCount = _transactions.value.size
             val updatedTxs = (wallet.history?.all?.sortedWith(comparator = { o1, o2 ->
                 o2.timestamp.compareTo(o1.timestamp)
@@ -120,11 +120,72 @@ class WalletState {
                 }
             }
             if (!backgroundSync) {
-                _nextAddress.update { (wallet.getLatestSubAddress()) }
-                _subAddresses.update { (wallet.getAllUsedSubAddresses()).reversed() }
+                _nextAddress.update { wallet.getLatestSubAddress() }
+                _subAddresses.update { wallet.getAllUsedSubAddresses().reversed() }
                 _coins.update { (wallet.coins?.all ?: listOf()).fastFilter { !it.spent } }
             }
         }
+    }
+
+    /**
+     * Publishes both heights from the wallet's active daemon connection.
+     * The UI and sync progress must not use unrelated/stale height snapshots.
+     */
+    fun updateBlockHeights(wallet: Wallet? = getWallet) {
+        if (wallet == null || !wallet.isInitialized) {
+            _walletHeight.value = 0L
+            _connectedDaemon.update { current -> current?.copy(daemonHeight = 0L) }
+            return
+        }
+
+        val chainHeight = wallet.getBlockChainHeight().takeIf { it > 1L } ?: 0L
+        val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+        _walletHeight.update { chainHeight }
+
+        val address = try {
+            WalletManager.instance?.getDaemonAddress()
+        } catch (_: Exception) {
+            null
+        }
+        val status = wallet.fullStatus.connectionStatus
+            ?: Wallet.ConnectionStatus.ConnectionStatus_Disconnected
+        if (address != null) {
+            _connectedDaemon.update { DaemonInfo(address, status, daemonHeight) }
+        } else {
+            _connectedDaemon.update { current ->
+                current?.copy(connectionStatus = status, daemonHeight = daemonHeight)
+            }
+        }
+    }
+
+    /**
+     * Refreshes the sync indicator from the same heights shown in node settings.
+     */
+    fun updateSyncProgressFromWallet(wallet: Wallet? = getWallet) {
+        if (wallet == null || !wallet.isInitialized) {
+            clearSyncProgress()
+            return
+        }
+        val chainHeight = wallet.getBlockChainHeight()
+        val daemonHeight = wallet.getDaemonBlockChainHeight()
+        if (chainHeight < 0L || daemonHeight <= 0L) {
+            clearSyncProgress()
+            return
+        }
+
+        val left = (daemonHeight - chainHeight).coerceAtLeast(0L)
+        if (left <= 1L) {
+            syncUpdate(SyncProgress(progress = 1f, left = 0L))
+            return
+        }
+
+        val targetHeight = wallet.getDaemonBlockChainTargetHeight()
+        val progress = if (targetHeight > 0L) {
+            (chainHeight.toDouble() / targetHeight.toDouble()).toFloat().coerceIn(0f, 0.999f)
+        } else {
+            0f
+        }
+        syncUpdate(SyncProgress(progress, left))
     }
 
     fun setLoading(b: Boolean) {
@@ -205,7 +266,7 @@ class WalletState {
 
     fun syncUpdate(syncProgress: SyncProgress) {
         val progress = syncProgress.progress
-        val done = syncProgress.left <= 0L || (progress.isFinite() && progress >= 1f)
+        val done = syncProgress.left <= 1L
         if (done) {
             _syncProgress.value = null
             _isSyncing.set(false)
@@ -267,14 +328,35 @@ class WalletState {
     }
 
     fun refresh() {
-        if(getWallet?.isInitialized != true) {
-            return;
+        val wallet = getWallet
+        if (wallet == null || !wallet.isInitialized) {
+            clearSyncProgress()
+            setLoading(false)
+            return
         }
-        if (getWallet?.fullStatus?.connectionStatus == Wallet.ConnectionStatus.ConnectionStatus_Connected) {
-            setLoading(true);
-            getWallet?.startRefresh();
-        };
-        getWallet?.refreshHistory()
+
+        val connected = wallet.fullStatus.connectionStatus ==
+            Wallet.ConnectionStatus.ConnectionStatus_Connected
+        if (connected) {
+            setLoading(true)
+            wallet.startRefresh()
+        } else {
+            clearSyncProgress()
+        }
+
+        try {
+            wallet.refreshHistory()
+            update()
+            if (connected) {
+                updateBlockHeights(wallet)
+                updateSyncProgressFromWallet(wallet)
+            }
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Wallet refresh failed")
+            clearSyncProgress()
+        } finally {
+            setLoading(false)
+        }
     }
 
     fun resyncBlockchain(): Result<Boolean> {

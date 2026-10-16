@@ -512,12 +512,7 @@ fun NodeListItem(
     val daemonStatus by nodeSettingsVM.getCurrentDaemonLive().observeAsState(null)
     val connectionError by nodeSettingsVM.connectionError.observeAsState(null)
     val walletState = koinInject<WalletState>()
-    val walletStatus by walletState.walletStatus.collectAsState(initial = null)
-    val walletHeight = remember(walletStatus) {
-        // The native wallet can report 1 before it has a usable blockchain height.
-        (WalletManager.instance?.wallet?.getBlockChainHeight() ?: 0L)
-            .takeIf { it > 1L } ?: 0L
-    }
+    val walletHeight by walletState.walletHeight.asLiveData().observeAsState(0L)
 
     ListItem(
         modifier = modifier

@@ -126,9 +126,7 @@ import androidx.compose.ui.res.painterResource
 class TransactionsViewModel : ViewModel() {
     private val walletState: WalletState by inject(WalletState::class.java)
 
-    val balance = walletState.balanceInfo.map {
-        it ?: 0L
-    }.asLiveData()
+    val balance = walletState.balanceInfo.asLiveData()
 
     val transactions = walletState.transactions
         .asLiveData()
@@ -696,8 +694,10 @@ fun TransactionScreen(
                                     .offset(y = (-12).dp)
                             )
                             Text(
-                                if (hideAmounts) Formats.maskAmount(balance ?: 0)
-                                else Formats.getDisplayAmountAdaptive(balance ?: 0),
+                                balance?.let { amount ->
+                                    if (hideAmounts) Formats.maskAmount(amount)
+                                    else Formats.getDisplayAmountAdaptive(amount)
+                                } ?: "—",
                                 style = MaterialTheme.typography
                                     .displaySmall,
                                 maxLines = 1,

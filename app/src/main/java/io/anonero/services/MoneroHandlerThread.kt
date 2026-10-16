@@ -38,32 +38,9 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
 
     override fun newBlock(height: Long) {
         Timber.tag(name).i("newBlock: %s", height)
-        updateSyncProgress(height)
-    }
-
-    private fun updateSyncProgress(height: Long) {
-        val syncHeight = wallet.getBlockChainHeight()
-        val daemonHeight = wallet.getDaemonBlockChainHeight()
-        if (syncHeight < 0L || daemonHeight <= 0L) {
-            walletState.clearSyncProgress()
-            return
-        }
-
-        val left = (daemonHeight - syncHeight).coerceAtLeast(0L)
-        if (left == 0L) {
-            walletState.syncUpdate(SyncProgress(progress = 1f, left = 0L))
-            return
-        }
-
-        val targetHeight = wallet.getDaemonBlockChainTargetHeight()
-        val progress = if (targetHeight <= 0L) {
-            0f
-        } else {
-            (maxOf(height, syncHeight).toDouble() / targetHeight.toDouble())
-                .toFloat()
-                .coerceIn(0f, 0.999f)
-        }
-        walletState.syncUpdate(SyncProgress(progress, left))
+        walletState.updateBlockHeights(wallet)
+        walletState.updateSyncProgressFromWallet(wallet)
+        walletState.setLoading(false)
     }
 
     override fun updated() {
@@ -76,29 +53,36 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
         val status = wallet.fullStatus.connectionStatus
         val daemonHeight = wallet.getDaemonBlockChainHeight()
         val chainHeight = wallet.getBlockChainHeight()
-        /// height
-        Timber.tag(name)
-            .i("refreshed() status:${status} daemonHeight:$daemonHeight chainHeight:$chainHeight ")
-        if (status === Wallet.ConnectionStatus.ConnectionStatus_Disconnected || status == null) {
+        Timber.tag(name).i(
+            "refreshed() status:%s daemonHeight:%d chainHeight:%d",
+            status, daemonHeight, chainHeight
+        )
+
+        if (status == Wallet.ConnectionStatus.ConnectionStatus_Disconnected || status == null) {
             walletState.clearSyncProgress()
             walletState.setLoading(false)
             tryRestartConnection()
+        } else if (daemonHeight <= 0L || chainHeight < 0L) {
+            // Unknown heights are not proof that the wallet is synchronized.
+            walletState.clearSyncProgress()
+            walletState.setLoading(false)
         } else {
             val heightDiff = daemonHeight - chainHeight
-            if (heightDiff >= 2) {
-                tryRestartConnection()
+            if (heightDiff > 1L) {
+                // Keep the wallet's existing refresh loop running. Re-running init(0)
+                // during synchronization can reset state and leave loading stuck.
+                walletState.updateBlockHeights(wallet)
+                walletState.updateSyncProgressFromWallet(wallet)
+                walletState.setLoading(false)
             } else {
-                // The wallet has caught up (or is ahead of a stale daemon height).
-                // Always clear any previous progress, even if isSynchronized was
-                // already true before this callback.
                 walletState.syncUpdate(SyncProgress(progress = 1f, left = 0L))
                 wallet.setSynchronized()
                 wallet.store()
                 refresh(true)
                 walletState.setLoading(false)
             }
-
         }
+
         walletState.update()
     }
 
