@@ -53,6 +53,9 @@ data class OutputDetailRoute(val pubKey: String)
 data object SettingsNodeRoute
 
 @Serializable
+data object NodeManagementRoute
+
+@Serializable
 data object ProxySettingsRoute
 
 @Serializable
