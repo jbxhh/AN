@@ -507,6 +507,11 @@ fun NodeListItem(
     var menu by remember { mutableStateOf(false) }
     val daemonStatus by nodeSettingsVM.getCurrentDaemonLive().observeAsState(null)
     val connectionError by nodeSettingsVM.connectionError.observeAsState(null)
+    val walletState = koinInject<WalletState>()
+    val walletStatus by walletState.walletStatus.collectAsState(initial = null)
+    val walletHeight = remember(walletStatus) {
+        WalletManager.instance?.wallet?.getBlockChainHeight() ?: 0L
+    }
 
     ListItem(
         modifier = modifier
@@ -531,13 +536,23 @@ fun NodeListItem(
             )
         },
         supportingContent = {
-            if (active)
-                Text(
-                    "区块高度:${daemonStatus?.daemonHeight?.toString() ?: ""} ",
-                    style = MaterialTheme
-                        .typography.bodySmall,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
+            if (active) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "区块高度:${daemonStatus?.daemonHeight?.toString() ?: ""}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        "钱包高度:${if (walletStatus == null) "" else walletHeight.toString()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.End
+                    )
+                }
+            }
         },
         trailingContent = {
             Row(
