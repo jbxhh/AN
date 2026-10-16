@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -39,6 +40,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import io.anonero.R
 import io.anonero.model.Subaddress
 import io.anonero.services.WalletState
 import io.anonero.ui.components.SubAddressLabelDialog
@@ -54,7 +56,6 @@ class SubAddressListViewModel : ViewModel() {
 
     val subAddresses = walletState.subAddresses.asLiveData()
 
-
     fun getNextAddress() {
         viewModelScope.launch(Dispatchers.IO) {
             walletState.getNewAddress()
@@ -66,7 +67,6 @@ class SubAddressListViewModel : ViewModel() {
             walletState.updateAddressLabel(label, addressIndex)
         }
     }
-
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
@@ -88,20 +88,14 @@ fun SubAddressesScreen(
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    IconButton(
-                        onClick = onBackPress
-                    ) {
+                    IconButton(onClick = onBackPress) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                     }
                 },
-                title = {},
+                title = { Text(stringResource(R.string.subaddress_label_list)) },
                 actions = {
-                    IconButton(
-                        onClick = {
-                            vm.getNextAddress()
-                        }
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null)
+                    IconButton(onClick = { vm.getNextAddress() }) {
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_subaddress_label))
                     }
                 }
             )
@@ -117,25 +111,19 @@ fun SubAddressesScreen(
                                 sharedTransitionScope.rememberSharedContentState(key = "${address.address}:${address.addressIndex}"),
                                 animatedVisibilityScope = animatedContentScope
                             )
-                            .padding(
-                                horizontal = 4.dp,
-                                vertical = 6.dp
-                            )
-
-                            .clickable {
-                                navigateToDetails(address)
-                            },
+                            .padding(horizontal = 4.dp, vertical = 6.dp)
+                            .clickable { navigateToDetails(address) },
                         headlineContent = {
                             Row(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
-                                address.displayLabel.ifEmpty { "添加标签 ${address.addressIndex}" },
+                                    address.displayLabel.ifEmpty {
+                                        "${stringResource(R.string.add_subaddress_label)} ${address.addressIndex}"
+                                    },
                                     color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.clickable {
-                                        editingAddress = address
-                                    }
+                                    modifier = Modifier.clickable { editingAddress = address }
                                 )
                                 Text(
                                     Formats.getDisplayAmount(address.totalAmount),
@@ -153,7 +141,7 @@ fun SubAddressesScreen(
                                     textAlign = TextAlign.Justify
                                 )
                             }
-                        },
+                        }
                     )
                 }
             }
@@ -175,7 +163,5 @@ fun SubAddressesScreen(
 @Preview(device = "id:pixel_7_pro")
 @Composable
 private fun SubAddressScreenPrev() {
-    AnonNeroTheme {
-
-    }
+    AnonNeroTheme { }
 }
