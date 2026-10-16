@@ -551,7 +551,7 @@ fun NodeListItem(
                         style = MaterialTheme.typography.bodySmall
                     )
                     Text(
-                        "钱包高度：${if (walletStatus == null) "" else walletHeight.toString()}",
+                        "钱包高度：${walletHeight}",
                         style = MaterialTheme.typography.bodySmall,
                         textAlign = TextAlign.End
                     )
