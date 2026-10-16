@@ -106,8 +106,7 @@ fun SettingsPage(
                     MenuItem(stringResource(R.string.settings_secure_wipe)) {
                         navigateTo(SecureWipeRoute)
                     }
-                    // Make the final line under the delete item clearly visible.
-                    SettingsDivider(emphasized = true)
+                    SettingsDivider()
                 }
             }
 
@@ -135,15 +134,10 @@ fun SettingsPage(
 }
 
 @Composable
-private fun SettingsDivider(emphasized: Boolean = false) {
+private fun SettingsDivider() {
     HorizontalDivider(
         modifier = Modifier.padding(horizontal = 4.dp),
-        thickness = 2.5.dp,
-        color = if (emphasized) {
-            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-        } else {
-            MaterialTheme.colorScheme.outlineVariant
-        }
+        thickness = 2.5.dp
     )
 }
 
