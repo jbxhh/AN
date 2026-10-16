@@ -124,7 +124,7 @@
      <string name="spend_key">Spend Key</string>
      <string name="export_nero_keys">Export [ИΞR0] keys</string>
      <string name="settings_connection">Connection</string>
-     <string name="settings_node_settings">Node Settings</string>
+     <string name="settings_node_settings">节点</string>
      <string name="settings_proxy_settings">Proxy Settings</string>
     <string name="settings_proxy_subtitle">Tor and manual proxy configuration</string>
      <string name="settings_security">Security</string>
