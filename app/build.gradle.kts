@@ -15,8 +15,9 @@ android {
     namespace = "io.anonero"
     compileSdk = 35
     defaultConfig {
-        // Keep a distinct base ID so every flavor can be installed alongside the upstream app.
-        applicationId = "io.anonero.jbxhh"
+        // Include versionCode in the package ID so different published versions can coexist.
+        // Bumping versionCode intentionally installs a separate app with isolated app data.
+        applicationId = "io.anonero.jbxhh.v$versionCode"
         minSdk = 26
         targetSdk = 35
         versionCode = 7
