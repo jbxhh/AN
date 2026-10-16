@@ -2,7 +2,6 @@ package io.anonero.ui.home.settings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,7 +19,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.anonero.R
@@ -86,7 +84,7 @@ private fun SettingsMenuItem(title: String, onClick: () -> Unit) {
                 indication = null,
                 onClick = onClick
             ),
-        headlineContent = { Text(title, textAlign = TextAlign.Start) }
+        headlineContent = { Text(title, style = androidx.compose.material3.MaterialTheme.typography.titleMedium) }
     )
 }
 
