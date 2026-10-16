@@ -245,9 +245,13 @@ fun RestoreWallet(
                         OutlinedTextField(
                             value = restoreHeight,
                             shape = MaterialTheme.shapes.medium,
-                            onValueChange = {
-                                restoreHeight = it
-                                restoreHeightError = null
+                            onValueChange = { value ->
+                                if (value.isEmpty() || value.all(Char::isDigit)) {
+                                    restoreHeight = value
+                                    restoreHeightError = null
+                                } else {
+                                    restoreHeightError = "恢复高度必须是非负整数"
+                                }
                             },
                             keyboardOptions = KeyboardOptions(
                                 imeAction = ImeAction.Done,
@@ -271,14 +275,19 @@ fun RestoreWallet(
             AnonOutlineButton(
                 onClick = {
                     if (enabled) {
-                        if (seedList.size == 25 && restoreHeight.isEmpty()) {
-                            restoreHeightError = "Restore height required for 25 word seed"
+                        val selectedRestoreHeight = restoreHeight.trim().takeIf { it.isNotEmpty() }?.toLongOrNull()
+                        if (restoreHeight.isNotBlank() && selectedRestoreHeight == null) {
+                            restoreHeightError = "恢复高度无效，请输入有效的非负整数"
+                            return@AnonOutlineButton
+                        }
+                        if (seedList.size == 25 && selectedRestoreHeight == null) {
+                            restoreHeightError = "25 个助记词恢复必须填写恢复高度"
                             return@AnonOutlineButton
                         }
                         oNextPressed(
                             RestorePayload(
                                 seed = seedList,
-                                restoreHeight = restoreHeight.trim().toLongOrNull(),
+                                restoreHeight = selectedRestoreHeight,
                             )
                         )
                     }
