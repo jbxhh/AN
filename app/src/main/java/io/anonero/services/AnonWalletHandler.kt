@@ -18,6 +18,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import timber.log.Timber
 import androidx.core.content.edit
@@ -72,10 +73,8 @@ class AnonWalletHandler(
         )
 
         wallet.setListener(handler)
-        wallet.refreshHistory()
         handler?.start()
         walletState.setLoading(true)
-        walletState.update()
         try {
             val host = prefs.getString(NodeFields.RPC_HOST.value, "")
             val rpcPort = prefs.getInt(NodeFields.RPC_PORT.value, Node.defaultRpcPort)
@@ -85,12 +84,14 @@ class AnonWalletHandler(
             val proxyPort = prefs.getInt(WALLET_PROXY_PORT, -1)
             val useTor = prefs.getBoolean(WALLET_USE_TOR, true)
             if (useTor || proxyHost.isNullOrBlank()) {
-                torService.start();
-                while (torService.socks == null) {
-                    delay(200)
-                }
-                val socket = torService.socks
-                WalletManager.instance?.setProxy("${socket?.value}")
+                torService.start()
+                val socket = withTimeoutOrNull(30_000L) {
+                    while (torService.socks == null) {
+                        delay(200)
+                    }
+                    torService.socks
+                } ?: throw IllegalStateException("Timed out waiting for Tor SOCKS proxy")
+                WalletManager.instance?.setProxy("${socket.value}")
             } else if (proxyHost.isNotEmpty() && proxyPort != -1) {
                 WalletManager.instance?.setProxy("${proxyHost}:$proxyPort")
             } else {
@@ -110,22 +111,26 @@ class AnonWalletHandler(
                 updateDaemon(node)
                 walletState.setLoading(true)
             }
-            walletState.update()
-            if(wallet.isSynchronized) {
-                wallet.refreshHistory()
+            val initialized = wallet.init(0)
+            if (prefs.getLong(RESTORE_HEIGHT, 0L) != 0L) {
+                wallet.setRestoreHeight(prefs.getLong(RESTORE_HEIGHT, 0L))
             }
-            wallet.init(0)
-            if(prefs.getLong(RESTORE_HEIGHT, 0L)!=0L) {
-                wallet.setRestoreHeight(prefs.getLong(RESTORE_HEIGHT, 0L));
-            }
-            if (wallet.isInitialized) {
+            if (initialized && wallet.isInitialized) {
+                // Only access native transaction history after wallet initialization.
                 wallet.refreshHistory()
                 wallet.setTrustedDaemon(true)
                 wallet.startRefresh()
                 walletState.update()
+            } else {
+                Timber.tag(TAG).e("Wallet initialization failed: %s", wallet.status.errorString)
+                walletState.clearSyncProgress()
+                walletState.setConnectionStatus(Wallet.ConnectionStatus.ConnectionStatus_Disconnected)
+                walletState.setLoading(false)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Timber.tag(TAG).e(e, "Wallet service startup failed")
+            walletState.clearSyncProgress()
+            walletState.setConnectionStatus(Wallet.ConnectionStatus.ConnectionStatus_Disconnected)
             walletState.setLoading(false)
         }
 

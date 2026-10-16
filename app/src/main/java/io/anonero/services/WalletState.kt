@@ -82,10 +82,7 @@ class WalletState {
             if (wallet.isInitialized) {
                 _balanceInfo.update { wallet.balance }
                 _unLockedBalance.update {
-                    if (AnonConfig.viewOnly) {
-                        wallet.viewOnlyBalance()
-                    }
-                    wallet.unlockedBalance
+                    if (AnonConfig.viewOnly) wallet.viewOnlyBalance() else wallet.unlockedBalance
                 }
                 _walletStatus.update { wallet.fullStatus }
                 if (wallet.status.errorString.isNotEmpty()) {
@@ -191,6 +188,10 @@ class WalletState {
     fun setConnectionStatus(status: Wallet.ConnectionStatus) {
         val previous = _previousConnectionStatus.getAndSet(status)
         _connectionStatus.update { status }
+        if (status == Wallet.ConnectionStatus.ConnectionStatus_Disconnected) {
+            clearSyncProgress()
+            setLoading(false)
+        }
         if (previous == Wallet.ConnectionStatus.ConnectionStatus_Disconnected &&
             status == Wallet.ConnectionStatus.ConnectionStatus_Connected) {
             setLoading(true)
@@ -203,12 +204,21 @@ class WalletState {
     }
 
     fun syncUpdate(syncProgress: SyncProgress) {
-        val done = syncProgress.progress == 1f || syncProgress.left == 0L
-        _syncProgress.update { if (done) null else syncProgress }
-        _isSyncing.set(!done)
+        val progress = syncProgress.progress
+        val done = syncProgress.left <= 0L || (progress.isFinite() && progress >= 1f)
         if (done) {
-            _connectionStatus.update { Wallet.ConnectionStatus.ConnectionStatus_Connected }
+            _syncProgress.value = null
+            _isSyncing.set(false)
+        } else {
+            val safeProgress = if (progress.isFinite()) progress.coerceIn(0f, 0.999f) else 0f
+            _syncProgress.value = syncProgress.copy(progress = safeProgress)
+            _isSyncing.set(true)
         }
+    }
+
+    fun clearSyncProgress() {
+        _syncProgress.value = null
+        _isSyncing.set(false)
     }
 
     fun toggleHideAmounts() {
