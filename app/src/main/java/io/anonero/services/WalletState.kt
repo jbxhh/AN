@@ -495,17 +495,29 @@ class WalletState(private val prefs: SharedPreferences) {
         _backgroundSync.update { startBackgroundSync }
     }
 
+    @Synchronized
     fun getNewAddress() {
-        getWallet?.let {
-            it.addSubaddress(it.getAccountIndex(), "Subaddress #${it.numSubAddresses}")
-            it.store()
-            it.getLatestSubAddress().let { subAddresses ->
-                _nextAddress.update { subAddresses }
+        val wallet = getWallet ?: return
+        try {
+            val newIndex = wallet.numSubAddresses
+            wallet.addSubaddress(wallet.getAccountIndex(), "Subaddress #$newIndex")
+
+            // Confirm the native wallet actually appended the requested index before
+            // reading it or publishing it to the UI.
+            val updatedCount = wallet.numSubAddresses
+            check(updatedCount > newIndex) {
+                "Native wallet did not create subaddress index $newIndex (count=$updatedCount)"
             }
-            it.getAllUsedSubAddresses().let { allItems ->
-                _subAddresses.update { allItems.reversed() }
+
+            if (!wallet.store()) {
+                Timber.tag(TAG).w("Subaddress %d created, but wallet.store() returned false", newIndex)
             }
+
+            _nextAddress.value = wallet.getLatestSubAddress()
+            _subAddresses.value = wallet.getAllUsedSubAddresses().reversed()
             update()
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Failed to add subaddress")
         }
     }
 
