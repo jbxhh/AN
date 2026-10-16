@@ -81,6 +81,7 @@ fun SettingsPage(
                     .padding(horizontal = 12.dp)
             ) {
                 item(key = "node") {
+                    SettingsDivider()
                     MenuItem(stringResource(R.string.settings_node_settings)) {
                         navigateTo(SettingsNodeRoute)
                     }
@@ -110,19 +111,7 @@ fun SettingsPage(
                     MenuItem(stringResource(R.string.settings_secure_wipe)) {
                         navigateTo(SecureWipeRoute)
                     }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 4.dp)
-                            .height(2.dp)
-                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
-                    )
-                }
-                item(key = "delete-divider-extra") {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(top = 6.dp),
-                        thickness = 2.5.dp
-                    )
+                    SettingsDivider()
                 }
             }
 
