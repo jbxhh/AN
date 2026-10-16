@@ -138,7 +138,7 @@ fun SettingsDataPage(
                     }
                 },
                 title = {
-                    Text(stringResource(R.string.settings_data_section))
+                    Text(stringResource(R.string.settings_security))
                 }
             )
         }
