@@ -14,6 +14,7 @@ import io.anonero.model.node.DaemonInfo
 import io.anonero.ui.util.getAllUsedSubAddresses
 import io.anonero.ui.util.getLatestSubAddress
 import io.anonero.ui.home.LockScreenShortCut
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -556,7 +558,7 @@ class WalletState(private val prefs: SharedPreferences) {
         }
     }
 
-    fun refresh() {
+    suspend fun refresh() {
         val wallet = getWallet
         if (wallet == null || !wallet.isInitialized) {
             clearSyncProgress()
@@ -564,33 +566,42 @@ class WalletState(private val prefs: SharedPreferences) {
             return
         }
 
-        val connected = wallet.fullStatus.connectionStatus ==
-            Wallet.ConnectionStatus.ConnectionStatus_Connected
-        if (!connected) {
-            clearSyncProgress()
-            setLoading(false)
-            return
-        }
-
         setLoading(true)
         try {
-            // Fetch the latest daemon height first and publish the real backlog before
-            // starting native refresh, so the progress bar and remaining-block count
-            // appear as soon as the node tip is known. Wallet height remains based on
-            // processed-block callbacks, never the native hash-chain cache height.
-            val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
-            updateBlockHeights(wallet, daemonHeight)
-            updateSyncProgressFromWallet(wallet, daemonHeight)
+            // Native wallet/RPC calls run on IO so the main thread can render the
+            // refreshed backlog as soon as the current daemon height is available.
+            withContext(Dispatchers.IO) {
+                val connected = wallet.fullStatus.connectionStatus ==
+                    Wallet.ConnectionStatus.ConnectionStatus_Connected
+                if (!connected) {
+                    clearSyncProgress()
+                    return@withContext
+                }
 
-            wallet.startRefresh()
-            wallet.refreshHistory()
-            update()
+                // Publish the real remaining-block count before starting native refresh.
+                // Wallet height remains listener-authoritative, not the native hash cache.
+                val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+                updateBlockHeights(wallet, daemonHeight)
+                updateSyncProgressFromWallet(wallet, daemonHeight)
 
-            // The daemon tip may advance while refresh starts; publish the newer target
-            // and recalculate remaining blocks after the initial history update.
-            val latestDaemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
-            updateBlockHeights(wallet, latestDaemonHeight)
-            updateSyncProgressFromWallet(wallet, latestDaemonHeight)
+                // If the wallet is already caught up, hide the temporary refresh spinner.
+                // A real backlog will show through syncProgress independently of isLoading.
+                if (daemonHeight > 0L && _walletHeight.value >= daemonHeight) {
+                    setLoading(false)
+                }
+
+                wallet.startRefresh()
+                wallet.refreshHistory()
+                update()
+
+                // The daemon tip may advance while refresh starts; publish the newer target.
+                val latestDaemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+                updateBlockHeights(wallet, latestDaemonHeight)
+                updateSyncProgressFromWallet(wallet, latestDaemonHeight)
+                if (latestDaemonHeight > 0L && _walletHeight.value >= latestDaemonHeight) {
+                    setLoading(false)
+                }
+            }
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Wallet refresh failed")
             clearSyncProgress()
