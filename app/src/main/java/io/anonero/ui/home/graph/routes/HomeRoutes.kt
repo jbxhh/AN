@@ -29,6 +29,9 @@ data class ReviewTransactionRoute(val toAddress: String)
 data object SettingsRoute
 
 @Serializable
+data object SettingsWalletRoute
+
+@Serializable
 data object SettingsViewSeedRoute
 
 @Serializable
