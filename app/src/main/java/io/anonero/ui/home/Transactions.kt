@@ -94,7 +94,7 @@ import io.anonero.ui.components.WalletProgressIndicator
 import io.anonero.ui.home.graph.routes.CoinsScreenRoute
 import io.anonero.ui.home.graph.routes.ReviewTransactionRoute
 import io.anonero.ui.home.graph.routes.SendScreenRoute
-import io.anonero.ui.home.graph.routes.SettingsNodeRoute
+import io.anonero.ui.home.graph.routes.NodeManagementRoute
 import io.anonero.ui.home.graph.routes.TransactionsRoute
 import io.anonero.ui.home.spend.qr.ExportType
 import io.anonero.ui.home.spend.qr.ImportEvents
@@ -507,7 +507,7 @@ fun TransactionScreen(
                     }
                     IconButton(
                         onClick = {
-                            navigateTo(SettingsNodeRoute)
+                            navigateTo(NodeManagementRoute)
                         }
                     ) {
                         val torIconColor = if (useTor && torConnected == false) Color.Red else Color.White
