@@ -64,12 +64,23 @@ class WalletManager {
         val wallet = Wallet(walletHandle)
         manageWallet(wallet)
         if (wallet.status.isOk) {
-            wallet.setPassword(password)
-            wallet.setRestoreHeight(height)
+//            // (Re-)Estimate restore height based on what we know
+//            val oldHeight = wallet.getRestoreHeight()
+//            // Go back 4 days if we don't have a precise restore height
+//            val restoreDate = Calendar.getInstance()
+//            restoreDate.add(Calendar.DAY_OF_MONTH, 0)
+//            val restoreHeight =
+//                if (height > -1) height else RestoreHeight.instance?.getHeight(restoreDate.time)
+//            if (restoreHeight != null) {
+//                wallet.setRestoreHeight(restoreHeight)
+//            }
+//            Log.d("WalletManager.kt", "Changed Restore Height from $oldHeight to ${wallet.getRestoreHeight()}")
+            wallet.setPassword(password) // this rewrites the keys file (which contains the restore height)
         }
         return wallet
     }
 
+    //public native List<String> findWallets(String path); // this does not work - some error in boost
     private external fun createWalletJ(
         path: String,
         password: String,
@@ -186,6 +197,8 @@ class WalletManager {
         unmanageWallet(wallet)
         val closed = closeJ(wallet)
         if (!closed) {
+            // in case we could not close it
+            // we manage it again
             manageWallet(wallet)
         }
         return closed
@@ -208,23 +221,21 @@ class WalletManager {
 
     private external fun queryWalletDeviceJ(keysFileName: String, password: String): Int
 
+    // this should not be called on the main thread as it connects to the node (and takes a long time)
     fun setDaemon(node: Node?) {
         if (node != null) {
-            // Validate before mutating manager state so a rejected cross-network node
-            // cannot leave stale credentials/address values behind.
-            require(networkType == node.networkType) { "network type does not match" }
-            setDaemonAddressJ(node.address)
             daemonAddress = node.address
+            require(networkType === node.networkType) { "network type does not match" }
             daemonUsername = node.username
             daemonPassword = node.password
-            Timber.tag(TAG).i("setDaemon: %s", daemonAddress)
+            daemonAddress?.let { addr -> setDaemonAddressJ(addr) }
+            Timber.tag(TAG).i("setDaemon:  %s", daemonAddress)
         } else {
-            // Clear the native manager too; clearing only Kotlin fields leaves the
-            // previous daemon configured in libanonero for later wallet operations.
-            setDaemonAddressJ("")
             daemonAddress = null
             daemonUsername = ""
             daemonPassword = ""
+            //setDaemonAddressJ(""); // don't disconnect as monero code blocks for many seconds!
+            //TODO: need to do something about that later
         }
     }
 
@@ -274,6 +285,7 @@ class WalletManager {
         var LOGLEVEL_TRACE = 3
         var LOGLEVEL_MAX = 4
 
+        // no need to keep a reference to the REAL WalletManager (we get it every tvTime we need it)
         @get:Synchronized
         var instance: WalletManager? = null
             get() {
