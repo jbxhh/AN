@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -178,7 +179,11 @@ fun CoinsScreen(
                 topBar = {
                     TopAppBar(
                         title = {
-                            Text("输出")
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                XmrText(style = MaterialTheme.typography.titleLarge)
+                                Spacer(Modifier.width(6.dp))
+                                Text("输出", style = MaterialTheme.typography.titleLarge)
+                            }
                         },
                         navigationIcon = {
                             IconButton(onClick = onBackPress) {
@@ -329,7 +334,13 @@ private fun OutputDetailScreen(
             .background(MaterialTheme.colorScheme.background)
     ) {
         TopAppBar(
-            title = { Text("输出") },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    XmrText(style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.width(6.dp))
+                    Text("输出", style = MaterialTheme.typography.titleLarge)
+                }
+            },
             navigationIcon = {
                 IconButton(onClick = onBackPress) {
                     Icon(
