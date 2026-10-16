@@ -94,7 +94,7 @@ fun CoinsScreen(
     }
 
     fun selectCoin(coin: CoinsInfo) {
-        if (coin.frozen || !coin.unlocked) return
+        if (coin.frozen || coin.spent) return
 
         selectedCoins = if (selectedCoins.contains(coin.key)) {
             selectedCoins - coin.key
@@ -111,46 +111,13 @@ fun CoinsScreen(
     }
 
     fun setOutputFrozen(coin: CoinsInfo, shouldFreeze: Boolean) {
-        val wallet = WalletManager.instance?.wallet
-        val walletCoins = wallet?.coins
-        if (wallet == null || walletCoins == null) {
-            reportOutputError("钱包不可用，请重新打开钱包")
-            return
-        }
-
-        val changed = runCatching {
-            if (shouldFreeze) walletCoins.setFrozen(coin.pub_key)
-            else walletCoins.thaw(coin.pub_key)
-        }.getOrDefault(false)
-        if (!changed) {
-            walletState.update()
-            reportOutputError(if (shouldFreeze) "冻结输出失败" else "解冻输出失败")
-            return
-        }
-
-        val stored = runCatching { wallet.store() }.getOrDefault(false)
-        if (!stored) {
-            // Roll back the in-memory change if it cannot be saved to the wallet file.
-            runCatching {
-                if (coin.frozen) walletCoins.setFrozen(coin.pub_key)
-                else walletCoins.thaw(coin.pub_key)
-            }
-            runCatching { wallet.store() }
-            walletState.update()
-            reportOutputError("保存输出状态失败，已尝试恢复原状态")
-            return
-        }
-
-        walletState.update()
-        val updatedCoin = walletCoins.all.firstOrNull { it.pub_key == coin.pub_key }
-        if (updatedCoin == null || updatedCoin.frozen != shouldFreeze) {
-            reportOutputError(if (shouldFreeze) "冻结状态未生效" else "解冻状态未生效")
-            return
-        }
-        detailCoin = updatedCoin
-        if (shouldFreeze) {
-            selectedCoins = selectedCoins - coin.key
-        }
+        // The upstream wallet API exposes the native frozen state for reading,
+        // but does not expose setters to freeze or thaw outputs. Do not simulate a
+        // successful state change or mutate wallet data locally.
+        reportOutputError(
+            if (shouldFreeze) "当前上游钱包接口不支持冻结输出"
+            else "当前上游钱包接口不支持解冻输出"
+        )
     }
 
     // 外层包一层不透明背景，确保 detailCoin 切换时不会透出下层
@@ -276,9 +243,9 @@ fun CoinsScreen(
                                             fontWeight = FontWeight.Medium,
                                             style = MaterialTheme.typography.bodyLarge
                                         )
-                                    } else if (!coin.unlocked) {
+                                    } else if (coin.spent) {
                                         Text(
-                                            "未解锁",
+                                            "已花费",
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             fontWeight = FontWeight.Medium,
                                             style = MaterialTheme.typography.bodyLarge
