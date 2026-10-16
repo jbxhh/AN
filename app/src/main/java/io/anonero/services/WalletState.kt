@@ -1,5 +1,7 @@
 package io.anonero.services
 
+import android.content.SharedPreferences
+import androidx.core.content.edit
 import androidx.compose.ui.util.fastDistinctBy
 import androidx.compose.ui.util.fastFilter
 import io.anonero.AnonConfig
@@ -31,7 +33,7 @@ data class SyncProgress(val progress: Float, val left: Long)
 
 private const val TAG = "WalletState"
 
-class WalletState {
+class WalletState(private val prefs: SharedPreferences) {
     private var _blockUpdates = AtomicBoolean(false)
     val hideAmountsFlow = MutableStateFlow(false)
     private val _isLoading = MutableStateFlow(false)
@@ -153,26 +155,69 @@ class WalletState {
         wallet: Wallet? = getWallet,
         scanStartHeight: Long? = null,
         forceStartAtSelectedHeight: Boolean = false
-    ) {
+    ): Boolean {
         if (wallet == null || !wallet.isInitialized) {
             _scanTracking.set(false)
             _walletHeight.value = 0L
             clearSyncProgress()
-            return
+            return false
         }
 
         val restoreHeight = (scanStartHeight ?: wallet.getRestoreHeight()).coerceAtLeast(0L)
         val nativeHeight = wallet.getBlockChainHeight().takeIf { it > 1L } ?: 0L
-        _scanStartHeight.set(restoreHeight)
+        val inProgressKey = scanPreferenceKey(wallet, "in_progress")
+        val completedKey = scanPreferenceKey(wallet, "completed")
+        val startKey = scanPreferenceKey(wallet, "start_height")
+        val processedKey = scanPreferenceKey(wallet, "processed_height")
+        val wasInterrupted = prefs.getBoolean(inProgressKey, false)
+        val hasCompletedScan = prefs.getBoolean(completedKey, false)
+        val savedStartHeight = prefs.getLong(startKey, restoreHeight).coerceAtLeast(restoreHeight)
+        val savedProcessedHeight = prefs.getLong(processedKey, -1L)
+
+        // Existing installations have no trusted processed-height marker yet. If the
+        // native hash-chain cache is already past the selected restore point, rebuild
+        // once instead of trusting a fast-forwarded hash-cache height.
+        val legacyNeedsRescan = !hasCompletedScan && !wasInterrupted &&
+            nativeHeight > restoreHeight + 1L
+        val requiresRescan = forceStartAtSelectedHeight || wasInterrupted || legacyNeedsRescan
+        val initialHeight = when {
+            forceStartAtSelectedHeight -> restoreHeight
+            wasInterrupted -> savedStartHeight
+            legacyNeedsRescan -> restoreHeight
+            hasCompletedScan && savedProcessedHeight >= restoreHeight -> savedProcessedHeight
+            else -> maxOf(restoreHeight, nativeHeight)
+        }
+        val actualScanStart = when {
+            forceStartAtSelectedHeight -> restoreHeight
+            wasInterrupted -> savedStartHeight
+            legacyNeedsRescan -> restoreHeight
+            else -> restoreHeight
+        }
+
+        _scanStartHeight.set(actualScanStart)
+        // Listener-derived height is authoritative: getBlockChainHeight() can include
+        // cached hashes for blocks whose wallet transactions have not yet been scanned.
         _scanTracking.set(true)
         wallet.isSynchronized = false
-        _walletHeight.value = if (forceStartAtSelectedHeight) {
-            restoreHeight
-        } else {
-            maxOf(restoreHeight, nativeHeight)
+        _walletHeight.value = initialHeight
+        prefs.edit {
+            putBoolean(inProgressKey, true)
+            putBoolean(completedKey, false)
+            if (forceStartAtSelectedHeight || !wasInterrupted || !prefs.contains(startKey)) {
+                putLong(startKey, actualScanStart)
+            }
+            putLong(processedKey, initialHeight)
         }
         updateBlockHeights(wallet)
         updateSyncProgressFromWallet(wallet)
+        return requiresRescan
+    }
+
+    private fun scanPreferenceKey(wallet: Wallet, suffix: String): String {
+        val path = wallet.getPath()?.takeIf { it.isNotBlank() } ?: wallet.name
+        val identity = path + "|" + wallet.address
+        val hash = identity.fold(0) { acc, char -> 31 * acc + char.code }
+        return "anonero_scan_" + hash + "_" + suffix
     }
 
     /**
@@ -183,23 +228,20 @@ class WalletState {
         if (wallet == null || !wallet.isInitialized || blockIndex < 0L) return
 
         updateBlockHeights(wallet)
-        if (!_scanTracking.get()) {
-            _walletHeight.update { maxOf(it, blockIndex + 1L) }
-            updateSyncProgressFromWallet(wallet)
-            return
-        }
+        if (_scanTracking.get() && blockIndex < _scanStartHeight.get()) return
 
-        // Ignore fast-refresh hash callbacks before the selected restore height.
-        if (blockIndex < _scanStartHeight.get()) return
-
+        // The build-pinned Monero source suppresses hash-cache-only callbacks;
+        // this listener now means the wallet actually processed this block.
         val processedHeight = maxOf(_scanStartHeight.get(), blockIndex + 1L)
         _walletHeight.update { maxOf(it, processedHeight) }
+        prefs.edit {
+            putLong(scanPreferenceKey(wallet, "processed_height"), _walletHeight.value)
+        }
         // Keep the existing home balance area populated from Monero's live wallet
         // balance as processed blocks add discovered outputs; this is not a UI change.
         updateBalanceFromWallet(wallet)
         updateSyncProgressFromWallet(wallet)
     }
-
     private fun updateBalanceFromWallet(wallet: Wallet) {
         _balanceInfo.value = wallet.balance
         _unLockedBalance.value = if (AnonConfig.viewOnly) {
@@ -210,13 +252,18 @@ class WalletState {
     }
 
     fun completeWalletScan(wallet: Wallet? = getWallet) {
-        _scanTracking.set(false)
         if (wallet != null && wallet.isInitialized) {
+            // Keep listener-based height tracking enabled after sync. Native fast refresh
+            // can append hashes before it scans the corresponding wallet transactions.
             updateBlockHeights(wallet)
+            prefs.edit {
+                putBoolean(scanPreferenceKey(wallet, "in_progress"), false)
+                putBoolean(scanPreferenceKey(wallet, "completed"), true)
+                putLong(scanPreferenceKey(wallet, "processed_height"), _walletHeight.value)
+            }
         }
         clearSyncProgress()
     }
-
     /**
      * Publishes the active daemon height and (only outside a scan) the native
      * wallet height. During a scan, WalletListener callbacks are the source of truth.

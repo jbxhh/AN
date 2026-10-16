@@ -118,12 +118,16 @@ class AnonWalletHandler(
                 val actualRestoreHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
                 prefs.edit { putLong(RESTORE_HEIGHT, actualRestoreHeight) }
                 wallet.setTrustedDaemon(true)
-                // Initialize scan height from the wallet's selected restore point before
-                // refresh callbacks begin. The listener then advances it per processed block.
-                walletState.beginWalletScan(wallet, actualRestoreHeight)
+                // Recover an interrupted or legacy scan from the selected restore point.
+                // Native hash-chain height alone is not proof transactions were scanned.
+                val resumeScan = walletState.beginWalletScan(wallet, actualRestoreHeight)
                 // Only access native transaction history after wallet initialization.
                 wallet.refreshHistory()
-                wallet.startRefresh()
+                if (resumeScan) {
+                    wallet.rescanBlockchainAsync()
+                } else {
+                    wallet.startRefresh()
+                }
                 walletState.update()
             } else {
                 Timber.tag(TAG).e("Wallet initialization failed: %s", wallet.status.errorString)

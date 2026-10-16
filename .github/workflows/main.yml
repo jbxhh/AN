@@ -26,7 +26,7 @@ env:
   MONERO_REF: v0.18.5.3
   MONERO_COMMIT: 22578c3f7d7b4b6dd85ff7daa42a827d97cc53d0
   MONERO_PATCH_COMMIT: 33671871de3d51696b66ffb3bd94f744e26974f6
-  NATIVE_CACHE_SCHEMA: v3
+  NATIVE_CACHE_SCHEMA: v4
 
 jobs:
   source-check:
@@ -241,6 +241,35 @@ jobs:
           git -C "$RUNNER_TEMP/monero_c" checkout --detach "${MONERO_PATCH_COMMIT}"
           test "$(git -C "$RUNNER_TEMP/monero_c" rev-parse HEAD)" = "${MONERO_PATCH_COMMIT}"
           git -C external-libs/monero -c user.name="AN Native Build" -c user.email="actions@users.noreply.github.com" am --3way --whitespace=fix "$RUNNER_TEMP"/monero_c/patches/monero/*.patch
+
+          # Monero emits newBlock from two paths: transaction processing and the
+          # fast-refresh hash-chain cache. Suppress the cache-only callback so the
+          # app's wallet height advances only after real block processing.
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("external-libs/monero/src/wallet/wallet2.cpp")
+          source = path.read_text()
+          old = "\n".join([
+              "        if (0 != m_callback)",
+              "        { // FIXME: this isn't right, but simplewallet just logs that we got a block.",
+              "          cryptonote::block dummy;",
+              "          m_callback->on_new_block(current_index, dummy);",
+              "        }",
+          ])
+          if source.count(old) != 1:
+              raise SystemExit("Expected single hash-cache-only newBlock callback block")
+          replacement = "\n".join([
+              "        // Deliberately no on_new_block callback here: this path only appends a",
+              "        // block hash during fast refresh; it has not processed wallet transactions.",
+              "        // Progress callbacks are emitted after process_new_blockchain_entry().",
+          ])
+          source = source.replace(old, replacement, 1)
+          if "m_callback->on_new_block(height, b);" not in source:
+              raise SystemExit("Transaction-processing newBlock callback unexpectedly missing")
+          path.write_text(source)
+          print("Patched Monero: hash-cache updates no longer advance wallet scan height")
+          PY
+
           git -C external-libs/monero submodule update --init --recursive --depth 1
 
           api="external-libs/monero/src/wallet/api/wallet2_api.h"
