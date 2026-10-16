@@ -261,7 +261,9 @@ class WalletState(private val prefs: SharedPreferences) {
         val path = wallet.getPath()?.takeIf { it.isNotBlank() } ?: wallet.name
         val identity = path + "|" + wallet.address
         val hash = identity.fold(0) { acc, char -> 31 * acc + char.code }
-        return "anonero_scan_" + hash + "_" + suffix
+        // v2 deliberately ignores scan heights saved by builds that could receive
+        // Monero fast-refresh hash-cache callbacks as if they were processed blocks.
+        return "anonero_scan_v2_" + hash + "_" + suffix
     }
 
     /**
@@ -323,10 +325,25 @@ class WalletState(private val prefs: SharedPreferences) {
             return
         }
 
-        val nativeWalletHeight = wallet.getBlockChainHeight().takeIf { it > 1L } ?: 0L
         val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
         if (!_scanTracking.get()) {
-            _walletHeight.update { nativeWalletHeight }
+            // Never populate the displayed wallet height from blockChainHeight():
+            // Monero may append hashes during fast refresh before wallet transactions
+            // for those blocks have been scanned. Resume from trusted app scan state
+            // when available, otherwise begin at the wallet's configured restore height.
+            val restoreHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
+            val savedProcessedHeight = prefs.getLong(
+                scanPreferenceKey(wallet, "processed_height"),
+                -1L
+            )
+            val baseline = if (savedProcessedHeight >= restoreHeight) {
+                savedProcessedHeight
+            } else {
+                restoreHeight
+            }
+            _scanStartHeight.set(baseline)
+            _walletHeight.value = baseline
+            _scanTracking.set(true)
         }
 
         val address = try {
@@ -353,11 +370,9 @@ class WalletState(private val prefs: SharedPreferences) {
             clearSyncProgress()
             return
         }
-        val chainHeight = if (_scanTracking.get()) {
-            _walletHeight.value
-        } else {
-            wallet.getBlockChainHeight().takeIf { it > 1L } ?: 0L
-        }
+        // Only listener-confirmed processed height is valid scan progress.
+        // Never substitute the native hash-chain cache height here.
+        val chainHeight = _walletHeight.value.coerceAtLeast(0L)
         val daemonHeight = wallet.getDaemonBlockChainHeight()
         if (daemonHeight <= 0L) {
             // Keep the last known progress during a brief RPC disconnect; the next
