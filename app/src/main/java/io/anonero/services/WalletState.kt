@@ -196,6 +196,7 @@ class WalletState {
         if (status != Wallet.ConnectionStatus.ConnectionStatus_Connected) {
             _syncProgress.update { null }
             _isSyncing.set(false)
+            setLoading(false)
         }
         if (previous == Wallet.ConnectionStatus.ConnectionStatus_Disconnected &&
             status == Wallet.ConnectionStatus.ConnectionStatus_Connected) {
@@ -206,6 +207,11 @@ class WalletState {
 
     fun updateDaemon(daemonInfo: DaemonInfo) {
         this._connectedDaemon.update { daemonInfo }
+    }
+
+    fun clearSyncProgress() {
+        _syncProgress.update { null }
+        _isSyncing.set(false)
     }
 
     fun syncUpdate(syncProgress: SyncProgress) {
