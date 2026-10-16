@@ -238,6 +238,12 @@ class NodeSettingsViewModel(
         }
     }
 
+    // Replace a saved node before connecting to the edited configuration.
+    suspend fun replaceItem(oldNodeString: String, item: Node) {
+        nodesRepository.removeItemByNodeString(oldNodeString)
+        nodesRepository.addItem(item)
+    }
+
     // Add an item (used when replacing an existing node).
     fun addItem(item: Node) {
         viewModelScope.launch {
@@ -345,8 +351,10 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
                         initialNode = editingNode,
                         onSave = { updatedNode ->
                             editingNode?.let { oldNode ->
-                                nodeSettingsVM.removeItem(oldNode.toNodeString())
-                                nodeSettingsVM.addItem(updatedNode)
+                                scope.launch {
+                                    nodeSettingsVM.replaceItem(oldNode.toNodeString(), updatedNode)
+                                    nodeSettingsVM.connect(updatedNode)
+                                }
                             }
                         }
                     )
@@ -772,10 +780,7 @@ fun NodeForm(
                     }
                 },
             ) {
-                Text(
-                    if (initialNode == null) "添加"
-                    else stringResource(R.string.save)
-                )
+                Text(if (initialNode == null) "添加" else "连接")
             }
         }
     }
