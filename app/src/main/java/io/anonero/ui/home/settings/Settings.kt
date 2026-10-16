@@ -64,7 +64,7 @@ fun SettingsPage(
                         XmrText(
                             style = androidx.compose.material3.LocalTextStyle.current.copy(
                                 color = Color(0xFFFF8C00),
-                                fontSize = 28.sp,
+                                fontSize = 24.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         )
