@@ -429,14 +429,6 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
                 )
             }
             LazyColumn(modifier = Modifier.weight(1f)) {
-            item(key = "proxy-settings") {
-                ListItem(
-                    modifier = Modifier.clickable { navigateTo(io.anonero.ui.home.graph.routes.ProxySettingsRoute) },
-                    headlineContent = { Text(stringResource(R.string.settings_proxy_settings), style = MaterialTheme.typography.titleMedium) },
-                    supportingContent = { Text(stringResource(R.string.settings_proxy_subtitle)) }
-                )
-                HorizontalDivider(thickness = 2.5.dp)
-            }
             if (availableNodes.isNotEmpty())
                 item(key = "header") {
                     Column(
