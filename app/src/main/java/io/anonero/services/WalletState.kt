@@ -360,18 +360,40 @@ class WalletState {
     }
 
     fun resyncBlockchain(): Result<Boolean> {
-        setLoading(true);
-        try {
-            if (getWallet?.fullStatus?.connectionStatus != Wallet.ConnectionStatus.ConnectionStatus_Connected) {
-                return Result.failure(Exception("Please connect to daemon for resync"))
-            }
-            getWallet?.rescanBlockchainAsync()
-            return Result.success(true)
+        val wallet = getWallet
+        if (wallet == null || !wallet.isInitialized) {
+            clearSyncProgress()
+            setLoading(false)
+            return Result.failure(Exception("Wallet is not initialized"))
+        }
+        if (wallet.fullStatus.connectionStatus != Wallet.ConnectionStatus.ConnectionStatus_Connected) {
+            clearSyncProgress()
+            setLoading(false)
+            return Result.failure(Exception("Please connect to daemon for resync"))
+        }
+        if (backgroundSync) {
+            clearSyncProgress()
+            setLoading(false)
+            return Result.failure(Exception("Exit background sync before resetting the scan"))
+        }
+
+        // Existing balances and history belong to the pre-rescan scan and must not
+        // be presented as current while the wallet rebuilds them from the chosen height.
+        clearSyncProgress()
+        _balanceInfo.value = null
+        _unLockedBalance.value = null
+        _transactions.value = emptyList()
+        _coins.value = emptyList()
+        setLoading(true)
+
+        return try {
+            wallet.rescanBlockchainAsync()
+            Result.success(true)
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e)
-            return Result.failure(e)
-        } finally {
-            setLoading(false);
+            Timber.tag(TAG).e(e, "Wallet rescan failed to start")
+            clearSyncProgress()
+            setLoading(false)
+            Result.failure(e)
         }
     }
 

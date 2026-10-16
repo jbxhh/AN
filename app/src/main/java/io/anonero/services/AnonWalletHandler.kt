@@ -111,11 +111,12 @@ class AnonWalletHandler(
                 updateDaemon(node)
                 walletState.setLoading(true)
             }
+            // The wallet key file is the authoritative restore-height source.
+            // Never overwrite it with a potentially stale app-wide preference.
             val initialized = wallet.init(0)
-            if (prefs.getLong(RESTORE_HEIGHT, 0L) != 0L) {
-                wallet.setRestoreHeight(prefs.getLong(RESTORE_HEIGHT, 0L))
-            }
             if (initialized && wallet.isInitialized) {
+                val actualRestoreHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
+                prefs.edit { putLong(RESTORE_HEIGHT, actualRestoreHeight) }
                 // Only access native transaction history after wallet initialization.
                 wallet.refreshHistory()
                 wallet.setTrustedDaemon(true)

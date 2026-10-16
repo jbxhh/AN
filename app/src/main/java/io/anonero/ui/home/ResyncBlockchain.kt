@@ -1,5 +1,7 @@
 package io.anonero.ui.home
 
+import android.content.SharedPreferences
+import androidx.core.content.edit
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,8 +42,11 @@ import com.dokar.sonner.ToastType
 import com.dokar.sonner.ToasterState
 import io.anonero.model.WalletManager
 import io.anonero.services.WalletState
+import io.anonero.util.RESTORE_HEIGHT
+import io.anonero.util.WALLET_PREFERENCES
 import io.anonero.ui.theme.AnonOutlineButton
 import java.text.SimpleDateFormat
+import timber.log.Timber
 import java.util.Date
 import java.util.Locale
 import kotlin.time.Duration.Companion.seconds
@@ -50,6 +55,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
+import org.koin.core.qualifier.named
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,6 +69,7 @@ fun ResyncBlockchainScreen(
     var isQuerying by remember { mutableStateOf(false) }
     var queryCompleted by remember { mutableStateOf(false) }
     val walletState = koinInject<WalletState>()
+    val walletPrefs = koinInject<SharedPreferences>(named(WALLET_PREFERENCES))
     val scope = rememberCoroutineScope()
     val labelColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
 
@@ -211,25 +218,69 @@ fun ResyncBlockchainScreen(
                                         type = ToastType.Warning
                                     )
                                 }
+                            } else if (!wallet.isInitialized) {
+                                scope.launch {
+                                    toastState.show("钱包尚未初始化，无法重置同步", type = ToastType.Warning)
+                                }
                             } else {
-                                wallet.setRestoreHeight(selectedHeight)
-                                val result = walletState.resyncBlockchain()
-                                if (result.isFailure) {
+                                val daemonHeight = wallet.getDaemonBlockChainHeight()
+                                if (daemonHeight <= 0L) {
+                                    scope.launch {
+                                        toastState.show("无法读取节点真实区块高度，请检查节点连接", type = ToastType.Warning)
+                                    }
+                                } else if (selectedHeight > daemonHeight) {
                                     scope.launch {
                                         toastState.show(
-                                            "重置失败：${result.exceptionOrNull()?.message}",
+                                            "恢复高度不能高于当前节点高度（${daemonHeight}）",
                                             type = ToastType.Warning,
                                             duration = 6.seconds
                                         )
                                     }
                                 } else {
-                                    scope.launch {
-                                        toastState.show(
-                                            "已开始从所选恢复位置重新同步",
-                                            type = ToastType.Success
-                                        )
+                                    val previousHeight = wallet.getRestoreHeight()
+                                    try {
+                                        wallet.setRestoreHeight(selectedHeight)
+                                        if (!wallet.store()) {
+                                            throw IllegalStateException("保存恢复高度失败")
+                                        }
+                                        val result = walletState.resyncBlockchain()
+                                        if (result.isFailure) {
+                                            wallet.setRestoreHeight(previousHeight)
+                                            wallet.store()
+                                            scope.launch {
+                                                toastState.show(
+                                                    "重置失败：${result.exceptionOrNull()?.message}",
+                                                    type = ToastType.Warning,
+                                                    duration = 6.seconds
+                                                )
+                                            }
+                                        } else {
+                                            walletPrefs.edit(commit = true) {
+                                                putLong(RESTORE_HEIGHT, selectedHeight)
+                                            }
+                                            scope.launch {
+                                                toastState.show(
+                                                    "已从所选恢复高度开始重新扫描交易",
+                                                    type = ToastType.Success
+                                                )
+                                            }
+                                            onBackPress()
+                                        }
+                                    } catch (e: Exception) {
+                                        try {
+                                            wallet.setRestoreHeight(previousHeight)
+                                            wallet.store()
+                                        } catch (rollbackError: Exception) {
+                                            Timber.tag("ResyncBlockchain").e(rollbackError, "Restore-height rollback failed")
+                                        }
+                                        scope.launch {
+                                            toastState.show(
+                                                "重置失败：${e.message ?: "无法保存恢复高度"}",
+                                                type = ToastType.Warning,
+                                                duration = 6.seconds
+                                            )
+                                        }
                                     }
-                                    onBackPress()
                                 }
                             }
                         }

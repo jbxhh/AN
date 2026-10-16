@@ -77,6 +77,8 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
             )
             prefs.edit {
                 putString(PREFS_PIN_HASH, pinHash)
+                // A newly created wallet must not inherit another wallet's restore height.
+                putLong(RESTORE_HEIGHT, 0L)
             }
             walllet = anonWallet
             delay(500)
@@ -101,7 +103,6 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
                 addressString = neroKeyPayload!!.primaryAddress,
                 spendKeyString = ""
             )
-            anonWallet?.setRestoreHeight(3460000);
             anonWallet?.store()
             delay(100)
             if (anonWallet?.status?.isOk != true) {
@@ -111,6 +112,7 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
             val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
             prefs.edit {
                 putString("passPhraseHash", crazyPass)
+                putLong(RESTORE_HEIGHT, neroKeyPayload!!.restoreHeight)
             }
             walllet = anonWallet
             delay(500)
@@ -174,11 +176,11 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
             throw CancellationException("unable to create wallet ${anonWallet?.status?.errorString}")
         }
         val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
+        val actualRestoreHeight = anonWallet.getRestoreHeight().coerceAtLeast(0L)
         prefs.edit(commit = true) {
             putString(PREFS_PASSPHRASE_HASH, crazyPass)
-            restorePayload?.restoreHeight?.let {
-                putLong(RESTORE_HEIGHT, it)
-            }
+            // The wallet's stored restore height is the source of truth (also for Polyseed).
+            putLong(RESTORE_HEIGHT, actualRestoreHeight)
         }
         try {
             anonWallet.close()
