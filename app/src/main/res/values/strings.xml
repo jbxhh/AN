@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">anonnero</string>
+    <string name="app_name">ANON先行版</string>
      <string name="hint_optional">(Optional)</string>
      <string name="disconnect">Disconnect</string>
      <string name="edit">Edit</string>
