@@ -6,7 +6,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
@@ -108,9 +107,6 @@ fun SettingsPage(
                         navigateTo(SecureWipeRoute)
                     }
                     SettingsDivider()
-                    androidx.compose.foundation.layout.Spacer(
-                        modifier = Modifier.height(6.dp)
-                    )
                     SettingsDivider()
                 }
             }
