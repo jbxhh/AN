@@ -15,7 +15,8 @@ android {
     namespace = "io.anonero"
     compileSdk = 35
     defaultConfig {
-        applicationId = "io.anonero"
+        // Keep a distinct base ID so every flavor can be installed alongside the upstream app.
+        applicationId = "io.anonero.jbxhh"
         minSdk = 26
         targetSdk = 35
         versionCode = 7
@@ -80,16 +81,16 @@ android {
     flavorDimensions += "anon_mode"
     productFlavors {
         create("anon") {
-            applicationIdSuffix = ".anon.ui"
-            resValue("string", "app_name", "ANON UI")
+            applicationIdSuffix = ".anon"
+            resValue("string", "app_name", "ANON UI (jbxhh)")
             dimension = "anon_mode"
             buildConfigField("String", "FLAVOR", "\"anon\"")
             buildConfigField("boolean", "VIEW_ONLY", "false")
             buildConfigField("boolean", "NATIVE_ENABLED", if (nativeLibsReady) "true" else "false")
         }
         create("nero") {
-            applicationIdSuffix = ".nero.ui"
-            resValue("string", "app_name", "NERO UI")
+            applicationIdSuffix = ".nero"
+            resValue("string", "app_name", "NERO UI (jbxhh)")
             dimension = "anon_mode"
             buildConfigField("String", "FLAVOR", "\"nero\"")
             buildConfigField("boolean", "VIEW_ONLY", "true")
@@ -141,7 +142,7 @@ dependencies {
     implementation(libs.org.jetbrains.kotlin.android)
     implementation(libs.org.boofcv.boofcv.core)
     implementation(libs.com.google.zxing.core)
-    implementation(libs.com.google.accompanist.permissions)
+    implementation(libs.com.accompanist.permissions)
     implementation(libs.com.jakewharton.timber)
     implementation(libs.org.bouncycastle.bcprov)
     implementation(libs.io.matthewnelson.kmp.tor.runtime)
