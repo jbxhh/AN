@@ -261,7 +261,9 @@ class WalletState(private val prefs: SharedPreferences) {
         val path = wallet.getPath()?.takeIf { it.isNotBlank() } ?: wallet.name
         val identity = path + "|" + wallet.address
         val hash = identity.fold(0) { acc, char -> 31 * acc + char.code }
-        return "anonero_scan_" + hash + "_" + suffix
+        // v2 deliberately ignores scan heights saved by builds that could receive
+        // Monero fast-refresh hash-cache callbacks as if they were processed blocks.
+        return "anonero_scan_v2_" + hash + "_" + suffix
     }
 
     /**
@@ -323,10 +325,25 @@ class WalletState(private val prefs: SharedPreferences) {
             return
         }
 
-        val nativeWalletHeight = wallet.getBlockChainHeight().takeIf { it > 1L } ?: 0L
         val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
         if (!_scanTracking.get()) {
-            _walletHeight.update { nativeWalletHeight }
+            // Never populate the displayed wallet height from blockChainHeight():
+            // Monero may append hashes during fast refresh before wallet transactions
+            // for those blocks have been scanned. Resume from trusted app scan state
+            // when available, otherwise begin at the wallet's configured restore height.
+            val restoreHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
+            val savedProcessedHeight = prefs.getLong(
+                scanPreferenceKey(wallet, "processed_height"),
+                -1L
+            )
+            val baseline = if (savedProcessedHeight >= restoreHeight) {
+                savedProcessedHeight
+            } else {
+                restoreHeight
+            }
+            _scanStartHeight.set(baseline)
+            _walletHeight.value = baseline
+            _scanTracking.set(true)
         }
 
         val address = try {
@@ -353,11 +370,9 @@ class WalletState(private val prefs: SharedPreferences) {
             clearSyncProgress()
             return
         }
-        val chainHeight = if (_scanTracking.get()) {
-            _walletHeight.value
-        } else {
-            wallet.getBlockChainHeight().takeIf { it > 1L } ?: 0L
-        }
+        // Only listener-confirmed processed height is valid scan progress.
+        // Never substitute the native hash-chain cache height here.
+        val chainHeight = _walletHeight.value.coerceAtLeast(0L)
         val daemonHeight = wallet.getDaemonBlockChainHeight()
         if (daemonHeight <= 0L) {
             // Keep the last known progress during a brief RPC disconnect; the next
@@ -501,26 +516,49 @@ class WalletState(private val prefs: SharedPreferences) {
     @Synchronized
     fun getNewAddress() {
         val wallet = getWallet ?: return
+        var refreshPaused = false
         try {
-            val newIndex = wallet.numSubAddresses
-            wallet.addSubaddress(wallet.getAccountIndex(), "Subaddress #$newIndex")
+            // Do not mutate subaddress data concurrently with the native refresh
+            // thread. Pause it when initialized, then always resume it in finally.
+            if (wallet.isInitialized) {
+                wallet.pauseRefresh()
+                refreshPaused = true
+            }
 
-            // Confirm the native wallet actually appended the requested index before
-            // reading it or publishing it to the UI.
+            val accountIndex = wallet.getAccountIndex()
+            val newIndex = wallet.numSubAddresses
+            wallet.addSubaddress(accountIndex, "Subaddress #$newIndex")
+
+            // Verify the native wallet appended exactly the requested address.
             val updatedCount = wallet.numSubAddresses
-            check(updatedCount > newIndex) {
-                "Native wallet did not create subaddress index $newIndex (count=$updatedCount)"
+            check(updatedCount == newIndex + 1) {
+                "Native wallet did not create exactly one subaddress: index=$newIndex, count=$updatedCount"
+            }
+
+            val createdAddress = wallet.getSubaddressObject(newIndex)
+            check(createdAddress.address.isNotBlank()) {
+                "Native wallet returned an empty address for subaddress index $newIndex"
             }
 
             if (!wallet.store()) {
                 Timber.tag(TAG).w("Subaddress %d created, but wallet.store() returned false", newIndex)
             }
 
-            _nextAddress.value = wallet.getLatestSubAddress()
+            // Publish the explicit new index. Do not call update() or getLatestSubAddress()
+            // here: they select the next unused address and can mask the newly created one.
+            _nextAddress.value = createdAddress
             _subAddresses.value = wallet.getAllUsedSubAddresses().reversed()
-            update()
+            Timber.tag(TAG).i("Added subaddress index=%d count=%d", newIndex, updatedCount)
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Failed to add subaddress")
+        } finally {
+            if (refreshPaused) {
+                try {
+                    wallet.startRefresh()
+                } catch (e: Exception) {
+                    Timber.tag(TAG).e(e, "Failed to resume wallet refresh after adding subaddress")
+                }
+            }
         }
     }
 
