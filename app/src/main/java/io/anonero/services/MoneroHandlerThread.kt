@@ -98,7 +98,12 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
     }
 
     private fun tryRestartConnection() {
-        wallet.init(0)
+        // Reinitialization can overwrite a fresh restore's selected height just like
+        // initial startup. Preserve the preference-backed height before refresh resumes.
+        val initialized = wallet.init(0)
+        if (initialized && wallet.isInitialized) {
+            walletState.preservePendingRestoreHeightAfterInit(wallet)
+        }
         wallet.startRefresh()
         walletState.update()
     }
