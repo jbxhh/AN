@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 
 
 @Serializable
-data class HomeScreenRoute(val lockScreenShortCut: LockScreenShortCut? = null)
+data class HomeScreenRoute(val lockScreenShortCut: LockScreenShortCut = LockScreenShortCut.HOME)
 
 @Serializable
 data object LockScreenRoute
