@@ -40,7 +40,6 @@ import io.anonero.ui.home.graph.routes.SettingsLogs
 import io.anonero.ui.home.graph.routes.SettingsNodeRoute
 import io.anonero.ui.home.graph.routes.SettingsTradeRoute
 import io.anonero.ui.home.graph.routes.SettingsViewSeedRoute
-import io.anonero.ui.home.XmrText
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,12 +57,13 @@ fun SettingsPage(
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = null,
-                                tint = Color(0xFFFF8C00)
+                                tint = Color.White
                             )
                         }
-                        XmrText(
-                            style = androidx.compose.material3.LocalTextStyle.current.copy(
-                                color = Color(0xFFFF8C00),
+                        Text(
+                            "ANON",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                color = Color.White,
                                 fontSize = 26.sp,
                                 fontWeight = FontWeight.Bold
                             )
