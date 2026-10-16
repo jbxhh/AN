@@ -106,8 +106,6 @@ fun SettingsPage(
                     MenuItem(stringResource(R.string.settings_secure_wipe)) {
                         navigateTo(SecureWipeRoute)
                     }
-                }
-                item(key = "delete-divider") {
                     SettingsDivider()
                 }
             }
