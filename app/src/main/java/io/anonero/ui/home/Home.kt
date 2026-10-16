@@ -296,7 +296,13 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                             }
                         )
                     }
-                    composable<SettingsWalletRoute> {\n                        WalletSettingsPage(\n                            onBackPress = { bottomNavController.popBackStack() },\n                            onViewSeed = { bottomNavController.navigate(SettingsViewSeedRoute) }\n                        )\n                    }\n                    composable<SettingsViewSeedRoute> {
+                    composable<SettingsWalletRoute> {
+                        WalletSettingsPage(
+                            onBackPress = { bottomNavController.popBackStack() },
+                            onViewSeed = { bottomNavController.navigate(SettingsViewSeedRoute) }
+                        )
+                    }
+                    composable<SettingsViewSeedRoute> {
                         SeedSettingsPage(onBackPress = { bottomNavController.popBackStack() })
                     }
                     composable<SettingsTradeRoute> {
