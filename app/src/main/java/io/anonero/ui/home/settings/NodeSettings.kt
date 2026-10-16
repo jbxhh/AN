@@ -412,23 +412,18 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
         }
     ) {
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(it)
-        ) {
-            // Keep the connected node card fixed while the available-node list scrolls.
-            if (activeNode != null) {
-                NodeListItem(
-                    activeNode!!,
-                    active = true,
-                    nodeSettingsVM = nodeSettingsVM,
-                    onDisconnect = {
-                        nodeSettingsVM.disconnect()
-                    }
-                )
-            }
-            LazyColumn(modifier = Modifier.weight(1f)) {
+        LazyColumn(modifier = Modifier.padding(it)) {
+            if (activeNode != null)
+                item(key = activeNode?.toNodeString() ?: "active") {
+                    NodeListItem(
+                        activeNode!!,
+                        modifier = Modifier.animateItem(),
+                        active = true,
+                        nodeSettingsVM = nodeSettingsVM,
+                        onDisconnect = {
+                            nodeSettingsVM.disconnect()
+                        })
+                }
             if (availableNodes.isNotEmpty())
                 item(key = "header") {
                     Column(
@@ -468,7 +463,6 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
                             onRemove = { nodeSettingsVM.removeItem(node.toNodeString()) })
                     }
                 }
-            }
         }
     }
     Toaster(
@@ -524,18 +518,13 @@ fun NodeListItem(
             )
         },
         supportingContent = {
-            if (active) {
-                Column(modifier = Modifier.padding(top = 4.dp)) {
-                    Text(
-                        "区块高度: ${daemonStatus?.daemonHeight?.toString() ?: ""}",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Text(
-                        "钱包高度: ${runCatching { WalletManager.instance?.wallet?.getBlockChainHeight() }.getOrNull()?.toString() ?: ""}",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
+            if (active)
+                Text(
+                    "区块高度:${daemonStatus?.daemonHeight?.toString() ?: ""} ",
+                    style = MaterialTheme
+                        .typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
         },
         trailingContent = {
             Row(
