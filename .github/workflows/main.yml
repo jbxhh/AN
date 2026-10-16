@@ -345,7 +345,7 @@ jobs:
           done
 
 
-      - name: Strip ARM64 JNI symbols and build standalone APKs
+      - name: Strip ARM64 JNI symbols and build standalone ANON APK
         run: |
           set -euo pipefail
           NDK="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
@@ -354,14 +354,11 @@ jobs:
           # Each flavor is assembled as a complete, installable APK (not an App Bundle
           # and not a base/config split set). ABI split outputs each contain the full
           # app plus the matching native libraries, so no companion APK is required.
-          ./gradlew :app:assembleAnonRelease :app:assembleNeroRelease --build-cache --parallel --configuration-cache --no-daemon --stacktrace
+          ./gradlew :app:assembleAnonRelease --build-cache --parallel --configuration-cache --no-daemon --stacktrace
           echo "ANON APK output sizes:"
           du -h app/build/outputs/apk/anon/release/*.apk
-          echo "NERO APK output sizes:"
-          du -h app/build/outputs/apk/nero/release/*.apk
-          # Fail the workflow if either flavor did not produce a standalone arm64 APK.
+          # Fail the workflow if the standalone ANON ARM64 APK was not produced.
           compgen -G "app/build/outputs/apk/anon/release/*arm64-v8a*.apk" >/dev/null
-          compgen -G "app/build/outputs/apk/nero/release/*arm64-v8a*.apk" >/dev/null
 
       - name: Upload standalone ANON APK
         uses: actions/upload-artifact@v4
@@ -370,19 +367,13 @@ jobs:
           path: app/build/outputs/apk/anon/release/*arm64-v8a*.apk
           if-no-files-found: error
 
-      - name: Upload standalone NERO APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: NERO-APK-arm64-standalone
-          path: app/build/outputs/apk/nero/release/*arm64-v8a*.apk
-          if-no-files-found: error
 
       - name: Summary
         run: |
-          echo "### Standalone APK build (native cache + wallet source)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Both ANON and NERO are built as complete installable APKs." >> "$GITHUB_STEP_SUMMARY"
+          echo "### Standalone ANON APK build (native cache + wallet source)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Only the standalone ANON ARM64 APK is built and published." >> "$GITHUB_STEP_SUMMARY"
           echo "- No companion/base/config APK is required; each artifact is independently installable." >> "$GITHUB_STEP_SUMMARY"
-          echo "- ANON and NERO use distinct application IDs." >> "$GITHUB_STEP_SUMMARY"
+           >> "$GITHUB_STEP_SUMMARY"
           echo "- arm64 cache hit: ${{ steps.cache-arm64.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- armv7 cache hit: ${{ steps.cache-armv7.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- JNI cache hit: ${{ steps.cache-jni.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
