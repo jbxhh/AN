@@ -99,9 +99,19 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
     }
 
     private fun refresh(walletSynced: Boolean) {
-        wallet.refreshHistory()
+        // A transient history refresh failure must not prevent live balance/state
+        // publication during restore or rescan.
+        try {
+            wallet.refreshHistory()
+        } catch (e: Exception) {
+            Timber.tag(name).w(e, "Wallet history refresh failed; publishing current wallet state")
+        }
         if (walletSynced) {
-            wallet.refreshCoins()
+            try {
+                wallet.refreshCoins()
+            } catch (e: Exception) {
+                Timber.tag(name).w(e, "Coin refresh failed")
+            }
         }
         walletState.update()
     }
