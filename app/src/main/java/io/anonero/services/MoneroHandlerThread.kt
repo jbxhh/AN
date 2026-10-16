@@ -43,16 +43,20 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
 
     private fun updateSyncProgress(height: Long) {
         val syncHeight = wallet.getBlockChainHeight()
-        val deamonHeight = wallet.getDaemonBlockChainHeight()
-        val left = deamonHeight - syncHeight
-        if (syncHeight < 0 || left < 0) {
+        val daemonHeight = wallet.getDaemonBlockChainHeight()
+        if (syncHeight < 0L || daemonHeight <= 0L) return
+
+        val left = daemonHeight - syncHeight
+        if (left <= 1L) {
+            walletState.syncUpdate(SyncProgress(1f, 0L))
             return
         }
-        val progress = if (wallet.getDaemonBlockChainTargetHeight().toDouble() == 0.0) {
-            1f
-        } else {
-            (height.toDouble() / wallet.getDaemonBlockChainTargetHeight().toDouble()).toFloat()
-        }
+
+        val reportedTarget = wallet.getDaemonBlockChainTargetHeight()
+        val targetHeight = if (reportedTarget > 0L) reportedTarget else daemonHeight
+        val progress = (height.toDouble() / targetHeight.toDouble())
+            .toFloat()
+            .coerceIn(0f, 0.999f)
         walletState.syncUpdate(SyncProgress(progress, left))
     }
 
@@ -71,20 +75,23 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
             .i("refreshed() status:${status} daemonHeight:$daemonHeight chainHeight:$chainHeight ")
         if (status === Wallet.ConnectionStatus.ConnectionStatus_Disconnected || status == null) {
             tryRestartConnection()
+        } else if (daemonHeight <= 0L || chainHeight < 0L) {
+            Timber.tag(name).w("Cannot validate sync heights yet: daemonHeight=%s chainHeight=%s", daemonHeight, chainHeight)
+            walletState.update()
         } else {
             val heightDiff = daemonHeight - chainHeight
-            if (heightDiff >= 2) {
-                tryRestartConnection()
+            updateSyncProgress(chainHeight)
+            if (heightDiff >= 2L) {
+                // The wallet is still catching up. Keep the existing refresh worker running.
+                // Re-initializing the daemon here repeatedly can prevent history and balance updates.
+                wallet.refreshHistory()
+                walletState.update()
             } else {
-                if (!wallet.isSynchronized) {
-                    updateSyncProgress(wallet.getBlockChainHeight())
-                }
                 wallet.setSynchronized()
                 wallet.store()
                 refresh(true)
                 walletState.setLoading(false)
             }
-
         }
         walletState.update()
     }

@@ -114,7 +114,13 @@ class AnonWalletHandler(
             if(wallet.isSynchronized) {
                 wallet.refreshHistory()
             }
-            wallet.init(0)
+            if (!wallet.init(0)) {
+                Timber.tag(TAG).e("wallet.init(0) failed: %s", wallet.status.errorString)
+                walletState.setConnectionStatus(Wallet.ConnectionStatus.ConnectionStatus_Disconnected)
+                walletState.setLoading(false)
+                walletState.update()
+                return
+            }
             if(prefs.getLong(RESTORE_HEIGHT, 0L)!=0L) {
                 wallet.setRestoreHeight(prefs.getLong(RESTORE_HEIGHT, 0L));
             }

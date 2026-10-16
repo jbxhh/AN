@@ -66,10 +66,10 @@ fun WalletProgressIndicator(modifier: Modifier = Modifier, refreshIndicatorProgr
     val connectionStatus by walletState.connectionStatus.asLiveData().observeAsState(null)
     val isConnected = connectionStatus == Wallet.ConnectionStatus.ConnectionStatus_Connected
     val isNetworkConnected by networkConnected()
-    val isSyncing = syncProgress != null && syncProgress!!.left > 0L
+    val isSyncing = syncProgress?.left?.let { it > 1L } == true
 
     AnimatedVisibility(
-        showIndefiniteLoading || syncProgress != null || !isConnected || !isNetworkConnected || refreshIndicatorProgress != 0.0f,
+        showIndefiniteLoading || isSyncing || refreshIndicatorProgress != 0.0f,
         modifier = modifier
             .animateContentSize()
     ) {
