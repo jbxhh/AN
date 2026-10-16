@@ -739,7 +739,10 @@ class WalletState(private val prefs: SharedPreferences) {
         updateBalanceFromWallet(wallet)
 
         return try {
+            // Queue the selected-height rescan, then ensure Monero's refresh worker
+            // is enabled to consume the request even if refresh was paused/stopped.
             wallet.rescanBlockchainAsync()
+            wallet.startRefresh()
             Result.success(true)
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Wallet rescan failed to start")
