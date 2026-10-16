@@ -612,16 +612,44 @@ class WalletState(private val prefs: SharedPreferences) {
     }
 
     fun getNewAddress() {
-        getWallet?.let {
-            it.addSubaddress(it.getAccountIndex(), "Subaddress #${it.numSubAddresses}")
-            it.store()
-            it.getLatestSubAddress().let { subAddresses ->
-                _nextAddress.update { subAddresses }
-            }
-            it.getAllUsedSubAddresses().let { allItems ->
-                _subAddresses.update { allItems.reversed() }
-            }
-            update()
+        val wallet = getWallet ?: return
+        val accountIndex = wallet.getAccountIndex()
+        // Capture the exact index before native addSubaddress() increments the count.
+        // getLatestSubAddress() is transaction-history based and can point to an older
+        // unused address, so it must not be used to identify the address just created.
+        val newAddressIndex = wallet.numSubAddresses
+        wallet.addSubaddress(accountIndex, "Subaddress #$newAddressIndex")
+        wallet.store()
+
+        val addedAddress = wallet.getSubaddressObject(newAddressIndex)
+
+        // Publish the real new address immediately. Do not wait for a full wallet update
+        // or daemon refresh before the Compose address list receives a new StateFlow value.
+        _subAddresses.update { current ->
+            (current + addedAddress)
+                .distinctBy { it.address }
+                .sortedByDescending { it.addressIndex }
+        }
+
+        // Keep the receive-page "next address" behavior independent from the list entry.
+        try {
+            _nextAddress.value = wallet.getLatestSubAddress()
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "Unable to refresh next receive subaddress after adding one")
+        }
+
+        // Reconcile from the native wallet, but always retain the exact address created
+        // above even if the history-based snapshot temporarily omits it.
+        val allItems = try {
+            wallet.getAllUsedSubAddresses()
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "Unable to refresh subaddress list after adding one")
+            emptyList()
+        }
+        _subAddresses.update { current ->
+            (allItems + addedAddress + current)
+                .distinctBy { it.address }
+                .sortedByDescending { it.addressIndex }
         }
     }
 
