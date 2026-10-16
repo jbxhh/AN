@@ -458,6 +458,7 @@ fun TransactionScreen(
         )
     }
     val showIndefiniteLoading by walletState.isLoading.asLiveData().observeAsState(false)
+    val syncProgress by walletState.syncProgress.asLiveData().observeAsState(null)
     val refreshState = rememberPullToRefreshState();
     val view = LocalView.current;
     val torConnected by torService.socksFlow.asLiveData().observeAsState(torService.socks != null)
@@ -642,7 +643,8 @@ fun TransactionScreen(
                 stickyHeader(key = "progress") {
                     Column {
                         AnimatedVisibility(
-                            visible = refreshState.distanceFraction > 0f || showIndefiniteLoading,
+                            visible = refreshState.distanceFraction > 0f || showIndefiniteLoading ||
+                                syncProgress?.left?.let { it > 0L } == true,
                             enter = androidx.compose.animation.fadeIn(),
                             exit = androidx.compose.animation.fadeOut(
                                 animationSpec = androidx.compose.animation.core.tween(300)

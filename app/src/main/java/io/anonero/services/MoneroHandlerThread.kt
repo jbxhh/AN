@@ -59,12 +59,12 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
         )
 
         if (status == Wallet.ConnectionStatus.ConnectionStatus_Disconnected || status == null) {
-            walletState.clearSyncProgress()
+            // Preserve the last known backlog while the node reconnects; a temporary
+            // RPC outage must not make the sync bar disappear or imply completion.
             walletState.setLoading(false)
             tryRestartConnection()
         } else if (daemonHeight <= 0L) {
-            // Unknown daemon height is not proof of synchronization.
-            walletState.clearSyncProgress()
+            // Unknown daemon height is not proof of synchronization or scan completion.
             walletState.setLoading(false)
         } else if (scanHeight > daemonHeight) {
             // A selected restore point beyond the daemon tip is not a completed scan.
@@ -99,9 +99,19 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
     }
 
     private fun refresh(walletSynced: Boolean) {
-        wallet.refreshHistory()
+        // A transient history refresh failure must not prevent live balance/state
+        // publication during restore or rescan.
+        try {
+            wallet.refreshHistory()
+        } catch (e: Exception) {
+            Timber.tag(name).w(e, "Wallet history refresh failed; publishing current wallet state")
+        }
         if (walletSynced) {
-            wallet.refreshCoins()
+            try {
+                wallet.refreshCoins()
+            } catch (e: Exception) {
+                Timber.tag(name).w(e, "Coin refresh failed")
+            }
         }
         walletState.update()
     }
