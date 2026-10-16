@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeGesturesPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -414,18 +415,23 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
         }
     ) {
 
-        LazyColumn(modifier = Modifier.padding(it)) {
-            if (activeNode != null)
-                item(key = activeNode?.toNodeString() ?: "active") {
-                    NodeListItem(
-                        activeNode!!,
-                        modifier = Modifier.animateItem(),
-                        active = true,
-                        nodeSettingsVM = nodeSettingsVM,
-                        onDisconnect = {
-                            nodeSettingsVM.disconnect()
-                        })
-                }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(it)
+        ) {
+            // Keep the connected node card fixed while the available-node list scrolls.
+            if (activeNode != null) {
+                NodeListItem(
+                    activeNode!!,
+                    active = true,
+                    nodeSettingsVM = nodeSettingsVM,
+                    onDisconnect = {
+                        nodeSettingsVM.disconnect()
+                    }
+                )
+            }
+            LazyColumn(modifier = Modifier.weight(1f)) {
             if (availableNodes.isNotEmpty())
                 item(key = "header") {
                     Column(
@@ -465,6 +471,7 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
                             onRemove = { nodeSettingsVM.removeItem(node.toNodeString()) })
                     }
                 }
+            }
         }
     }
     Toaster(
@@ -520,13 +527,18 @@ fun NodeListItem(
             )
         },
         supportingContent = {
-            if (active)
-                Text(
-                    "区块高度:${daemonStatus?.daemonHeight?.toString() ?: ""} ",
-                    style = MaterialTheme
-                        .typography.bodySmall,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
+            if (active) {
+                Column(modifier = Modifier.padding(top = 4.dp)) {
+                    Text(
+                        "区块高度: ${daemonStatus?.daemonHeight?.toString() ?: ""}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        "钱包高度: ${runCatching { WalletManager.instance?.wallet?.getBlockChainHeight() }.getOrNull()?.toString() ?: ""}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
         },
         trailingContent = {
             Row(
