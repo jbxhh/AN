@@ -52,12 +52,17 @@ fun SettingsPage(
                 navigationIcon = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onBackPress) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = null,
+                                tint = Color(0xFFFF8C00)
+                            )
                         }
                         Text(
                             text = "XMR",
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.titleMedium
+                            color = Color(0xFFFF8C00),
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 },
