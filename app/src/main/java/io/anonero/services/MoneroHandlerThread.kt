@@ -87,11 +87,16 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
             // bar now shows real remaining blocks from the selected scan height.
             walletState.setLoading(false)
         } else {
-            walletState.completeWalletScan(wallet, daemonHeight)
-            wallet.setSynchronized()
-            wallet.store()
-            refresh(true)
-            walletState.setLoading(false)
+            val scanCompleted = walletState.completeWalletScan(wallet, daemonHeight)
+            if (scanCompleted) {
+                wallet.setSynchronized()
+                wallet.store()
+                refresh(true)
+                walletState.setLoading(false)
+            } else {
+                wallet.isSynchronized = false
+                walletState.setLoading(false)
+            }
         }
 
         walletState.update()
