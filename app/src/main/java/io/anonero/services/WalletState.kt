@@ -318,14 +318,17 @@ class WalletState(private val prefs: SharedPreferences) {
      * Publishes the active daemon height and (only outside a scan) the native
      * wallet height. During a scan, WalletListener callbacks are the source of truth.
      */
-    fun updateBlockHeights(wallet: Wallet? = getWallet) {
+    fun updateBlockHeights(
+        wallet: Wallet? = getWallet,
+        knownDaemonHeight: Long? = null
+    ) {
         if (wallet == null || !wallet.isInitialized) {
             _walletHeight.value = 0L
             _connectedDaemon.update { current -> current?.copy(daemonHeight = 0L) }
             return
         }
 
-        val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+        val daemonHeight = (knownDaemonHeight ?: wallet.getDaemonBlockChainHeight()).coerceAtLeast(0L)
         if (!_scanTracking.get()) {
             // Never populate the displayed wallet height from blockChainHeight():
             // Monero may append hashes during fast refresh before wallet transactions
@@ -365,7 +368,10 @@ class WalletState(private val prefs: SharedPreferences) {
     /**
      * Computes backlog from the actual processed scan height, not the local hash-chain size.
      */
-    fun updateSyncProgressFromWallet(wallet: Wallet? = getWallet) {
+    fun updateSyncProgressFromWallet(
+        wallet: Wallet? = getWallet,
+        knownDaemonHeight: Long? = null
+    ) {
         if (wallet == null || !wallet.isInitialized) {
             clearSyncProgress()
             return
@@ -373,7 +379,7 @@ class WalletState(private val prefs: SharedPreferences) {
         // Only listener-confirmed processed height is valid scan progress.
         // Never substitute the native hash-chain cache height here.
         val chainHeight = _walletHeight.value.coerceAtLeast(0L)
-        val daemonHeight = wallet.getDaemonBlockChainHeight()
+        val daemonHeight = (knownDaemonHeight ?: wallet.getDaemonBlockChainHeight()).coerceAtLeast(0L)
         if (daemonHeight <= 0L) {
             // Keep the last known progress during a brief RPC disconnect; the next
             // refresh callback will replace it with the latest daemon height.
@@ -560,20 +566,31 @@ class WalletState(private val prefs: SharedPreferences) {
 
         val connected = wallet.fullStatus.connectionStatus ==
             Wallet.ConnectionStatus.ConnectionStatus_Connected
-        if (connected) {
-            setLoading(true)
-            wallet.startRefresh()
-        } else {
+        if (!connected) {
             clearSyncProgress()
+            setLoading(false)
+            return
         }
 
+        setLoading(true)
         try {
+            // Fetch the latest daemon height first and publish the real backlog before
+            // starting native refresh, so the progress bar and remaining-block count
+            // appear as soon as the node tip is known. Wallet height remains based on
+            // processed-block callbacks, never the native hash-chain cache height.
+            val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+            updateBlockHeights(wallet, daemonHeight)
+            updateSyncProgressFromWallet(wallet, daemonHeight)
+
+            wallet.startRefresh()
             wallet.refreshHistory()
             update()
-            if (connected) {
-                updateBlockHeights(wallet)
-                updateSyncProgressFromWallet(wallet)
-            }
+
+            // The daemon tip may advance while refresh starts; publish the newer target
+            // and recalculate remaining blocks after the initial history update.
+            val latestDaemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+            updateBlockHeights(wallet, latestDaemonHeight)
+            updateSyncProgressFromWallet(wallet, latestDaemonHeight)
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Wallet refresh failed")
             clearSyncProgress()
