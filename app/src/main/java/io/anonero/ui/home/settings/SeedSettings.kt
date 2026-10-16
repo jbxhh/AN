@@ -2,7 +2,11 @@ package io.anonero.ui.home.settings
 
 import io.anonero.ui.theme.AnonNeroTheme
 import io.anonero.ui.theme.AnonOutlineButton
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.SharedPreferences
+import android.widget.Toast
 import android.util.Log
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.animateContentSize
@@ -17,6 +21,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -28,6 +33,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -41,6 +47,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -58,6 +65,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -128,6 +136,7 @@ fun SeedSettingsPage(onBackPress: () -> Unit = {}) {
     val errorShake = rememberShakeController()
     val scope = rememberCoroutineScope()
     val view = LocalView.current
+    val context = LocalContext.current
 
     val backgroundBlur: Float by animateFloatAsState(
         if (passPhraseDialog) 6f else 0f,
@@ -325,20 +334,59 @@ fun SeedSettingsPage(onBackPress: () -> Unit = {}) {
         )
 
     var showLegacy by remember { mutableStateOf(false) }
+    var allowSeedCopy by remember { mutableStateOf(false) }
+    val selectedSeed = if (showLegacy) legacySeed else seedWords
+    val canCopySeed = !passPhraseDialog &&
+        selectedSeed.isNotEmpty() &&
+        selectedSeed.none { it.contains("*") }
 
     val wallet = WalletManager.instance?.wallet
     Scaffold(
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    IconButton(
-                        onClick = onBackPress
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = onBackPress
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                        }
+                        Switch(
+                            checked = allowSeedCopy,
+                            onCheckedChange = { allowSeedCopy = it },
+                            enabled = !passPhraseDialog
+                        )
                     }
                 },
                 title = {
                     Text("")
+                },
+                actions = {
+                    IconButton(
+                        onClick = {
+                            if (allowSeedCopy && canCopySeed) {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                                    as? ClipboardManager
+                                clipboard?.setPrimaryClip(
+                                    ClipData.newPlainText(
+                                        "Mnemonic",
+                                        selectedSeed.joinToString(" ")
+                                    )
+                                )
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.copied_to_clipboard),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        enabled = allowSeedCopy && canCopySeed
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "复制助记词"
+                        )
+                    }
                 }
             )
         },
