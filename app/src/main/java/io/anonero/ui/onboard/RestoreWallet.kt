@@ -37,7 +37,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,7 +61,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastJoinToString
 import androidx.compose.ui.window.Popup
 import io.anonero.R
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 
@@ -98,38 +96,34 @@ fun RestoreWallet(
     val resources = LocalContext.current.resources
     var invalidSeed by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
-    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(true) {
-        scope.launch {
-            val inputStream = resources.openRawResource(R.raw.words)
-            val reader = inputStream.bufferedReader()
-            val lines = reader.readText().split("\\n")
-            wordsList = lines
+    LaunchedEffect(Unit) {
+        wordsList = resources.openRawResource(R.raw.words).bufferedReader().use { reader ->
+            reader.readLines().map { it.trim() }.filter { it.isNotEmpty() }
         }
     }
 
     fun validateSeed() {
-        invalidSeed = false
-        scope.launch {
-            seedList = seed.split(" ")
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
+        // Monero mnemonic recovery uses 25 words; Polyseed uses 16.
+        // Accept pasted phrases separated by spaces, newlines, or tabs.
+        val candidate = seed.trim()
+            .split(Regex("\\s+"))
+            .filter { it.isNotBlank() }
+        val supportedWordCount = candidate.size == 16 || candidate.size == 25
+        val wordListReady = wordsList.isNotEmpty()
+        val containsUnknownWord = wordListReady && candidate.any { it !in wordsList }
 
-            if (seedList.size != 16 || seedList.size != 24) {
-                invalidSeed = false
-            } else {
-                seedList.forEach {
-                    if (!wordsList.contains(it.trim())) {
-                        invalidSeed = true
-                        return@forEach
-                    }
-                }
-            }
-            if (invalidSeed) {
-                seedList = listOf()
-            }
+        invalidSeed = candidate.isNotEmpty() &&
+            (!supportedWordCount || (wordListReady && containsUnknownWord))
+        seedList = if (supportedWordCount && wordListReady && !containsUnknownWord) {
+            candidate
+        } else {
+            emptyList()
         }
+    }
+
+    LaunchedEffect(wordsList) {
+        if (wordsList.isNotEmpty()) validateSeed()
     }
 
     Scaffold { paddingValues ->

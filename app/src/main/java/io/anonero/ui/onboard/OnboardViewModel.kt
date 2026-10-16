@@ -26,6 +26,7 @@ enum class Mode {
 }
 
 private const val TAG = "OnboardViewModel"
+private const val FORCE_FRESH_WALLET_SCAN = "anonero_force_fresh_wallet_scan"
 
 class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
 
@@ -181,6 +182,9 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
             putString(PREFS_PASSPHRASE_HASH, crazyPass)
             // The wallet's stored restore height is the source of truth (also for Polyseed).
             putLong(RESTORE_HEIGHT, actualRestoreHeight)
+            // A newly restored wallet must not reuse scan-completion markers from an
+            // older wallet file at the same path (especially when restoring the same seed).
+            putBoolean(FORCE_FRESH_WALLET_SCAN, true)
         }
         try {
             anonWallet.close()

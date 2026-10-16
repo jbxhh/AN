@@ -27,6 +27,7 @@ import androidx.core.content.edit
 class InvalidPin : Exception("invalid pin")
 
 private const val TAG = "AnonWalletHandler"
+private const val FORCE_FRESH_WALLET_SCAN = "anonero_force_fresh_wallet_scan"
 
 class UnableToCloseWallet : Exception()
 
@@ -124,7 +125,15 @@ class AnonWalletHandler(
                 wallet.setTrustedDaemon(true)
                 // Recover an interrupted or legacy scan from the selected restore point.
                 // Native hash-chain height alone is not proof transactions were scanned.
-                val resumeScan = walletState.beginWalletScan(wallet, actualRestoreHeight)
+                val forceFreshScan = prefs.getBoolean(FORCE_FRESH_WALLET_SCAN, false)
+                val resumeScan = walletState.beginWalletScan(
+                    wallet = wallet,
+                    scanStartHeight = actualRestoreHeight,
+                    forceStartAtSelectedHeight = forceFreshScan
+                )
+                if (forceFreshScan) {
+                    prefs.edit { remove(FORCE_FRESH_WALLET_SCAN) }
+                }
                 // Publish local data and start the refresh/rescan immediately after the
                 // selected restore height is recorded. Never wait for refreshHistory()
                 // before starting the scan and allowing refreshed() to publish the live tip.
