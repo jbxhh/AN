@@ -292,17 +292,16 @@ class WalletState(private val prefs: SharedPreferences) {
         val path = wallet.getPath()?.takeIf { it.isNotBlank() } ?: wallet.name
         val identity = path + "|" + wallet.address
         val hash = identity.fold(0) { acc, char -> 31 * acc + char.code }
-        // v3 invalidates progress markers from earlier builds where the callback
-        // path could make wallet height appear to match the daemon without a trusted
-        // transaction-processing scan. Existing wallets rebuild this marker once from
-        // their configured restore height; later launches resume from v3 progress.
-        return "anonero_scan_v3_" + hash + "_" + suffix
+        // v4 invalidates markers created before sequential scan-callback validation.
+        // Only heights confirmed in order by transaction-processing callbacks are trusted.
+        return "anonero_scan_v4_" + hash + "_" + suffix
     }
 
     /**
      * Called by Monero's WalletListener for a block actually processed by the
      * wallet. The callback uses a zero-based block index; displayed height is a count.
      */
+    @Synchronized
     fun recordScannedBlockHeight(blockIndex: Long, wallet: Wallet? = getWallet) {
         if (wallet == null || !wallet.isInitialized || blockIndex < 0L) return
 
@@ -314,12 +313,29 @@ class WalletState(private val prefs: SharedPreferences) {
             return
         }
 
-        // The build-pinned Monero source suppresses hash-cache-only callbacks;
-        // this listener now means the wallet actually processed this block.
-        val processedHeight = maxOf(_scanStartHeight.get(), blockIndex + 1L)
-        _walletHeight.update { maxOf(it, processedHeight) }
+        // A wallet scan callback is for the next processed block, not a general
+        // chain-height snapshot. Require strict sequential progress so a stale/native
+        // fast-refresh callback cannot jump the displayed wallet height to the node tip.
+        val processedHeight = blockIndex + 1L
+        val currentHeight = _walletHeight.value.coerceAtLeast(0L)
+        if (processedHeight <= currentHeight) {
+            // Duplicate/out-of-order callbacks cannot roll progress backward or
+            // imply any additional wallet scanning.
+            updateSyncProgressFromWallet(wallet, daemonHeight)
+            return
+        }
+        if (processedHeight != currentHeight + 1L) {
+            Timber.tag(TAG).w(
+                "Ignoring non-sequential scan callback: walletHeight=%d callbackHeight=%d daemonHeight=%d",
+                currentHeight, processedHeight, daemonHeight
+            )
+            updateSyncProgressFromWallet(wallet, daemonHeight)
+            return
+        }
+
+        _walletHeight.value = processedHeight
         prefs.edit {
-            putLong(scanPreferenceKey(wallet, "processed_height"), _walletHeight.value)
+            putLong(scanPreferenceKey(wallet, "processed_height"), processedHeight)
         }
         // Keep the existing home balance area populated from Monero's live wallet
         // balance as processed blocks add discovered outputs; this is not a UI change.
