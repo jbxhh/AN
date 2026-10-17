@@ -1080,6 +1080,37 @@ class WalletState(private val prefs: SharedPreferences) {
         }
     }
 
+    /**
+     * Refresh native transaction history and publish it without toggling the loading UI.
+     * Called when the history screen becomes ready and when a blockchain scan finishes,
+     * because the final native scan callback can arrive before its history snapshot is stable.
+     *
+     * @return number of transaction records visible for the current wallet account.
+     */
+    suspend fun refreshTransactionHistory(): Int = withContext(Dispatchers.IO) {
+        val wallet = getWallet ?: return@withContext 0
+        if (walletWipeInProgress.get() || !wallet.isInitialized) return@withContext 0
+
+        try {
+            wallet.refreshHistory()
+            if (walletWipeInProgress.get() || getWallet !== wallet || !wallet.isInitialized) {
+                return@withContext 0
+            }
+
+            val transactionCount = wallet.history?.all?.size ?: 0
+            update()
+            Timber.tag(TAG).i(
+                "Explicit transaction history refresh: transactions=%d balance=%d",
+                transactionCount,
+                wallet.balance
+            )
+            transactionCount
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "Explicit transaction history refresh failed")
+            0
+        }
+    }
+
     suspend fun refresh() {
         val wallet = getWallet
         if (wallet == null || !wallet.isInitialized) {

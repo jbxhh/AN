@@ -109,6 +109,7 @@ import io.anonero.ui.home.spend.qr.SpendQRExchangeParam
 import io.anonero.ui.home.spend.qr.URQRScanner
 import io.anonero.util.Formats
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -460,6 +461,9 @@ fun TransactionScreen(
     }
     val showIndefiniteLoading by walletState.isLoading.asLiveData().observeAsState(false)
     val syncProgress by walletState.syncProgress.asLiveData().observeAsState(null)
+    val walletStatus by walletState.walletStatus.asLiveData().observeAsState(null)
+    var syncBacklogSeen by remember { mutableStateOf(false) }
+    var initialHistoryRefreshDone by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState();
     val view = LocalView.current;
     val torConnected by torService.socksFlow.asLiveData().observeAsState(torService.socks != null)
@@ -474,6 +478,43 @@ fun TransactionScreen(
     LaunchedEffect(walletState) {
         withContext(Dispatchers.IO) {
             walletState.publishWalletSnapshot()
+        }
+    }
+
+    // Ensure an already-open wallet publishes its cached transaction history even if
+    // initialization completed before this screen subscribed to WalletState.
+    LaunchedEffect(walletStatus != null) {
+        if (walletStatus != null && !initialHistoryRefreshDone) {
+            initialHistoryRefreshDone = true
+            walletState.refreshTransactionHistory()
+        }
+    }
+
+    // A final scan callback can race native transaction-history publication. Retry from
+    // the screen state after the progress indicator ends, without changing the UI.
+    LaunchedEffect(syncProgress?.left, showIndefiniteLoading) {
+        val left = syncProgress?.left
+        if (left != null && left > 0L) {
+            syncBacklogSeen = true
+        } else if (syncBacklogSeen && syncProgress == null && !showIndefiniteLoading) {
+            syncBacklogSeen = false
+            for (attempt in 0 until 5) {
+                delay(if (attempt == 0) 600L else 1_200L)
+                val transactionCount = walletState.refreshTransactionHistory()
+                val wallet = WalletManager.instance?.wallet
+                val walletHasBalance = wallet?.let { currentWallet ->
+                    runCatching {
+                        currentWallet.balance > 0L || currentWallet.unlockedBalance > 0L
+                    }.getOrDefault(false)
+                } ?: false
+                Timber.tag(TAG).i(
+                    "Post-sync transaction refresh attempt=%d count=%d hasBalance=%s",
+                    attempt + 1,
+                    transactionCount,
+                    walletHasBalance
+                )
+                if (transactionCount > 0 || !walletHasBalance) break
+            }
         }
     }
 
