@@ -56,15 +56,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
+import io.anonero.AnonConfig
 import io.anonero.R
 import io.anonero.icons.AnonIcons
+import io.anonero.model.WalletManager
 import io.anonero.services.WalletState
 import io.anonero.ui.MainActivity
 import io.anonero.ui.viewmodels.AppViewModel
-import io.anonero.util.CrazyPassEncoder
 import io.anonero.util.PREFS_PIN_HASH
 import io.anonero.util.ShakeConfig
 import io.anonero.util.WALLET_PREFERENCES
+import io.anonero.util.encodePinHash
 import io.anonero.util.rememberShakeController
 import io.anonero.util.shake
 import io.anonero.util.shuffleExcept
@@ -140,21 +142,46 @@ fun LockScreen(
         }
     }
 
+    fun verifyExistingWalletPin(pin: String): Boolean {
+        val pinHash = encodePinHash(pin)
+        val walletPath = AnonConfig.context?.let {
+            AnonConfig.getDefaultWalletFile(it.applicationContext).path
+        }
+        val keysPath = walletPath?.plus(".keys")
+        val keysFileExists = keysPath?.let { java.io.File(it).isFile } == true
+
+        // The encrypted wallet file is authoritative. This also recovers old restored
+        // wallets with no saved PIN fingerprint and repairs a fingerprint previously
+        // overwritten by an unsuccessful OPEN_WALLET attempt.
+        val valid = if (keysFileExists) {
+            runCatching {
+                WalletManager.instance?.verifyWalletPassword(
+                    keysPath,
+                    pin,
+                    AnonConfig.viewOnly
+                ) == true
+            }.onFailure { error ->
+                Timber.tag(TAG).w(error, "Native wallet PIN verification failed")
+            }.getOrDefault(false)
+        } else {
+            prefs.getString(PREFS_PIN_HASH, "") == pinHash
+        }
+
+        if (valid && prefs.getString(PREFS_PIN_HASH, "") != pinHash) {
+            prefs.edit(commit = true) {
+                putString(PREFS_PIN_HASH, pinHash)
+            }
+        }
+        return valid
+    }
+
     fun checkPin(shortCut: LockScreenShortCut) {
         val pin = currentPin.joinToString(separator = "")
         if (pin.length >= 4) {
             scope.launch(Dispatchers.IO) {
                 try {
                     if (mode == LockScreenMode.VERYFY_PIN) {
-                        val prefsHash = prefs.getString(PREFS_PIN_HASH, "")
-                        val pinHash = CrazyPassEncoder.encode(
-                            pin.toByteArray().let { bytes ->
-                                if (bytes.size < 32) {
-                                    bytes + ByteArray(32 - bytes.size)
-                                } else bytes
-                            }
-                        )
-                        if (prefsHash == pinHash) {
+                        if (verifyExistingWalletPin(pin)) {
                             onUnLocked(pin, shortCut)
                         } else {
                             withContext(Dispatchers.Main) {
@@ -163,17 +190,11 @@ fun LockScreen(
                         }
                     } else if (mode == LockScreenMode.OPEN_WALLET) {
                         val result = appViewModel.openWallet(pin)
-                        prefs.edit(commit = true) {
-                            putString(
-                                PREFS_PIN_HASH,
-                                CrazyPassEncoder.encode(
-                                    pin.toByteArray().let { bytes ->
-                                        if (bytes.size < 32) {
-                                            bytes + ByteArray(32 - bytes.size)
-                                        } else bytes
-                                    }
-                                )
-                            )
+                        if (result) {
+                            // Never overwrite the saved PIN with an unsuccessful attempt.
+                            prefs.edit(commit = true) {
+                                putString(PREFS_PIN_HASH, encodePinHash(pin))
+                            }
                         }
                         withContext(Dispatchers.Main) {
                             if (result) {
@@ -189,17 +210,9 @@ fun LockScreen(
                             }
                         }
                     } else {
-                        //if wallet is already open, stop background sync from lock screen
-
-                        // Verify PIN locally against stored hash — instant, no network needed.
-                        val prefsHash = prefs.getString(PREFS_PIN_HASH, "")
-                        val pinHash = CrazyPassEncoder.encode(
-                            pin.toByteArray().let { bytes ->
-                                if (bytes.size < 32) bytes + ByteArray(32 - bytes.size)
-                                else bytes
-                            }
-                        )
-                        if (prefsHash != pinHash) {
+                        // Verify the PIN against the encrypted wallet keys, with a local
+                        // fingerprint fallback only when the keys file is unavailable.
+                        if (!verifyExistingWalletPin(pin)) {
                             withContext(Dispatchers.Main) { showError() }
                         } else {
                             onUnLocked(pin, shortCut)

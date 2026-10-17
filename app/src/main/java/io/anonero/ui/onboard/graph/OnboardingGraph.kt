@@ -1,6 +1,7 @@
 package io.anonero.ui.onboard.graph
 
 import android.content.Context
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.material3.AlertDialog
@@ -30,6 +31,7 @@ import io.anonero.AnonConfig
 import io.anonero.R
 import io.anonero.model.node.NodeFields
 import io.anonero.services.WalletState
+import io.anonero.ui.MainActivity
 import io.anonero.ui.home.graph.routes.Home
 import io.anonero.ui.home.graph.routes.HomeScreenRoute
 import io.anonero.ui.home.settings.LogViewer
@@ -177,6 +179,7 @@ fun NavGraphBuilder.onboardingGraph(
             )
         }
         composable<OnboardRestorePreviewScreen> { navBackStackEntry ->
+            val activity = LocalActivity.current
             val backUpPath = navBackStackEntry.toRoute<OnboardRestorePreviewScreen>()
             RestorePreview(
                 backUpPath = backUpPath.backUpPath,
@@ -191,6 +194,9 @@ fun NavGraphBuilder.onboardingGraph(
                         Home
                     ) {
                         popUpTo(LandingScreenRoute)
+                    }
+                    activity?.runOnUiThread {
+                        (activity as? MainActivity)?.startNotificationService()
                     }
                 }
             )
@@ -220,6 +226,7 @@ fun NavGraphBuilder.onboardingGraph(
             val walletState = koinInject<WalletState>()
             var showErrorMessage by remember { mutableStateOf<String?>(null) }
             val context = LocalContext.current
+            val activity = LocalActivity.current
             OnboardErrorDialog(
                 showErrorMessage = showErrorMessage,
                 isRestoreMode = onboardViewModel.getMode() == Mode.RESTORE,
@@ -266,12 +273,18 @@ fun NavGraphBuilder.onboardingGraph(
                                 navController.navigate(HomeScreenRoute()) {
                                     popUpTo(LandingScreenRoute)
                                 }
+                                activity?.runOnUiThread {
+                                    (activity as? MainActivity)?.startNotificationService()
+                                }
                             } else {
                                 if (onboardViewModel.getMode() == Mode.RESTORE) {
                                     startConfiguredNodeService(context, appViewModel)
                                     navController.navigate(HomeScreenRoute()) {
                                         popUpTo(LandingScreenRoute)
                                     }
+                                activity?.runOnUiThread {
+                                    (activity as? MainActivity)?.startNotificationService()
+                                }
                                 } else {
                                     navController.navigate(OnboardSeedScreen(onboardViewModel.getSeed()))
                                 }
@@ -287,6 +300,7 @@ fun NavGraphBuilder.onboardingGraph(
         composable<OnboardSeedScreen> { navBackStackEntry ->
             val state = navBackStackEntry.toRoute<OnboardSeedScreen>()
             val context = LocalContext.current
+            val activity = LocalActivity.current
             val appViewModel = koinInject<AppViewModel>()
             val walletState = koinInject<WalletState>()
             val entryScope = rememberCoroutineScope()
@@ -301,6 +315,9 @@ fun NavGraphBuilder.onboardingGraph(
                         startConfiguredNodeService(context, appViewModel)
                         navController.navigate(HomeScreenRoute()) {
                             popUpTo(LandingScreenRoute)
+                        }
+                        activity?.runOnUiThread {
+                            (activity as? MainActivity)?.startNotificationService()
                         }
                     }
                 },

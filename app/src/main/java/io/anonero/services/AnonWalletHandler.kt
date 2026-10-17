@@ -69,15 +69,24 @@ class AnonWalletHandler(
         val anonWallet = WalletManager.instance?.openWallet(
             walletFile.path,
             pin,
-        )
-        if (anonWallet?.status?.isOk != true) {
-            Timber.tag(TAG).e("openWallet error: %s", anonWallet?.status?.errorString)
-        } else {
-            // Publish balance/address from the opened wallet immediately. The asynchronous
-            // service still has to configure Tor and initialize the daemon connection.
-            walletState.publishWalletSnapshot(anonWallet)
+        ) ?: throw InvalidPin()
+        val opened = anonWallet.status.isOk
+        if (!opened) {
+            val error = anonWallet.status.errorString
+            Timber.tag(TAG).e("openWallet error: %s", error)
+            // WalletManager manages the native handle even when the password was wrong.
+            // Close it before returning so another correct PIN attempt can retry cleanly.
+            runCatching { anonWallet.close() }
+                .onFailure { closeError ->
+                    Timber.tag(TAG).w(closeError, "Unable to close wallet after failed PIN attempt")
+                }
+            return false
         }
-        return anonWallet?.status?.isOk ?: throw InvalidPin()
+
+        // Publish balance/address from the opened wallet immediately. The asynchronous
+        // service still has to configure Tor and initialize the daemon connection.
+        walletState.publishWalletSnapshot(anonWallet)
+        return true
     }
 
     suspend fun startService() {

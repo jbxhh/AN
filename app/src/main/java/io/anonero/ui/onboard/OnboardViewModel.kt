@@ -9,10 +9,10 @@ import io.anonero.model.NeroKeyPayload
 import io.anonero.model.Wallet
 import io.anonero.model.WalletManager
 import io.anonero.services.PREF_FORCE_FRESH_WALLET_SCAN
-import io.anonero.util.CrazyPassEncoder
 import io.anonero.util.KeyStoreHelper
 import io.anonero.util.PREFS_PASSPHRASE_HASH
 import io.anonero.util.PREFS_PIN_HASH
+import io.anonero.util.encodePinHash
 import io.anonero.util.RESTORE_HEIGHT
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -69,15 +69,8 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
             }
 
             //adds padding to the pin if it's less than 32 bytes
-            val pinHash = CrazyPassEncoder.encode(
-                pin.toByteArray().let { bytes ->
-                    if (bytes.size < 32) {
-                        bytes + ByteArray(32 - bytes.size)
-                    } else bytes
-                }
-            )
-            prefs.edit {
-                putString(PREFS_PIN_HASH, pinHash)
+            prefs.edit(commit = true) {
+                putString(PREFS_PIN_HASH, encodePinHash(pin))
                 // A newly created wallet must not inherit another wallet's restore height.
                 putLong(RESTORE_HEIGHT, 0L)
             }
@@ -111,8 +104,9 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
                 throw CancellationException(context.getString(R.string.unable_to_create_wallet))
             }
             val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
-            prefs.edit {
+            prefs.edit(commit = true) {
                 putString("passPhraseHash", crazyPass)
+                putString(PREFS_PIN_HASH, encodePinHash(pin))
                 putLong(RESTORE_HEIGHT, neroKeyPayload!!.restoreHeight)
             }
             walllet = anonWallet
@@ -184,6 +178,7 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
         ).coerceAtLeast(0L)
         prefs.edit(commit = true) {
             putString(PREFS_PASSPHRASE_HASH, crazyPass)
+            putString(PREFS_PIN_HASH, encodePinHash(pin))
             putLong(RESTORE_HEIGHT, actualRestoreHeight)
             // Mark this seed restore so wallet startup preserves the selected height
             // and queues its first native scan from that height after the daemon is synced.
