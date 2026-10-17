@@ -660,6 +660,18 @@ class WalletState(private val prefs: SharedPreferences) {
             return
         }
 
+        // A fresh seed restore can be left pending if the first connection check
+        // finds the daemon still catching up. refreshed() keeps calling this method
+        // while scanHeight < daemonHeight; retry the pending native rescan here so
+        // it starts automatically once daemon height reaches its target. Without
+        // this retry, the UI can show a backlog while no newBlock callbacks arrive.
+        if (chainHeight < daemonHeight &&
+            pendingSelectedRestoreHeight(wallet) != null &&
+            !forcedRestoreScanStarted.get()
+        ) {
+            maybeStartForcedRestoreScan(wallet)
+        }
+
         // Do not declare the wallet finished merely because it caught the daemon's
         // current tip while that daemon is still syncing. Keep the displayed backlog
         // tied to the live target to avoid a completed bar restarting from zero.
