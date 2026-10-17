@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -176,7 +177,7 @@ fun LogViewer(
     val horizontalScrollState = rememberScrollState()
     var textScale by androidx.compose.runtime.remember { mutableStateOf(1f) }
     val transformState = rememberTransformableState { zoomChange, _, _ ->
-        textScale = (textScale * zoomChange).coerceIn(0.75f, 3f)
+        textScale = (textScale * zoomChange).coerceIn(0.75f, 2.5f)
     }
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
     val context = LocalContext.current
@@ -259,6 +260,18 @@ fun LogViewer(
                 .fillMaxSize()
         ) {
             val viewportWidth = maxWidth
+            val fontScale = LocalDensity.current.fontScale
+            val longestMessageLine = remember(logLines) {
+                logLines.maxOfOrNull { entry ->
+                    entry.message.lineSequence().maxOfOrNull { it.length } ?: 0
+                } ?: 0
+            }
+            // Include the full longest log line in the scrollable canvas. Text stays
+            // single-line horizontally, while vertical scrolling still works normally.
+            val logContentWidth = maxOf(
+                viewportWidth * textScale,
+                (longestMessageLine * 5.5f * textScale * fontScale + 86f * textScale).dp
+            )
             SelectionContainer {
                 Row(
                     modifier = Modifier
@@ -269,7 +282,7 @@ fun LogViewer(
                         state = listState,
                         reverseLayout = true,
                         modifier = Modifier
-                            .width(viewportWidth * textScale)
+                            .width(logContentWidth)
                             .fillMaxHeight()
                             .transformable(
                                 state = transformState,
@@ -333,13 +346,14 @@ private fun LogLineContent(text: AnonLog, textScale: Float = 1f) {
         )
         Text(
             text.message,
-            fontSize = 8.sp,
+            fontSize = (8f * textScale).sp,
             color = color,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Light,
             maxLines = 30,
+            softWrap = false,
             lineHeight = (12f * textScale).sp,
-            overflow = TextOverflow.Ellipsis,
+            overflow = TextOverflow.Clip,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(0.dp)

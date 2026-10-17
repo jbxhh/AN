@@ -471,6 +471,12 @@ fun TransactionScreen(
         showExitDialog = true
     }
 
+    LaunchedEffect(walletState) {
+        withContext(Dispatchers.IO) {
+            walletState.publishWalletSnapshot()
+        }
+    }
+
     LaunchedEffect(true) {
         scope.launch {
             refreshState.snapTo(0f)

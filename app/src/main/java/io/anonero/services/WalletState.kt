@@ -13,6 +13,7 @@ import io.anonero.model.WalletManager
 import io.anonero.model.node.DaemonInfo
 import io.anonero.ui.util.getAllUsedSubAddresses
 import io.anonero.ui.util.getLatestSubAddress
+import io.anonero.ui.util.getLastUnusedIndex
 import io.anonero.ui.home.LockScreenShortCut
 import io.anonero.util.RESTORE_HEIGHT
 import kotlinx.coroutines.CoroutineScope
@@ -978,16 +979,68 @@ class WalletState(private val prefs: SharedPreferences) {
         _backgroundSync.update { startBackgroundSync }
     }
 
+    /**
+     * Ensure a correct unused receive address when the user opens the receive screen.
+     *
+     * WalletState.update() is also called from the native refresh callback. That callback
+     * must only read already-generated addresses: creating an address there can deadlock
+     * against the native refresh lock. This explicit UI-driven operation may safely wait
+     * for a refresh batch boundary because it does not hold synchronized(wallet).
+     */
+    suspend fun ensureNextReceiveAddress(): Subaddress = subaddressMutex.withLock {
+        if (walletWipeInProgress.get()) throw IllegalStateException("钱包正在安全删除")
+        val wallet = getWallet ?: throw IllegalStateException("钱包未打开")
+        val accountIndex = wallet.getAccountIndex()
+
+        if (!wallet.isInitialized) {
+            val primaryAddress = wallet.getAddress(accountIndex)
+            check(primaryAddress.isNotBlank()) { "主收款地址为空" }
+            val primary = Subaddress(accountIndex, 0, primaryAddress, "")
+            _nextAddress.value = primary
+            _subAddresses.update { current ->
+                (current + primary).distinctBy { it.address }.sortedByDescending { it.addressIndex }
+            }
+            return@withLock primary
+        }
+
+        // History-only lookup; this does not perform a series of native address reads.
+        val nextIndex = synchronized(wallet) { wallet.getLastUnusedIndex() + 1 }
+        var addressCount = wallet.numSubAddresses
+        val createdAddresses = mutableListOf<Subaddress>()
+
+        while (addressCount <= nextIndex) {
+            if (walletWipeInProgress.get() || getWallet !== wallet) {
+                throw IllegalStateException("钱包状态已改变")
+            }
+            // Important: don't wrap this call in synchronized(wallet). The native call
+            // waits for the current refresh callback to return before mutating wallet2.
+            val created = wallet.addSubaddressAndGetSubaddress(accountIndex)
+            check(created.addressIndex == addressCount) {
+                "添加子地址失败：原生地址索引不连续"
+            }
+            createdAddresses += created
+            addressCount = created.addressIndex + 1
+        }
+
+        val address = createdAddresses.lastOrNull { it.addressIndex == nextIndex }
+            ?: synchronized(wallet) { wallet.getSubaddressObject(nextIndex) }
+
+        _nextAddress.value = address
+        _subAddresses.update { current ->
+            (createdAddresses + current)
+                .distinctBy { it.address }
+                .sortedByDescending { it.addressIndex }
+        }
+        address
+    }
+
     suspend fun getNewAddress(): Subaddress = subaddressMutex.withLock {
         val wallet = getWallet ?: throw IllegalStateException("钱包未打开")
         val accountIndex = wallet.getAccountIndex()
 
-        // This native call pauses only at a refresh batch boundary, creates and stores the
-        // address, then returns its exact index/address before the scan resumes. Do not
-        // read or store the native wallet again here: the scan may already be running.
-        val addedAddress = synchronized(wallet) {
-            wallet.addSubaddressAndGetSubaddress(accountIndex)
-        }
+        // This native call pauses only at a refresh batch boundary. Never hold the JVM
+        // wallet monitor while the native call waits for the refresh thread to unwind.
+        val addedAddress = wallet.addSubaddressAndGetSubaddress(accountIndex)
 
         _subAddresses.update { current ->
             (current + addedAddress)

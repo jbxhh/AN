@@ -4,30 +4,26 @@ import io.anonero.model.Subaddress
 import io.anonero.model.Wallet
 
 fun Wallet.getLastUnusedIndex(): Int {
+    // Only transaction history is needed here. Reading every address through JNI was
+    // unnecessary and could race the native scanner during a restore.
     var lastUsedSubaddress = 0
-    val subaddress = arrayListOf<Subaddress>()
-    for (i in 0 until this.numSubAddresses) {
-        subaddress.add(this.getSubaddressObject(i))
-    }
     for (info in this.history?.all ?: listOf()) {
         if (info.addressIndex > lastUsedSubaddress) lastUsedSubaddress = info.addressIndex
     }
     return lastUsedSubaddress
 }
 
-
+/**
+ * Read the best already-generated receive address without mutating the native wallet.
+ * This function is called from wallet refresh callbacks, so it must never wait for or
+ * stop the native refresh thread.
+ */
 fun Wallet.getLatestSubAddress(): Subaddress = synchronized(this) {
-    // Return the first address after the highest index seen in transaction history.
-    // Any missing address is created and persisted by one native operation that yields
-    // its exact index/address while refresh is temporarily quiesced.
+    val addressCount = numSubAddresses
+    check(addressCount > 0) { "钱包没有可用地址" }
     val nextIndex = getLastUnusedIndex() + 1
-    var knownCount = numSubAddresses
-    var lastCreated: Subaddress? = null
-    while (knownCount <= nextIndex) {
-        lastCreated = addSubaddressAndGetSubaddress(getAccountIndex())
-        knownCount = lastCreated.addressIndex + 1
-    }
-    lastCreated?.takeIf { it.addressIndex == nextIndex } ?: getSubaddressObject(nextIndex)
+    val indexToRead = if (nextIndex in 0 until addressCount) nextIndex else addressCount - 1
+    getSubaddressObject(indexToRead)
 }
 
 fun Wallet.getAllUsedSubAddresses(): List<Subaddress> = synchronized(this) {
