@@ -70,7 +70,7 @@ fun NodeSettingsMenuPage(
 private fun SettingsMenuDivider() {
     HorizontalDivider(
         modifier = Modifier.padding(horizontal = 4.dp),
-        thickness = 2.5.dp
+        thickness = 1.dp
     )
 }
 
