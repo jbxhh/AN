@@ -153,13 +153,13 @@ fun SettingsDataPage(
                     MenuItem(stringResource(R.string.settings_change_pin)) {
                         showLockScreen = true
                     }
-                    HorizontalDivider(thickness = 2.5.dp)
+                    HorizontalDivider(thickness = 1.dp)
                 }
                 item {
                     MenuItem(stringResource(R.string.settings_export_backup)) {
                         navigateTo(SettingsExportBackUp)
                     }
-                    HorizontalDivider(thickness = 2.5.dp)
+                    HorizontalDivider(thickness = 1.dp)
                 }
             }
         }
