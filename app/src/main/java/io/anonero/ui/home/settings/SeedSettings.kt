@@ -14,7 +14,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,7 +33,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -47,7 +46,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -340,53 +338,39 @@ fun SeedSettingsPage(onBackPress: () -> Unit = {}) {
         selectedSeed.isNotEmpty() &&
         selectedSeed.none { it.contains("*") }
 
+    fun copySeedToClipboard() {
+        if (!allowSeedCopy || !canCopySeed) return
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        clipboard?.setPrimaryClip(
+            ClipData.newPlainText("Mnemonic", selectedSeed.joinToString(" "))
+        )
+        Toast.makeText(
+            context,
+            context.getString(R.string.copied_to_clipboard),
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
     val wallet = WalletManager.instance?.wallet
     Scaffold(
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(
-                            onClick = onBackPress
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-                        }
-                        Switch(
-                            checked = allowSeedCopy,
-                            onCheckedChange = { allowSeedCopy = it },
-                            enabled = !passPhraseDialog
-                        )
+                    IconButton(
+                        onClick = onBackPress
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                     }
                 },
                 title = {
                     Text("")
                 },
                 actions = {
-                    IconButton(
-                        onClick = {
-                            if (allowSeedCopy && canCopySeed) {
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
-                                    as? ClipboardManager
-                                clipboard?.setPrimaryClip(
-                                    ClipData.newPlainText(
-                                        "Mnemonic",
-                                        selectedSeed.joinToString(" ")
-                                    )
-                                )
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.copied_to_clipboard),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        },
-                        enabled = allowSeedCopy && canCopySeed
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ContentCopy,
-                            contentDescription = "复制助记词"
-                        )
-                    }
+                    Switch(
+                        checked = allowSeedCopy,
+                        onCheckedChange = { allowSeedCopy = it },
+                        enabled = !passPhraseDialog
+                    )
                 }
             )
         },
@@ -441,9 +425,12 @@ fun SeedSettingsPage(onBackPress: () -> Unit = {}) {
                                     .padding(4.dp)
                                     .fillMaxWidth()
                                     .animateContentSize()
-                                    .clickable {
-                                        showLegacy = !showLegacy
-                                    },
+                                    .combinedClickable(
+                                        onClick = { showLegacy = !showLegacy },
+                                        onLongClick = if (allowSeedCopy && canCopySeed) {
+                                            { copySeedToClipboard() }
+                                        } else null
+                                    ),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 verticalArrangement = Arrangement.spacedBy(0.dp)
                             ) {
