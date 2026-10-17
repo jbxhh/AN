@@ -8,7 +8,13 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,6 +38,8 @@ import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -165,6 +173,11 @@ fun LogViewer(
     val viewModel = koinViewModel<LogViewModel>()
     val logLines by viewModel.logLines.collectAsState(emptyList())
     val listState = rememberLazyListState()
+    val horizontalScrollState = rememberScrollState()
+    var textScale by androidx.compose.runtime.remember { mutableStateOf(1f) }
+    val transformState = rememberTransformableState { zoomChange, _, _ ->
+        textScale = (textScale * zoomChange).coerceIn(0.75f, 3f)
+    }
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
     val context = LocalContext.current
     Scaffold(
@@ -239,22 +252,38 @@ fun LogViewer(
                 scrollBehavior = scrollBehavior
             )
         }
-    ) {
-        SelectionContainer {
-            LazyColumn(
-                state = listState,
-                reverseLayout = true,
-                modifier = Modifier
-                    .padding(it)
-                    .padding(
-                        horizontal = 8.dp
-                    )
-                    .fillMaxSize(),
-                contentPadding = PaddingValues(0.dp),
-                verticalArrangement = Arrangement.Bottom
-            ) {
-                items(logLines.size) { index ->
-                    LogLine(logLines[index])
+    ) { innerPadding ->
+        BoxWithConstraints(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+        ) {
+            val viewportWidth = maxWidth
+            SelectionContainer {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .horizontalScroll(horizontalScrollState)
+                ) {
+                    LazyColumn(
+                        state = listState,
+                        reverseLayout = true,
+                        modifier = Modifier
+                            .width(viewportWidth * textScale)
+                            .fillMaxHeight()
+                            .transformable(
+                                state = transformState,
+                                lockRotationOnZoomPan = true,
+                                canPan = { false }
+                            )
+                            .padding(horizontal = 8.dp),
+                        contentPadding = PaddingValues(0.dp),
+                        verticalArrangement = Arrangement.Bottom
+                    ) {
+                        items(logLines.size) { index ->
+                            LogLine(logLines[index], textScale)
+                        }
+                    }
                 }
             }
         }
@@ -263,13 +292,13 @@ fun LogViewer(
 }
 
 @Composable
-private fun LogLine(text: AnonLog) {
+private fun LogLine(text: AnonLog, textScale: Float = 1f) {
     // The parent SelectionContainer covers all rows so users can select across log lines.
-    LogLineContent(text)
+    LogLineContent(text, textScale)
 }
 
 @Composable
-private fun LogLineContent(text: AnonLog) {
+private fun LogLineContent(text: AnonLog, textScale: Float = 1f) {
 
     val color = when (text.priority) {
         Log.VERBOSE -> Color(0xFF4FC3F7)
@@ -296,10 +325,10 @@ private fun LogLineContent(text: AnonLog) {
         Text(
             "${Formats.formatLogTime(text.date)}:  ",
             color = Color.Gray,
-            fontSize = 8.sp,
+            fontSize = (8f * textScale).sp,
             letterSpacing = 0.sp,
             modifier = Modifier
-                .width(70.dp)
+                .width((70f * textScale).dp)
                 .padding(0.dp)
         )
         Text(
@@ -309,7 +338,7 @@ private fun LogLineContent(text: AnonLog) {
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Light,
             maxLines = 30,
-            lineHeight = 12.sp,
+            lineHeight = (12f * textScale).sp,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .fillMaxWidth()
