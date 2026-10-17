@@ -1,0 +1,26 @@
+[package]
+name = "anonero-rust-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+license = "GPL-3.0-only"
+description = "Rust wallet core migration for ANONERO Android"
+
+[lib]
+name = "anonero_rust"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jni = { version = "0.21", default-features = false }
+monero-wallet = { git = "https://github.com/monero-oxide/monero-oxide", rev = "731657ae3385be667abb556266369a497bc86f13", package = "monero-wallet", default-features = false, features = ["std"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+overflow-checks = true
+
+[profile.dev]
+overflow-checks = true
