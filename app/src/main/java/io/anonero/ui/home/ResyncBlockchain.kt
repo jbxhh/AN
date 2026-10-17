@@ -375,6 +375,7 @@ fun ResyncBlockchainScreen(
             Column(
                 modifier = Modifier
                     .weight(8f)
+                    .padding(top = 56.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.Top
             ) {
