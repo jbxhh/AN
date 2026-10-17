@@ -202,7 +202,7 @@ class WalletState(private val prefs: SharedPreferences) {
      * rescan from that height instead of inheriting a previous scan marker/hash cache.
      * Keep the request pending until the daemon is connected and fully synchronized.
      */
-    private fun maybeStartForcedRestoreScan(wallet: Wallet) {
+    fun maybeStartForcedRestoreScan(wallet: Wallet) {
         if (walletWipeInProgress.get()) return
         if (!prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) return
         if (forcedRestoreScanStarted.get()) return

@@ -74,6 +74,10 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
         }
         walletState.updateDaemonTargetHeight(daemonTargetHeight)
         walletState.updateBlockHeights(wallet, daemonHeight)
+        // Do not wait for completeWalletScan(): a restored wallet starts below the daemon
+        // tip by design, so the completion branch cannot be the first place that queues
+        // its required rescan. This check retries until the connected daemon is synced.
+        walletState.maybeStartForcedRestoreScan(wallet)
         val scanHeight = walletState.currentWalletHeight
         Timber.tag(name).i(
             "refreshed() status:%s daemonHeight:%d scanHeight:%d nativeHeight:%d",
