@@ -261,18 +261,35 @@ fun LogViewer(
                 .fillMaxSize()
         ) {
             val viewportWidth = maxWidth
-            val fontScale = LocalDensity.current.fontScale
+            // Measure the longest actual line instead of guessing its width from
+            // character count. This keeps log rows on one line while zooming and avoids
+            // accidental wrapping that pushes part of a row onto the next line.
             val longestMessageLine = remember(logLines) {
-                logLines.maxOfOrNull { entry ->
-                    entry.message.lineSequence().maxOfOrNull { it.length } ?: 0
-                } ?: 0
+                logLines.asSequence()
+                    .flatMap { entry -> entry.message.lineSequence() }
+                    .maxByOrNull { it.length }
+                    .orEmpty()
             }
-            // Include the full longest log line in the scrollable canvas. Text stays
-            // single-line horizontally, while vertical scrolling still works normally.
-            val logContentWidth = maxOf(
-                viewportWidth * textScale,
-                (longestMessageLine * 5.5f * textScale * fontScale + 86f * textScale).dp
-            )
+            val textMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
+            val longestMessageWidth = textMeasurer.measure(
+                text = longestMessageLine,
+                style = androidx.compose.ui.text.TextStyle(
+                    fontSize = (8f * textScale).sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Light
+                ),
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip
+            ).size.width
+            val density = LocalDensity.current
+            val logContentWidth = with(density) {
+                maxOf(
+                    viewportWidth,
+                    viewportWidth * textScale,
+                    (longestMessageWidth + (70f * textScale).dp.toPx() + 16.dp.toPx()).toDp()
+                )
+            }
             SelectionContainer {
                 Row(
                     modifier = Modifier
