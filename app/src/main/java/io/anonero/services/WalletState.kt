@@ -102,6 +102,7 @@ class WalletState(private val prefs: SharedPreferences) {
     val connectionStatus: Flow<Wallet.ConnectionStatus?> = _connectionStatus
     val incomingTx = _incomingTx.asSharedFlow()
 
+    @Synchronized
     fun update() {
         if (_blockUpdates.get() || walletWipeInProgress.get()) return
         getWallet?.let { wallet ->
@@ -176,7 +177,9 @@ class WalletState(private val prefs: SharedPreferences) {
      * Monero's native init can replace the refresh start with the daemon tip when the
      * wallet cache only contains genesis. Reapply the selected height after every init.
      */
+    @Synchronized
     fun preservePendingRestoreHeightAfterInit(wallet: Wallet): Long? {
+        if (walletWipeInProgress.get()) return null
         val selectedHeight = pendingSelectedRestoreHeight(wallet) ?: return null
         wallet.setRestoreHeight(selectedHeight)
         val actualHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
@@ -279,8 +282,9 @@ class WalletState(private val prefs: SharedPreferences) {
      * Publish local wallet data independently from daemon startup and blockchain scanning.
      * The UI should not need a successful Tor/RPC connection just to show an address.
      */
+    @Synchronized
     fun publishWalletSnapshot(wallet: Wallet? = getWallet) {
-        if (wallet == null) return
+        if (walletWipeInProgress.get() || wallet == null) return
 
         try {
             updateBalanceFromWallet(wallet)
@@ -358,11 +362,13 @@ class WalletState(private val prefs: SharedPreferences) {
     val currentConnectionStatus: Wallet.ConnectionStatus?
         get() = _walletStatus.value?.connectionStatus ?: _connectionStatus.value
 
+    @Synchronized
     fun beginWalletScan(
         wallet: Wallet? = getWallet,
         scanStartHeight: Long? = null,
         forceStartAtSelectedHeight: Boolean = false
     ): Boolean {
+        if (walletWipeInProgress.get()) return false
         if (wallet == null || !wallet.isInitialized) {
             _scanTracking.set(false)
             _walletHeight.value = 0L
@@ -547,7 +553,9 @@ class WalletState(private val prefs: SharedPreferences) {
         }
     }
 
+    @Synchronized
     private fun updateBalanceFromWallet(wallet: Wallet) {
+        if (walletWipeInProgress.get()) return
         _balanceInfo.value = wallet.balance
         _unLockedBalance.value = if (AnonConfig.viewOnly) {
             wallet.viewOnlyBalance()
@@ -556,10 +564,12 @@ class WalletState(private val prefs: SharedPreferences) {
         }
     }
 
+    @Synchronized
     fun completeWalletScan(
         wallet: Wallet? = getWallet,
         knownDaemonHeight: Long? = null
     ): Boolean {
+        if (walletWipeInProgress.get()) return false
         if (wallet != null && wallet.isInitialized) {
             // A callback can report the daemon tip before the fresh restore's native
             // rescan is queued. Never treat that startup race as a completed wallet scan.
@@ -609,10 +619,12 @@ class WalletState(private val prefs: SharedPreferences) {
      * Publishes the active daemon height and (only outside a scan) the native
      * wallet height. During a scan, WalletListener callbacks are the source of truth.
      */
+    @Synchronized
     fun updateBlockHeights(
         wallet: Wallet? = getWallet,
         knownDaemonHeight: Long? = null
     ) {
+        if (walletWipeInProgress.get()) return
         if (wallet == null || !wallet.isInitialized) {
             _walletHeight.value = 0L
             _connectedDaemon.update { current -> current?.copy(daemonHeight = 0L) }
@@ -666,10 +678,12 @@ class WalletState(private val prefs: SharedPreferences) {
     /**
      * Computes backlog from the actual processed scan height, not the local hash-chain size.
      */
+    @Synchronized
     fun updateSyncProgressFromWallet(
         wallet: Wallet? = getWallet,
         knownDaemonHeight: Long? = null
     ) {
+        if (walletWipeInProgress.get()) return
         if (wallet == null || !wallet.isInitialized) {
             clearSyncProgress()
             return
@@ -799,6 +813,7 @@ class WalletState(private val prefs: SharedPreferences) {
         }
     }
 
+    @Synchronized
     fun setConnectionStatus(status: Wallet.ConnectionStatus) {
         if (walletWipeInProgress.get()) return
         val previous = _previousConnectionStatus.getAndSet(status)
