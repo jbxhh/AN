@@ -14,18 +14,26 @@ def replace_once(path: Path, old: str, new: str) -> None:
         raise SystemExit(f"{path}: expected one API anchor, found {source.count(old)}")
     path.write_text(source.replace(old, new, 1))
 
-replace_once(
+def replace_regex_once(path: Path, pattern: str, replacement) -> None:
+    source = path.read_text()
+    matches = list(re.finditer(pattern, source, re.MULTILINE))
+    if len(matches) != 1:
+        raise SystemExit(f"{path}: expected one regex anchor, found {len(matches)}")
+    match = matches[0]
+    source = source[:match.start()] + replacement(match) + source[match.end():]
+    path.write_text(source)
+
+replace_regex_once(
     api_path,
-    "     virtual void addSubaddress(uint32_t accountIndex, const std::string& label) = 0;",
-    "     virtual void addSubaddress(uint32_t accountIndex, const std::string& label) = 0;\n"
-    "     /** Atomically create, persist, and return '<index>|<address>' for a new subaddress. */\n"
-    "     virtual std::string addSubaddressAndGetAddress(uint32_t accountIndex) = 0;",
+    r"^([ \\t]*)virtual void addSubaddress\\(uint32_t accountIndex, const std::string& label\\) = 0;$",
+    lambda m: m.group(0) + "\\n" + m.group(1)
+    + "virtual std::string addSubaddressAndGetAddress(uint32_t accountIndex) = 0;",
 )
-replace_once(
+replace_regex_once(
     impl_header_path,
-    "     void addSubaddress(uint32_t accountIndex, const std::string& label) override;",
-    "     void addSubaddress(uint32_t accountIndex, const std::string& label) override;\n"
-    "     std::string addSubaddressAndGetAddress(uint32_t accountIndex) override;",
+    r"^([ \\t]*)void addSubaddress\\(uint32_t accountIndex, const std::string& label\\) override;$",
+    lambda m: m.group(0) + "\\n" + m.group(1)
+    + "std::string addSubaddressAndGetAddress(uint32_t accountIndex) override;",
 )
 
 # Keep even legacy native additions from mutating wallet2 while its scan thread reads it.
