@@ -320,11 +320,12 @@ class AnonWalletHandler(
                 walletState.setBackGroundSync(false)
             }
 
+            // Gate and drain app-side JNI calls first; only then stop native refresh.
+            // This prevents an in-flight scan task from restarting refresh after pause.
+            walletState.awaitPendingNativeQueries()
             Timber.tag(TAG).i("Secure wipe: pausing wallet refresh")
             wallet.pauseRefresh()
             refreshPaused = true
-            // Drain the app's explicitly tracked daemon-height JNI query before closing.
-            walletState.awaitPendingNativeQueries()
 
             // No native listener may call into WalletState while closeWallet() releases
             // the native wallet and its JNI listener reference.
