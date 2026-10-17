@@ -635,12 +635,12 @@ fun TransactionScreen(
 
                 }
             },
-            indicator = { state ->
+            indicator = {
                 // Keep the pull indicator in the PullToRefreshBox overlay rather than
                 // inside the LazyColumn. Its vertical position follows the live drag
                 // distance, so it tracks the finger instead of waiting for list layout
                 // and visibility animations to catch up.
-                val pullDistance = state.distanceFraction.coerceAtLeast(0f)
+                val pullDistance = refreshState.distanceFraction.coerceAtLeast(0f)
                 if (pullDistance > 0f) {
                     Column(
                         modifier = Modifier
