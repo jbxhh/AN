@@ -13,11 +13,14 @@ import io.anonero.util.WALLET_PROXY
 import io.anonero.util.WALLET_PROXY_PORT
 import io.anonero.util.WALLET_USE_TOR
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import timber.log.Timber
@@ -41,6 +44,9 @@ class AnonWalletHandler(
 
     private var handler: MoneroHandlerThread? = null
     private val wipeInProgress = AtomicBoolean(false)
+    private val serviceStartMutex = Mutex()
+    private val walletInitializationMutex = Mutex()
+    @Volatile private var serviceStartedWallet: Wallet? = null
 
     val scope get() = _scope
 
@@ -49,7 +55,10 @@ class AnonWalletHandler(
             torService.socksFlow.collect {
                 val wallet = WalletManager.instance?.wallet
                 if (!wipeInProgress.get() && prefs.getBoolean(WALLET_USE_TOR, false) && wallet?.isInitialized == true) {
-                    setProxy(it.address.toString(), it.port.value)
+                    val proxyAddress = "${it.address}:${it.port.value}"
+                    WalletManager.instance?.setProxy(proxyAddress)
+                    wallet.setProxy(proxyAddress)
+                    Timber.tag(TAG).d("Applied Tor SOCKS proxy %s", proxyAddress)
                 }
             }
         }
@@ -72,128 +81,68 @@ class AnonWalletHandler(
     }
 
     suspend fun startService() {
+        serviceStartMutex.withLock { startServiceLocked() }
+    }
+
+    private suspend fun startServiceLocked() {
         if (wipeInProgress.get()) return
         val wallet = WalletManager.instance?.wallet ?: return
         if (wipeInProgress.get()) return
-        handler = MoneroHandlerThread(
-            wallet,
-            walletState
-        )
+        if (serviceStartedWallet === wallet && wallet.isInitialized) {
+            walletState.update()
+            return
+        }
 
+        handler = MoneroHandlerThread(wallet, walletState)
         wallet.setListener(handler)
         handler?.start()
         walletState.setLoading(true)
+
         try {
-            val host = prefs.getString(NodeFields.RPC_HOST.value, "")
-            val rpcPort = prefs.getInt(NodeFields.RPC_PORT.value, Node.defaultRpcPort)
-            val rpcUsername = prefs.getString(NodeFields.RPC_USERNAME.value, "")
-            val rpcPassphrase = prefs.getString(NodeFields.RPC_PASSWORD.value, "")
-            val proxyHost = prefs.getString(WALLET_PROXY, "")
-            val proxyPort = prefs.getInt(WALLET_PROXY_PORT, -1)
-            val useTor = prefs.getBoolean(WALLET_USE_TOR, true)
-            if (useTor || proxyHost.isNullOrBlank()) {
-                // Never let onboarding hang forever if Tor failed to publish its SOCKS
-                // listener. A later node-connect attempt can retry Tor startup.
-                val readySocket = torService.awaitSocks(30_000L)
-                    ?: throw IllegalStateException("Tor 在 30 秒内未建立 SOCKS 连接")
-                if (wipeInProgress.get()) return
-                setProxy(readySocket.address.toString(), readySocket.port.value)
-            } else if (proxyHost.isNotEmpty() && proxyPort != -1) {
-                val proxyAddress = "${proxyHost}:$proxyPort"
-                WalletManager.instance?.setProxy(proxyAddress)
-                WalletManager.instance?.wallet?.setProxy(proxyAddress)
-            } else {
-                throw Exception("no proxy")
-            }
-            if (host?.isNotEmpty() == true) {
-                if (wipeInProgress.get()) return
-                val nodeObj = JSONObject()
-                    .apply {
-                        put(NodeFields.RPC_HOST.value, host)
-                        put(NodeFields.RPC_PORT.value, rpcPort)
-                        put(NodeFields.RPC_USERNAME.value, rpcUsername)
-                        put(NodeFields.RPC_PASSWORD.value, rpcPassphrase)
-                        put(NodeFields.RPC_NETWORK.value, AnonConfig.getNetworkType().toString())
-                        put(NodeFields.NODE_NAME.value, "anon")
-                    }
-                val node = Node.fromJson(nodeObj)
-                updateDaemon(node)
-                walletState.setLoading(true)
-            }
-            if (wipeInProgress.get()) return
-            // Monero's WalletImpl::doInit() treats an opened wallet with only
-            // the genesis cache as a brand-new wallet and replaces refresh_height with
-            // the daemon tip. That destroys the user-selected restore height because the
-            // native "recovering from seed" flag is not retained after this wallet is
-            // closed and reopened by the service. Capture the stored value before init.
-            val forceFreshScan = prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
-            val selectedRestoreHeightBeforeInit =
-                if (forceFreshScan) walletState.pendingSelectedRestoreHeight(wallet) else null
+            // A single 30-second wait is not a failed wallet startup. Tor may still be
+            // bootstrapping on a first install; keep the daemon alive and continue waiting.
+            while (!wipeInProgress.get()) {
+                val useTor = prefs.getBoolean(WALLET_USE_TOR, true)
+                val proxyHost = prefs.getString(WALLET_PROXY, "")
+                val proxyPort = prefs.getInt(WALLET_PROXY_PORT, -1)
 
-            val initialized = wallet.init(0)
-            if (wipeInProgress.get()) return
-            if (initialized && wallet.isInitialized) {
-                if (forceFreshScan && selectedRestoreHeightBeforeInit != null) {
-                    // The height entered on the restore screen is authoritative;
-                    // native init can replace the wallet's refresh start with the daemon tip.
-                    val reappliedHeight = walletState.preservePendingRestoreHeightAfterInit(wallet)
-                    check(reappliedHeight == selectedRestoreHeightBeforeInit) {
-                        "Selected restore height changed during native init"
+                if (useTor) {
+                    val readySocket = torService.awaitSocks(30_000L)
+                    if (readySocket == null) {
+                        Timber.tag(TAG).w(
+                            "Tor SOCKS is still starting; wallet initialization will retry"
+                        )
+                        walletState.setLoading(true)
+                        delay(2_000L)
+                        continue
                     }
-                    Timber.tag(TAG).i(
-                        "Preserved selected restore height after wallet init: %d",
-                        reappliedHeight
-                    )
-                }
-
-                val actualRestoreHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
-                prefs.edit(commit = true) { putLong(RESTORE_HEIGHT, actualRestoreHeight) }
-                wallet.setTrustedDaemon(true)
-                // Recover an interrupted or legacy scan from the selected restore point.
-                // Native hash-chain height alone is not proof transactions were scanned.
-                val resumeScan = walletState.beginWalletScan(
-                    wallet = wallet,
-                    scanStartHeight = actualRestoreHeight,
-                    forceStartAtSelectedHeight = forceFreshScan
-                )
-                // Publish local data and start the refresh/rescan immediately after the
-                // selected restore height is recorded. Never wait for refreshHistory()
-                // before starting the scan and allowing refreshed() to publish the live tip.
-                walletState.publishWalletSnapshot(wallet)
-                if (forceFreshScan) {
-                    // Keep a normal refresh running so we can monitor daemon sync,
-                    // but leave the fresh-restore marker set. WalletState will queue a
-                    // native rescan from the chosen height after the daemon fully syncs;
-                    // init may already have advanced the native hash cache to the node tip.
-                    Timber.tag(TAG).i(
-                        "Starting fresh wallet scan from selected restore height: %d",
-                        actualRestoreHeight
-                    )
-                    wallet.startRefresh()
+                    val proxyAddress = "${readySocket.address}:${readySocket.port.value}"
+                    WalletManager.instance?.setProxy(proxyAddress)
+                    wallet.setProxy(proxyAddress)
+                } else if (!proxyHost.isNullOrBlank() && proxyPort != -1) {
+                    val proxyAddress = "${proxyHost}:$proxyPort"
+                    WalletManager.instance?.setProxy(proxyAddress)
+                    wallet.setProxy(proxyAddress)
                 } else {
-                    if (resumeScan) {
-                        // Recover an interrupted or legacy scan by clearing stale scan state.
-                        // Enable the worker after queuing the asynchronous rescan.
-                        wallet.rescanBlockchainAsync()
-                    }
-                    wallet.startRefresh()
+                    // Tor is disabled and no custom proxy is configured: use a direct node
+                    // connection rather than trying a stale or unavailable SOCKS endpoint.
+                    setProxy(null, null)
                 }
-                try {
-                    wallet.refreshHistory()
-                } catch (e: Exception) {
-                    Timber.tag(TAG).w(e, "Initial history refresh failed; continuing wallet startup")
-                }
-                try {
-                    walletState.update()
-                } catch (e: Exception) {
-                    Timber.tag(TAG).w(e, "Initial wallet state refresh failed; continuing wallet startup")
-                }
-            } else {
-                Timber.tag(TAG).e("Wallet initialization failed: %s", wallet.status.errorString)
-                walletState.clearSyncProgress()
-                walletState.setConnectionStatus(Wallet.ConnectionStatus.ConnectionStatus_Disconnected)
-                walletState.setLoading(false)
+                break
             }
+
+            if (wipeInProgress.get()) return
+            walletInitializationMutex.withLock {
+                if (wipeInProgress.get()) return@withLock
+                if (serviceStartedWallet === wallet && wallet.isInitialized) {
+                    walletState.update()
+                } else {
+                    initializeWalletLocked(wallet)
+                }
+            }
+        } catch (e: CancellationException) {
+            if (wipeInProgress.get()) return
+            throw e
         } catch (e: Exception) {
             if (wipeInProgress.get()) return
             Timber.tag(TAG).e(e, "Wallet service startup failed")
@@ -201,7 +150,98 @@ class AnonWalletHandler(
             walletState.setConnectionStatus(Wallet.ConnectionStatus.ConnectionStatus_Disconnected)
             walletState.setLoading(false)
         }
+    }
 
+    /**
+     * Shared with the node settings flow so manual connects cannot race startup's
+     * native wallet initialization while Tor finishes bootstrapping.
+     */
+    suspend fun <T> withWalletInitializationLock(block: suspend () -> T): T =
+        walletInitializationMutex.withLock { block() }
+
+    fun markWalletServiceStarted(wallet: Wallet) {
+        if (wallet.isInitialized) serviceStartedWallet = wallet
+    }
+
+    private suspend fun initializeWalletLocked(wallet: Wallet) {
+        val host = prefs.getString(NodeFields.RPC_HOST.value, "")
+        val rpcPort = prefs.getInt(NodeFields.RPC_PORT.value, Node.defaultRpcPort)
+        val rpcUsername = prefs.getString(NodeFields.RPC_USERNAME.value, "")
+        val rpcPassphrase = prefs.getString(NodeFields.RPC_PASSWORD.value, "")
+
+        if (host?.isNotEmpty() == true) {
+            if (wipeInProgress.get()) return
+            val nodeObj = JSONObject()
+                .apply {
+                    put(NodeFields.RPC_HOST.value, host)
+                    put(NodeFields.RPC_PORT.value, rpcPort)
+                    put(NodeFields.RPC_USERNAME.value, rpcUsername)
+                    put(NodeFields.RPC_PASSWORD.value, rpcPassphrase)
+                    put(NodeFields.RPC_NETWORK.value, AnonConfig.getNetworkType().toString())
+                    put(NodeFields.NODE_NAME.value, "anon")
+                }
+            val node = Node.fromJson(nodeObj)
+            updateDaemon(node)
+            walletState.setLoading(true)
+        }
+
+        if (wipeInProgress.get()) return
+        // Native init may replace a fresh seed restore's selected scan height with the
+        // daemon tip. Capture it before init and reapply it before starting the scan.
+        val forceFreshScan = prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+        val selectedRestoreHeightBeforeInit =
+            if (forceFreshScan) walletState.pendingSelectedRestoreHeight(wallet) else null
+
+        val initialized = wallet.init(0)
+        if (wipeInProgress.get()) return
+        if (initialized && wallet.isInitialized) {
+            if (forceFreshScan && selectedRestoreHeightBeforeInit != null) {
+                val reappliedHeight = walletState.preservePendingRestoreHeightAfterInit(wallet)
+                check(reappliedHeight == selectedRestoreHeightBeforeInit) {
+                    "Selected restore height changed during native init"
+                }
+                Timber.tag(TAG).i(
+                    "Preserved selected restore height after wallet init: %d",
+                    reappliedHeight
+                )
+            }
+
+            val actualRestoreHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
+            prefs.edit(commit = true) { putLong(RESTORE_HEIGHT, actualRestoreHeight) }
+            wallet.setTrustedDaemon(true)
+            val resumeScan = walletState.beginWalletScan(
+                wallet = wallet,
+                scanStartHeight = actualRestoreHeight,
+                forceStartAtSelectedHeight = forceFreshScan
+            )
+            walletState.publishWalletSnapshot(wallet)
+            if (forceFreshScan) {
+                Timber.tag(TAG).i(
+                    "Starting fresh wallet scan from selected restore height: %d",
+                    actualRestoreHeight
+                )
+                wallet.startRefresh()
+            } else {
+                if (resumeScan) wallet.rescanBlockchainAsync()
+                wallet.startRefresh()
+            }
+            try {
+                wallet.refreshHistory()
+            } catch (e: Exception) {
+                Timber.tag(TAG).w(e, "Initial history refresh failed; continuing wallet startup")
+            }
+            try {
+                walletState.update()
+            } catch (e: Exception) {
+                Timber.tag(TAG).w(e, "Initial wallet state refresh failed; continuing wallet startup")
+            }
+            serviceStartedWallet = wallet
+        } else {
+            Timber.tag(TAG).e("Wallet initialization failed: %s", wallet.status.errorString)
+            walletState.clearSyncProgress()
+            walletState.setConnectionStatus(Wallet.ConnectionStatus.ConnectionStatus_Disconnected)
+            walletState.setLoading(false)
+        }
     }
 
     fun updateDaemon(node: Node?, restartRefresh: Boolean = true) {
@@ -262,6 +302,8 @@ class AnonWalletHandler(
                 remove(WALLET_PROXY)
                 remove(WALLET_PROXY_PORT)
             }
+            WalletManager.instance?.setProxy("")
+            WalletManager.instance?.wallet?.setProxy("")
         } else {
             prefs.edit {
                 putString(WALLET_PROXY, proxy)

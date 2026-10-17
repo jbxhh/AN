@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 
 private const val TAG = "TorService"
@@ -44,6 +45,9 @@ class TorService(prefs: SharedPreferences) {
     @Volatile
     private var _socks: IPSocketAddress? = null
     private val startRequested = AtomicBoolean(false)
+    private val restartInFlight = AtomicBoolean(false)
+    private val startupStartedAtMillis = AtomicLong(0L)
+    private val lastRestartAtMillis = AtomicLong(0L)
     val socks get() = _socks
     val socksFlow get() = _socksSharedFlow
     val torLogs: Flow<String> get() = _torLogs.asSharedFlow()
@@ -85,14 +89,17 @@ class TorService(prefs: SharedPreferences) {
      */
     fun start() {
         if (_socks != null || !startRequested.compareAndSet(false, true)) return
+        startupStartedAtMillis.set(System.currentTimeMillis())
         scope.launch {
             try {
                 runtime.startDaemonAsync()
             } catch (e: CancellationException) {
                 startRequested.set(false)
+                startupStartedAtMillis.set(0L)
                 throw e
             } catch (e: Exception) {
                 startRequested.set(false)
+                startupStartedAtMillis.set(0L)
                 Timber.tag(TAG).e(e, "Tor startup failed")
             }
         }
@@ -112,19 +119,11 @@ class TorService(prefs: SharedPreferences) {
         }
         if (readySocket != null) return readySocket
 
-        Timber.tag(TAG).e("Tor SOCKS listener did not become ready within %d ms", timeoutMillis)
-        try {
-            // Bound cleanup too; a broken runtime must not turn the startup timeout into
-            // another unbounded wait.
-            withTimeoutOrNull(5_000L) { runtime.stopDaemonAsync() }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Timber.tag(TAG).w(e, "Unable to stop Tor after startup timeout")
-        } finally {
-            clearSocksState()
-            startRequested.set(false)
-        }
+        Timber.tag(TAG).w(
+            "Tor SOCKS listener is not ready after %d ms; keeping Tor alive so bootstrap can continue",
+            timeoutMillis
+        )
+        restartIfStalled()
         return null
     }
 
@@ -134,19 +133,59 @@ class TorService(prefs: SharedPreferences) {
         _socksSharedFlow.resetReplayCache()
     }
 
+    private fun restartIfStalled() {
+        val now = System.currentTimeMillis()
+        val startedAt = startupStartedAtMillis.get()
+        val lastRestart = lastRestartAtMillis.get()
+        if (startedAt <= 0L || now - startedAt < 120_000L) return
+        if (lastRestart > 0L && now - lastRestart < 120_000L) return
+        restartDaemon()
+    }
+
+    private fun restartDaemon() {
+        if (!restartInFlight.compareAndSet(false, true)) return
+        clearSocksState()
+        startRequested.set(true)
+        scope.launch {
+            try {
+                Timber.tag(TAG).w("Restarting Tor runtime after prolonged SOCKS startup delay")
+                runtime.restartDaemonAsync()
+                val restartedAt = System.currentTimeMillis()
+                startupStartedAtMillis.set(restartedAt)
+                lastRestartAtMillis.set(restartedAt)
+                startRequested.set(true)
+            } catch (e: CancellationException) {
+                startRequested.set(false)
+                startupStartedAtMillis.set(0L)
+                throw e
+            } catch (e: Exception) {
+                startRequested.set(false)
+                startupStartedAtMillis.set(0L)
+                Timber.tag(TAG).e(e, "Tor runtime restart failed")
+            } finally {
+                restartInFlight.set(false)
+            }
+        }
+    }
+
     fun stop() {
         clearSocksState()
         startRequested.set(false)
+        startupStartedAtMillis.set(0L)
+        lastRestartAtMillis.set(0L)
         scope.launch {
-            runtime.stopDaemonAsync()
+            try {
+                runtime.stopDaemonAsync()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Timber.tag(TAG).w(e, "Tor shutdown failed")
+            }
         }
     }
 
     fun restart() {
-        clearSocksState()
-        scope.launch {
-            runtime.restartDaemonAsync()
-        }
+        restartDaemon()
     }
 
     fun dispose() {

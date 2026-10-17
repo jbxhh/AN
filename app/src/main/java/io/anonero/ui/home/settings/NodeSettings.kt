@@ -78,6 +78,7 @@ import io.anonero.model.WalletManager
 import io.anonero.model.node.Node
 import io.anonero.model.node.NodeFields
 import io.anonero.services.AnonWalletHandler
+import io.anonero.services.PREF_FORCE_FRESH_WALLET_SCAN
 import io.anonero.services.TorService
 import io.anonero.services.WalletState
 import io.anonero.store.NodesRepository
@@ -85,10 +86,13 @@ import io.anonero.ui.components.DaemonStatus
 import io.anonero.ui.components.WalletProgressIndicator
 import io.anonero.ui.home.graph.routes.ResyncBlockchainRoute
 import io.anonero.ui.theme.DangerColor
+import io.anonero.util.RESTORE_HEIGHT
 import io.anonero.util.WALLET_PROXY
 import io.anonero.util.WALLET_PROXY_PORT
 import io.anonero.util.WALLET_USE_TOR
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -199,47 +203,114 @@ class NodeSettingsViewModel(
         withContext(Dispatchers.IO) {
             val editor = prefs.edit()
             try {
-                val useTor = prefs.getBoolean(WALLET_USE_TOR, true)
-                val proxyHost = prefs.getString(WALLET_PROXY, "")
-                val proxyPort = prefs.getInt(WALLET_PROXY_PORT, -1)
-
                 editor.putString(NodeFields.RPC_HOST.value, node.host)
                 editor.putInt(NodeFields.RPC_PORT.value, node.rpcPort)
                 editor.putString(NodeFields.RPC_USERNAME.value, node.username)
                 editor.putString(NodeFields.RPC_PASSWORD.value, node.password)
                 editor.apply()
 
-                // Set the proxy before wallet.init()/startRefresh(). Starting the
-                // daemon before Tor's SOCKS listener is ready can leave the wallet
-                // disconnected until the user manually reconnects.
-                if (useTor || proxyHost.isNullOrBlank()) {
-                    val readySocket = torService.awaitSocks(30_000L)
-                        ?: throw IllegalStateException("Tor 在 30 秒内未建立 SOCKS 连接")
-                    walletHandler.setProxy(
-                        readySocket.address.toString(),
-                        readySocket.port.value
-                    )
-                } else if (proxyPort != -1) {
-                    val proxyAddress = "${proxyHost}:$proxyPort"
-                    WalletManager.instance?.setProxy(proxyAddress)
-                    WalletManager.instance?.wallet?.setProxy(proxyAddress)
+                walletState.setLoading(true)
+
+                // Do not fail the whole connection after one Tor timeout. TorService keeps
+                // a slow bootstrap running, and this operation retries until SOCKS is ready
+                // or the caller explicitly leaves/cancels the connection attempt.
+                while (true) {
+                    val useTor = prefs.getBoolean(WALLET_USE_TOR, true)
+                    val proxyHost = prefs.getString(WALLET_PROXY, "")
+                    val proxyPort = prefs.getInt(WALLET_PROXY_PORT, -1)
+
+                    if (useTor) {
+                        val readySocket = torService.awaitSocks(30_000L)
+                        if (readySocket == null) {
+                            Timber.tag(TAG).w("Tor SOCKS is not ready yet; retrying node connection")
+                            walletState.setLoading(true)
+                            delay(2_000L)
+                            continue
+                        }
+                        val proxyAddress = "${readySocket.address}:${readySocket.port.value}"
+                        WalletManager.instance?.setProxy(proxyAddress)
+                        WalletManager.instance?.wallet?.setProxy(proxyAddress)
+                    } else if (!proxyHost.isNullOrBlank() && proxyPort != -1) {
+                        val proxyAddress = "${proxyHost}:$proxyPort"
+                        WalletManager.instance?.setProxy(proxyAddress)
+                        WalletManager.instance?.wallet?.setProxy(proxyAddress)
+                    } else {
+                        walletHandler.setProxy(null, null)
+                    }
+                    break
                 }
 
-                WalletManager.instance?.wallet?.pauseRefresh()
-                walletHandler.updateDaemon(node, restartRefresh = false)
-                walletState.setLoading(true)
-                val wallet = WalletManager.instance?.wallet
-                    ?: throw IllegalStateException("钱包未打开")
-                val initialized = wallet.init(0)
-                if (!initialized || !wallet.isInitialized) {
-                    throw IllegalStateException(
-                        wallet.status.errorString.ifBlank { "钱包初始化失败" }
+                walletHandler.withWalletInitializationLock {
+                    val wallet = WalletManager.instance?.wallet
+                        ?: throw IllegalStateException("钱包未打开")
+                    val walletManager = WalletManager.instance
+                    val sameNodeAlreadyInitialized = wallet.isInitialized &&
+                        walletManager != null &&
+                        walletManager.getDaemonAddress() == node.address &&
+                        walletManager.daemonUsername == node.username &&
+                        walletManager.daemonPassword == node.password
+
+                    if (sameNodeAlreadyInitialized) {
+                        // Startup may have connected the saved node while this manual
+                        // attempt was waiting for Tor. Reuse its listener/scan state.
+                        wallet.startRefresh()
+                        walletState.update()
+                        walletState.setLoading(!wallet.isSynchronized && !walletState.isSyncing)
+                        walletHandler.markWalletServiceStarted(wallet)
+                        return@withWalletInitializationLock
+                    }
+
+                    wallet.pauseRefresh()
+                    walletHandler.updateDaemon(node, restartRefresh = false)
+                    walletState.setLoading(true)
+
+                    val forceFreshScan = prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+                    val selectedRestoreHeightBeforeInit =
+                        if (forceFreshScan) walletState.pendingSelectedRestoreHeight(wallet) else null
+
+                    val initialized = wallet.init(0)
+                    if (!initialized || !wallet.isInitialized) {
+                        throw IllegalStateException(
+                            wallet.status.errorString.ifBlank { "钱包初始化失败" }
+                        )
+                    }
+
+                    if (forceFreshScan && selectedRestoreHeightBeforeInit != null) {
+                        val reappliedHeight =
+                            walletState.preservePendingRestoreHeightAfterInit(wallet)
+                        check(reappliedHeight == selectedRestoreHeightBeforeInit) {
+                            "Selected restore height changed during node connection"
+                        }
+                    }
+
+                    val actualRestoreHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
+                    prefs.edit(commit = true) { putLong(RESTORE_HEIGHT, actualRestoreHeight) }
+                    wallet.setTrustedDaemon(true)
+                    val resumeScan = walletState.beginWalletScan(
+                        wallet = wallet,
+                        scanStartHeight = actualRestoreHeight,
+                        forceStartAtSelectedHeight = forceFreshScan
                     )
+                    walletState.publishWalletSnapshot(wallet)
+                    if (forceFreshScan) {
+                        wallet.startRefresh()
+                    } else {
+                        if (resumeScan) wallet.rescanBlockchainAsync()
+                        wallet.startRefresh()
+                    }
+                    try {
+                        wallet.refreshHistory()
+                    } catch (e: Exception) {
+                        Timber.tag(TAG).w(e, "Initial history refresh failed after node connection")
+                    }
+                    walletState.update()
+                    walletHandler.markWalletServiceStarted(wallet)
+                    // Retain the indeterminate loader until a real sync-progress sample
+                    // arrives; do not end it merely because wallet.init() returned.
+                    walletState.setLoading(!wallet.isSynchronized && !walletState.isSyncing)
                 }
-                wallet.setTrustedDaemon(true)
-                wallet.startRefresh()
-                walletState.update()
-                walletState.setLoading(false)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Timber.tag(TAG).e(e, "Failed to connect to node")
                 walletState.setLoading(false)
@@ -489,6 +560,8 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
                                     .launch {
                                         try {
                                             nodeSettingsVM.connect(node)
+                                        } catch (ex: CancellationException) {
+                                            throw ex
                                         } catch (ex: Exception) {
                                             Timber.tag(TAG).e(ex)
                                         }
