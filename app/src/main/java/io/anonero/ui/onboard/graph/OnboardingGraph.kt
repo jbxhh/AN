@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -28,6 +29,7 @@ import androidx.navigation.toRoute
 import io.anonero.AnonConfig
 import io.anonero.R
 import io.anonero.model.node.NodeFields
+import io.anonero.services.WalletState
 import io.anonero.ui.home.graph.routes.Home
 import io.anonero.ui.home.graph.routes.HomeScreenRoute
 import io.anonero.ui.home.settings.LogViewer
@@ -215,6 +217,7 @@ fun NavGraphBuilder.onboardingGraph(
 
         composable<OnboardPinScreen> {
             val appViewModel = koinInject<AppViewModel>()
+            val walletState = koinInject<WalletState>()
             var showErrorMessage by remember { mutableStateOf<String?>(null) }
             val context = LocalContext.current
             OnboardErrorDialog(
@@ -249,20 +252,26 @@ fun NavGraphBuilder.onboardingGraph(
                                 onboardViewModel.create(pin)
                             }
                         }
+                        // Seed restore/create paths reach Home without reopening the wallet.
+                        // Publish local balance and primary address before Home's first frame;
+                        // node/Tor initialization continues asynchronously afterward.
+                        withContext(Dispatchers.IO) {
+                            walletState.publishWalletSnapshot()
+                        }
                         delay(600)
                     }.invokeOnCompletion {
                         if (it == null) {
                             if (AnonConfig.viewOnly) {
-                                navController.navigate(HomeScreenRoute()) {
-                        popUpTo(LandingScreenRoute)
-                    }
                                 startConfiguredNodeService(context, appViewModel)
+                                navController.navigate(HomeScreenRoute()) {
+                                    popUpTo(LandingScreenRoute)
+                                }
                             } else {
                                 if (onboardViewModel.getMode() == Mode.RESTORE) {
-                                    navController.navigate(HomeScreenRoute()) {
-                        popUpTo(LandingScreenRoute)
-                    }
                                     startConfiguredNodeService(context, appViewModel)
+                                    navController.navigate(HomeScreenRoute()) {
+                                        popUpTo(LandingScreenRoute)
+                                    }
                                 } else {
                                     navController.navigate(OnboardSeedScreen(onboardViewModel.getSeed()))
                                 }
@@ -279,14 +288,21 @@ fun NavGraphBuilder.onboardingGraph(
             val state = navBackStackEntry.toRoute<OnboardSeedScreen>()
             val context = LocalContext.current
             val appViewModel = koinInject<AppViewModel>()
+            val walletState = koinInject<WalletState>()
+            val entryScope = rememberCoroutineScope()
             SeedSetup(
                 seed = state.seed
                     .split(" ").toList(),
                 oNextPressed = {
-                    navController.navigate(HomeScreenRoute()) {
-                        popUpTo(LandingScreenRoute)
+                    entryScope.launch {
+                        withContext(Dispatchers.IO) {
+                            walletState.publishWalletSnapshot()
+                        }
+                        startConfiguredNodeService(context, appViewModel)
+                        navController.navigate(HomeScreenRoute()) {
+                            popUpTo(LandingScreenRoute)
+                        }
                     }
-                    startConfiguredNodeService(context, appViewModel)
                 },
                 onBackPressed = {
                     navController.navigate("")
