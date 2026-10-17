@@ -3,7 +3,7 @@ name: Build ANON APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, fix/native-api-compatible-base]
+    branches: [main, fix/native-api-compatible-base, fix/transaction-history-after-sync]
     paths:
       - 'app/**'
       - 'external-libs/Makefile'
