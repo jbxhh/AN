@@ -222,14 +222,21 @@ class WalletState(private val prefs: SharedPreferences) {
 
                     val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
                     val daemonTargetHeight = wallet.getDaemonBlockChainTargetHeight().coerceAtLeast(0L)
-                    if (daemonHeight <= 1L || daemonTargetHeight <= 0L ||
-                        daemonHeight < daemonTargetHeight
-                    ) {
+                    if (daemonHeight <= 1L) {
                         Timber.tag(TAG).i(
-                            "Restore scan pending until daemon is synchronized: height=%d target=%d",
+                            "Restore scan pending until daemon exposes a usable chain tip: height=%d target=%d",
                             daemonHeight, daemonTargetHeight
                         )
                         return@withLock
+                    }
+                    // Do not wait for the remote daemon's entire chain to finish syncing.
+                    // Scan every available block from the selected restore height now;
+                    // the normal refresh worker will continue when the daemon advances.
+                    if (daemonTargetHeight > daemonHeight) {
+                        Timber.tag(TAG).i(
+                            "Daemon is still syncing; starting restore scan against available tip: height=%d target=%d",
+                            daemonHeight, daemonTargetHeight
+                        )
                     }
 
                     // The saved restore height, not the native cache tip, is the source

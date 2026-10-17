@@ -80,8 +80,8 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
         walletState.maybeStartForcedRestoreScan(wallet)
         val scanHeight = walletState.currentWalletHeight
         Timber.tag(name).i(
-            "refreshed() status:%s daemonHeight:%d scanHeight:%d nativeHeight:%d",
-            status, daemonHeight, scanHeight, wallet.getBlockChainHeight()
+            "refreshed() status:%s daemonHeight:%d daemonTargetHeight:%d scanHeight:%d nativeHeight:%d",
+            status, daemonHeight, daemonTargetHeight, scanHeight, wallet.getBlockChainHeight()
         )
 
         if (status == Wallet.ConnectionStatus.ConnectionStatus_Disconnected || status == null) {
