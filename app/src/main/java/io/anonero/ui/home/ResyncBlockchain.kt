@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.dokar.sonner.ToastType
 import com.dokar.sonner.ToasterState
 import io.anonero.model.WalletManager
@@ -397,13 +398,14 @@ fun ResyncBlockchainScreen(
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = MaterialTheme.shapes.medium,
+                                textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp),
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(
                                     keyboardType = KeyboardType.Number,
                                     imeAction = ImeAction.Next
                                 ),
                                 placeholder = {
-                                    Text("输入恢复区块高度", color = labelColor)
+                                    Text("输入恢复区块高度", color = labelColor, fontSize = 18.sp)
                                 }
                             )
                         }
@@ -427,10 +429,11 @@ fun ResyncBlockchainScreen(
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = MaterialTheme.shapes.medium,
+                                textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp),
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                                 placeholder = {
-                                    Text("YYYY-MM-DD", color = labelColor)
+                                    Text("YYYY-MM-DD", color = labelColor, fontSize = 18.sp)
                                 }
                             )
                         }
