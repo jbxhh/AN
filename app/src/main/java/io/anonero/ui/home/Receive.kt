@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +51,7 @@ import org.koin.java.KoinJavaComponent.inject
 @Composable
 fun ReceiveScreen(
     modifier: Modifier = Modifier,
+    onBackPress: () -> Unit = {},
     navigateToSubAddresses: () -> Unit = {}
 ) {
     val walletState: WalletState by inject(WalletState::class.java)
@@ -72,6 +74,11 @@ fun ReceiveScreen(
         topBar = {
             TopAppBar(
                 title = {},
+                navigationIcon = {
+                    IconButton(onClick = onBackPress) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                    }
+                },
                 actions = {
                     IconButton(
                         onClick = navigateToSubAddresses
