@@ -409,6 +409,7 @@ fun ResyncBlockchainScreen(
                         }
                     )
                     ListItem(
+                        modifier = Modifier.padding(top = 28.dp),
                         headlineContent = {
                             Text(
                                 text = "时间恢复",
