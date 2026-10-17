@@ -121,66 +121,43 @@ class AnonNeroService : Service() {
     }
 
     private suspend fun updateNotificationState() {
-        val mNotificationManager =
+        val notificationManager =
             getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val wallet = WalletManager.instance?.wallet
+        val wallet = WalletManager.instance?.wallet ?: return
         val daemon = prefs.getString(NodeFields.RPC_HOST.value, "") ?: ""
-        var torSate = if (torService.socks != null) {
-            " | Tor Daemon: ${torService.socks?.port.toString()}"
+
+        // Notification polling must use cached listener state. Calling native daemon RPCs
+        // every second can race wallet close during secure wipe and stall deletion.
+        if (walletState.isSyncing) return
+        val torState = if (torService.socks != null) {
+            " | Tor Daemon: \${torService.socks?.port}"
         } else {
             ""
         }
-        if (wallet != null) {
-            val isSyncing = walletState.isSyncing
-            if (!isSyncing) {
-                val notificationMessage = if (walletState.backgroundSync) {
-                    "Wallet Locked: Synced: ${wallet.getBlockChainHeight()} "
-                } else if (!wallet.isInitialized) {
-                    "Loading wallet..."
-                } else if (!isNetworkAvailable()) {
-                    // Network is offline — skip the blocking RPC call and mark
-                    // disconnected immediately so the bar shows without waiting
-                    // for a 30-second timeout
-                    walletState.setConnectionStatus(Wallet.ConnectionStatus.ConnectionStatus_Disconnected)
-                    "Disconnected"
-                } else {
-                    // Network is available — probe the daemon with a live RPC call
-                    val daemonHeight = withContext(Dispatchers.IO) {
-                        wallet.getDaemonBlockChainHeight()
-                    }
-                    val liveStatus = if (daemonHeight > 0)
-                        Wallet.ConnectionStatus.ConnectionStatus_Connected
-                    else
-                        Wallet.ConnectionStatus.ConnectionStatus_Disconnected
-                    walletState.setConnectionStatus(liveStatus)
-                    when (liveStatus) {
-                        Wallet.ConnectionStatus.ConnectionStatus_Disconnected -> {
-                            "Daemon Disconnected"
-                        }
 
-                        Wallet.ConnectionStatus.ConnectionStatus_WrongVersion -> {
-                            "Wrong Version"
-                        }
-
-                        Wallet.ConnectionStatus.ConnectionStatus_Connected -> {
-                            if (wallet.getBlockChainHeight() > 1) {
-                                "Synced: ${wallet.getBlockChainHeight()}"
-                            } else {
-                                "Syncing..."
-                            }
-                        }
-                    }
-                }
-                if (daemon.isEmpty()) {
-                    torSate = ""
-                }
-                withContext(Dispatchers.Main) {
-                    mNotificationManager.notify(
-                        NOTIFICATION_ID,
-                        foregroundNotification("$notificationMessage$torSate")
-                    )
-                }
+        val notificationMessage = when {
+            walletState.backgroundSync ->
+                "Wallet Locked: Synced: \${walletState.currentWalletHeight}"
+            !wallet.isInitialized -> "Loading wallet..."
+            !isNetworkAvailable() -> {
+                walletState.setConnectionStatus(Wallet.ConnectionStatus.ConnectionStatus_Disconnected)
+                "Disconnected"
             }
+            walletState.currentDaemonHeight <= 0L ||
+                walletState.currentConnectionStatus !=
+                    Wallet.ConnectionStatus.ConnectionStatus_Connected ->
+                "Daemon Disconnected"
+            walletState.currentWalletHeight > 1L ->
+                "Synced: \${walletState.currentWalletHeight}"
+            else -> "Syncing..."
+        }
+
+        val suffix = if (daemon.isEmpty()) "" else torState
+        withContext(Dispatchers.Main) {
+            notificationManager.notify(
+                NOTIFICATION_ID,
+                foregroundNotification("\$notificationMessage\$suffix")
+            )
         }
     }
 
