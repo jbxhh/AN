@@ -1,8 +1,8 @@
 //! ANONERO's incremental Rust wallet core.
- //!
- //! This crate is deliberately separate from the existing C++ JNI backend while wallet
- //! operations are migrated and tested. Never switch the production wallet to this backend
- //! until restore, scanning, subaddresses, balances, history, and transaction tests pass.
+//!
+//! This crate is deliberately separate from the existing C++ JNI backend while wallet
+//! operations are migrated and tested. Never switch the production wallet to this backend
+//! until restore, scanning, subaddresses, balances, history, and transaction tests pass.
 
 use jni::{
     JNIEnv,
@@ -63,6 +63,19 @@ pub extern "system" fn Java_io_anonero_rust_RustNativeBridge_nativeValidateAddre
 #[cfg(test)]
 mod tests {
     use super::validate_monero_address;
+
+    const VALID_MAINNET_ADDRESS: &str =
+        "4B33mFPMq6mKi7Eiyd5XuyKRVMGVZz1Rqb9ZTyGApXW5d1aT7UBDZ89ewmnWFkzJ5wPd2SFbn313vCT8a4E2Qf4KQH4pNey";
+
+    #[test]
+    fn accepts_valid_mainnet_address() {
+        assert!(validate_monero_address(VALID_MAINNET_ADDRESS, 0));
+    }
+
+    #[test]
+    fn rejects_mainnet_address_for_testnet() {
+        assert!(!validate_monero_address(VALID_MAINNET_ADDRESS, 2));
+    }
 
     #[test]
     fn rejects_empty_address() {
