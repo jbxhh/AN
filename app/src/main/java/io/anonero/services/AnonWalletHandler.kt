@@ -81,7 +81,12 @@ class AnonWalletHandler(
     }
 
     suspend fun startService() {
-        serviceStartMutex.withLock { startServiceLocked() }
+        serviceStartMutex.lock()
+        try {
+            startServiceLocked()
+        } finally {
+            serviceStartMutex.unlock()
+        }
     }
 
     private suspend fun startServiceLocked() {
@@ -156,14 +161,14 @@ class AnonWalletHandler(
      * Shared with the node settings flow so manual connects cannot race startup's
      * native wallet initialization while Tor finishes bootstrapping.
      */
-    suspend fun <T> withWalletInitializationLock(block: suspend () -> T): T =
+    suspend fun <T> withWalletInitializationLock(block: () -> T): T =
         walletInitializationMutex.withLock { block() }
 
     fun markWalletServiceStarted(wallet: Wallet) {
         if (wallet.isInitialized) serviceStartedWallet = wallet
     }
 
-    private suspend fun initializeWalletLocked(wallet: Wallet) {
+    private fun initializeWalletLocked(wallet: Wallet) {
         val host = prefs.getString(NodeFields.RPC_HOST.value, "")
         val rpcPort = prefs.getInt(NodeFields.RPC_PORT.value, Node.defaultRpcPort)
         val rpcUsername = prefs.getString(NodeFields.RPC_USERNAME.value, "")
