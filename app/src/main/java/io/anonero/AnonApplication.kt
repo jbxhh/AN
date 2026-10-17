@@ -42,6 +42,7 @@ class AnonApplication : Application(), Thread.UncaughtExceptionHandler {
         val diagnosticMode = detectedCrash || crashPrefs.getBoolean("diagnostic_mode", false)
 
         AnonConfig.context = this
+        val interruptedWalletWipe = recoverInterruptedWalletWipeFiles()
         AnonConfig.initWalletState()
         startKoin {
             androidContext(this@AnonApplication)
@@ -50,6 +51,7 @@ class AnonApplication : Application(), Thread.UncaughtExceptionHandler {
 
         // Install persistent logging before wallet/JNI initialization, which may itself crash.
         plantLog()
+        if (interruptedWalletWipe) finishInterruptedWalletWipeRecovery()
         if (diagnosticMode) {
             // Do not re-enter a native crash loop before the user can copy the report.
             initNotificationChannels()
@@ -65,6 +67,61 @@ class AnonApplication : Application(), Thread.UncaughtExceptionHandler {
             torService.start()
         }
         AnonConfig.clearSpendCacheFiles(this)
+    }
+
+
+    /**
+     * A force-stop can interrupt the native wallet close before the regular wipe
+     * reaches preference cleanup. A new process has no live native wallet handle,
+     * so finish removing the wallet files and authentication preferences first.
+     */
+    private fun recoverInterruptedWalletWipeFiles(): Boolean {
+        val recoveryPrefs = getSharedPreferences(AnonConfig.APP_PREFERENCES, MODE_PRIVATE)
+        if (!recoveryPrefs.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)) {
+            return false
+        }
+
+        val walletDir = java.io.File(filesDir, "wallets")
+        val removed = runCatching {
+            !walletDir.exists() || walletDir.deleteRecursively()
+        }.getOrDefault(false)
+        val preferencesCleared = runCatching {
+            getSharedPreferences(AnonConfig.PREFS, MODE_PRIVATE).edit().clear().commit()
+        }.getOrDefault(false)
+
+        if (!removed || java.io.File(walletDir, "anon").exists() || !preferencesCleared) {
+            android.util.Log.e(TAG, "Interrupted wallet wipe is still pending; startup must not expose the old PIN screen")
+        }
+        // Keep the marker until nodes/logs are cleaned later in onCreate.
+        return true
+    }
+
+    private fun finishInterruptedWalletWipeRecovery() {
+        val recoveryPrefs = getSharedPreferences(AnonConfig.APP_PREFERENCES, MODE_PRIVATE)
+        if (!recoveryPrefs.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)) return
+
+        val walletFile = java.io.File(filesDir, "wallets/anon")
+        if (walletFile.exists()) {
+            Timber.tag(TAG).e("Wallet file remains after interrupted wipe; keeping recovery marker")
+            return
+        }
+
+        try {
+            get<NodesRepository>().clearAll()
+            get<LogRepository>().clear()
+            AnonConfig.disposeState()
+            val walletPreferences = getSharedPreferences(AnonConfig.PREFS, MODE_PRIVATE)
+            check(walletPreferences.all.isEmpty()) {
+                "Wallet authentication preferences were not cleared during recovery"
+            }
+            check(recoveryPrefs.edit().remove(AnonConfig.PREF_WALLET_WIPE_PENDING).commit()) {
+                "Unable to clear interrupted wallet wipe marker"
+            }
+            Timber.tag(TAG).i("Completed interrupted wallet wipe during startup")
+        } catch (e: Exception) {
+            // Keep the marker so the next startup retries instead of allowing the old PIN flow.
+            Timber.tag(TAG).e(e, "Interrupted wallet wipe cleanup failed; recovery will retry on next startup")
+        }
     }
 
     /**
