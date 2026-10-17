@@ -15,6 +15,8 @@ import io.anonero.store.LogRepository
 import io.anonero.store.NodesRepository
 import io.anonero.ui.util.AnonLogTree
 import io.anonero.util.WALLET_PREFERENCES
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.GlobalContext.startKoin
@@ -107,8 +109,10 @@ class AnonApplication : Application(), Thread.UncaughtExceptionHandler {
         }
 
         try {
-            get<NodesRepository>().clearAll()
-            get<LogRepository>().clear()
+            runBlocking(Dispatchers.IO) {
+                get<NodesRepository>().clearAll()
+                get<LogRepository>().clear()
+            }
             AnonConfig.disposeState()
             val walletPreferences = getSharedPreferences(AnonConfig.PREFS, MODE_PRIVATE)
             check(walletPreferences.all.isEmpty()) {
