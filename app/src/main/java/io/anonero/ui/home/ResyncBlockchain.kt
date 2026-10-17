@@ -57,6 +57,36 @@ import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
 import org.koin.core.qualifier.named
 
+// Monero mainnet changed its target block interval from 60s to 120s at v2.
+private const val MONERO_GENESIS_TIMESTAMP = 1_397_818_193L
+private const val MONERO_V2_FORK_HEIGHT = 1_009_827L
+private const val MONERO_BLOCK_TIME_V1_SECONDS = 60L
+private const val MONERO_BLOCK_TIME_V2_SECONDS = 120L
+
+/**
+ * Estimate a block timestamp using Monero's historical target block intervals.
+ * This is a restore-height estimate, not the exact timestamp of an individual block.
+ */
+private fun estimateBlockTimestamp(height: Long): Long {
+    val preForkHeight = height.coerceAtMost(MONERO_V2_FORK_HEIGHT)
+    val postForkHeight = (height - MONERO_V2_FORK_HEIGHT).coerceAtLeast(0L)
+    return MONERO_GENESIS_TIMESTAMP +
+        preForkHeight * MONERO_BLOCK_TIME_V1_SECONDS +
+        postForkHeight * MONERO_BLOCK_TIME_V2_SECONDS
+}
+
+/** Convert a date timestamp to an estimated restore height using the same intervals. */
+private fun estimateRestoreHeight(timestamp: Long): Long {
+    val elapsed = (timestamp - MONERO_GENESIS_TIMESTAMP).coerceAtLeast(0L)
+    val forkElapsed = MONERO_V2_FORK_HEIGHT * MONERO_BLOCK_TIME_V1_SECONDS
+    return if (elapsed <= forkElapsed) {
+        elapsed / MONERO_BLOCK_TIME_V1_SECONDS
+    } else {
+        MONERO_V2_FORK_HEIGHT +
+            (elapsed - forkElapsed) / MONERO_BLOCK_TIME_V2_SECONDS
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ResyncBlockchainScreen(
@@ -185,7 +215,7 @@ fun ResyncBlockchainScreen(
                                         if (height < 0L) {
                                             throw IllegalStateException("无法获取恢复区块高度")
                                         }
-                                        val timestamp = 1397818193L + height * 120L
+                                        val timestamp = estimateBlockTimestamp(height)
                                         height to SimpleDateFormat("yyyy-MM-dd", Locale.US)
                                             .format(Date(timestamp * 1000L))
                                     }
@@ -214,7 +244,7 @@ fun ResyncBlockchainScreen(
                                         isLenient = false
                                     }.parse(restoreDateInput)
                                     date?.let {
-                                        ((it.time / 1000L - 1397818193L).coerceAtLeast(0L) / 120L)
+                                        estimateRestoreHeight(it.time / 1000L)
                                     }
                                 } catch (_: Exception) {
                                     null
