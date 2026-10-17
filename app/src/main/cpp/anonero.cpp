@@ -1169,7 +1169,7 @@ Java_io_anonero_model_Wallet_isPaymentIdValid(JNIEnv *env, jclass clazz,
 }
 
 JNIEXPORT jboolean JNICALL
-Java_io_anonero_model_Wallet_isAddressValid(JNIEnv *env, jclass clazz,
+Java_io_anonero_model_Wallet_isAddressValidNative(JNIEnv *env, jclass clazz,
                                             jstring address, jint networkType) {
     const char *_address = env->GetStringUTFChars(address, nullptr);
     Monero::NetworkType _networkType = static_cast<Monero::NetworkType>(networkType);
