@@ -12,6 +12,7 @@ import io.matthewnelson.kmp.tor.runtime.core.TorEvent
 import io.matthewnelson.kmp.tor.runtime.core.config.TorOption
 import io.matthewnelson.kmp.tor.runtime.core.net.IPSocketAddress
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -19,7 +20,9 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -77,8 +80,8 @@ class TorService(prefs: SharedPreferences) {
 
     /**
      * Tor can be requested from application startup, node setup, and wallet startup.
-     * Launching the same runtime repeatedly while SOCKS is still coming up can race
-     * the listener initialization and leave wallet startup waiting forever.
+     * Launching the same runtime repeatedly while SOCKS is coming up can race listener
+     * initialization. Callers must wait for the actual SOCKS listener with a deadline.
      */
     fun start() {
         if (_socks != null || !startRequested.compareAndSet(false, true)) return
@@ -95,16 +98,52 @@ class TorService(prefs: SharedPreferences) {
         }
     }
 
-    fun stop() {
+    /**
+     * Returns only after the live SOCKS listener is available.
+     * On timeout, stop the stuck attempt and clear the replayed socket so a later
+     * connection attempt can start Tor afresh instead of waiting forever.
+     */
+    suspend fun awaitSocks(timeoutMillis: Long = 30_000L): IPSocketAddress? {
+        socks?.let { return it }
+        start()
+
+        val readySocket = withTimeoutOrNull(timeoutMillis) {
+            socks?.let { it } ?: _socksSharedFlow.first()
+        }
+        if (readySocket != null) return readySocket
+
+        Timber.tag(TAG).e("Tor SOCKS listener did not become ready within %d ms", timeoutMillis)
+        try {
+            // Bound cleanup too; a broken runtime must not turn the startup timeout into
+            // another unbounded wait.
+            withTimeoutOrNull(5_000L) { runtime.stopDaemonAsync() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "Unable to stop Tor after startup timeout")
+        } finally {
+            clearSocksState()
+            startRequested.set(false)
+        }
+        return null
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun clearSocksState() {
         _socks = null
+        _socksSharedFlow.resetReplayCache()
+    }
+
+    fun stop() {
+        clearSocksState()
         startRequested.set(false)
         scope.launch {
             runtime.stopDaemonAsync()
         }
     }
 
-
     fun restart() {
+        clearSocksState()
         scope.launch {
             runtime.restartDaemonAsync()
         }

@@ -85,6 +85,9 @@ import io.anonero.ui.components.DaemonStatus
 import io.anonero.ui.components.WalletProgressIndicator
 import io.anonero.ui.home.graph.routes.ResyncBlockchainRoute
 import io.anonero.ui.theme.DangerColor
+import io.anonero.util.WALLET_PROXY
+import io.anonero.util.WALLET_PROXY_PORT
+import io.anonero.util.WALLET_USE_TOR
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -196,36 +199,50 @@ class NodeSettingsViewModel(
         withContext(Dispatchers.IO) {
             val editor = prefs.edit()
             try {
-                WalletManager.instance?.wallet?.pauseRefresh()
-                editor.putString(
-                    NodeFields.RPC_HOST.value,
-                    node.host
-                )
-                editor.putInt(
-                    NodeFields.RPC_PORT.value,
-                    node.rpcPort
-                )
-                editor.putString(
-                    NodeFields.RPC_USERNAME.value,
-                    node.username
-                )
-                editor.putString(
-                    NodeFields.RPC_PASSWORD.value,
-                    node.password
-                )
+                val useTor = prefs.getBoolean(WALLET_USE_TOR, true)
+                val proxyHost = prefs.getString(WALLET_PROXY, "")
+                val proxyPort = prefs.getInt(WALLET_PROXY_PORT, -1)
 
+                editor.putString(NodeFields.RPC_HOST.value, node.host)
+                editor.putInt(NodeFields.RPC_PORT.value, node.rpcPort)
+                editor.putString(NodeFields.RPC_USERNAME.value, node.username)
+                editor.putString(NodeFields.RPC_PASSWORD.value, node.password)
                 editor.apply()
-                torService.start()
-                walletHandler.updateDaemon(node)
-                walletState.setLoading(false)
+
+                // Set the proxy before wallet.init()/startRefresh(). Starting the
+                // daemon before Tor's SOCKS listener is ready can leave the wallet
+                // disconnected until the user manually reconnects.
+                if (useTor || proxyHost.isNullOrBlank()) {
+                    val readySocket = torService.awaitSocks(30_000L)
+                        ?: throw IllegalStateException("Tor 在 30 秒内未建立 SOCKS 连接")
+                    walletHandler.setProxy(
+                        readySocket.address.toString(),
+                        readySocket.port.value
+                    )
+                } else if (proxyPort != -1) {
+                    val proxyAddress = "${proxyHost}:$proxyPort"
+                    WalletManager.instance?.setProxy(proxyAddress)
+                    WalletManager.instance?.wallet?.setProxy(proxyAddress)
+                }
+
+                WalletManager.instance?.wallet?.pauseRefresh()
+                walletHandler.updateDaemon(node, restartRefresh = false)
+                walletState.setLoading(true)
+                val wallet = WalletManager.instance?.wallet
+                    ?: throw IllegalStateException("钱包未打开")
+                val initialized = wallet.init(0)
+                if (!initialized || !wallet.isInitialized) {
+                    throw IllegalStateException(
+                        wallet.status.errorString.ifBlank { "钱包初始化失败" }
+                    )
+                }
+                wallet.setTrustedDaemon(true)
+                wallet.startRefresh()
                 walletState.update()
-                WalletManager.instance?.wallet?.init(0)
-                WalletManager.instance?.wallet?.setTrustedDaemon(
-                    true
-                )
-                WalletManager.instance?.wallet?.startRefresh()
+                walletState.setLoading(false)
             } catch (e: Exception) {
-                Timber.tag(TAG).e(e)
+                Timber.tag(TAG).e(e, "Failed to connect to node")
+                walletState.setLoading(false)
                 uriValidationError.postValue(e.message)
             }
         }

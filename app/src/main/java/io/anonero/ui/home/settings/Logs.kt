@@ -44,8 +44,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.calculateCentroidSize
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -170,6 +170,22 @@ class LogViewModel(private val logRepository: LogRepository) : ViewModel() {
     }
 }
 
+private fun PointerEvent.averageTouchRadius(useCurrent: Boolean): Float {
+    val points = changes
+        .filter { if (useCurrent) it.pressed else it.previousPressed }
+        .map { if (useCurrent) it.position else it.previousPosition }
+    if (points.size < 2) return 0f
+
+    val centerX = (points.sumOf { it.x.toDouble() } / points.size).toFloat()
+    val centerY = (points.sumOf { it.y.toDouble() } / points.size).toFloat()
+    val radiusTotal = points.sumOf { point ->
+        val dx = (point.x - centerX).toDouble()
+        val dy = (point.y - centerY).toDouble()
+        kotlin.math.sqrt(dx * dx + dy * dy)
+    }
+    return (radiusTotal / points.size).toFloat()
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LogViewer(
@@ -273,7 +289,7 @@ fun LogViewer(
 
                             if (pressedCount >= 2) {
                                 val currentCentroidSize =
-                                    event.calculateCentroidSize(useCurrent = true)
+                                    event.averageTouchRadius(useCurrent = true)
                                 if (
                                     multiTouchInProgress &&
                                     previousCentroidSize > 0f &&

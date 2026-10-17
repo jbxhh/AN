@@ -92,20 +92,16 @@ class AnonWalletHandler(
             val proxyPort = prefs.getInt(WALLET_PROXY_PORT, -1)
             val useTor = prefs.getBoolean(WALLET_USE_TOR, true)
             if (useTor || proxyHost.isNullOrBlank()) {
-                torService.start()
-                // Tor can take longer than 30 seconds to publish its SOCKS listener on
-                // first launch. Do not fail wallet startup and clear sync progress while
-                // Tor is still starting: wait for the live listener, then initialize the
-                // daemon and start the selected-height scan in this same startup attempt.
-                while (torService.socks == null && !wipeInProgress.get()) {
-                    delay(200)
-                }
+                // Never let onboarding hang forever if Tor failed to publish its SOCKS
+                // listener. A later node-connect attempt can retry Tor startup.
+                val readySocket = torService.awaitSocks(30_000L)
+                    ?: throw IllegalStateException("Tor 在 30 秒内未建立 SOCKS 连接")
                 if (wipeInProgress.get()) return
-                val readySocket = torService.socks
-                    ?: return
-                WalletManager.instance?.setProxy("${readySocket.value}")
+                setProxy(readySocket.address.toString(), readySocket.port.value)
             } else if (proxyHost.isNotEmpty() && proxyPort != -1) {
-                WalletManager.instance?.setProxy("${proxyHost}:$proxyPort")
+                val proxyAddress = "${proxyHost}:$proxyPort"
+                WalletManager.instance?.setProxy(proxyAddress)
+                WalletManager.instance?.wallet?.setProxy(proxyAddress)
             } else {
                 throw Exception("no proxy")
             }
@@ -208,7 +204,7 @@ class AnonWalletHandler(
 
     }
 
-    fun updateDaemon(node: Node?) {
+    fun updateDaemon(node: Node?, restartRefresh: Boolean = true) {
         walletState.setLoading(true)
         val wallet = WalletManager.instance?.wallet
         val walletManager = WalletManager.instance
@@ -239,7 +235,7 @@ class AnonWalletHandler(
             // block-processing callbacks resume without requiring a manual refresh.
             // During initial startup isInitialized is false; startService() starts
             // the worker after wallet.init() succeeds.
-            if (node != null && wallet?.isInitialized == true) {
+            if (restartRefresh && node != null && wallet?.isInitialized == true) {
                 wallet.startRefresh()
             }
 
