@@ -51,9 +51,18 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
 
     override fun refreshed() {
         val status = wallet.fullStatus.connectionStatus
-        // A single node-height snapshot prevents successive RPC calls from racing and
-        // clearing progress between a valid height and a transient zero/different value.
+        // Use one live daemon snapshot plus its target. Reaching the current node tip
+        // is not wallet sync completion while that node still has blocks to download.
         val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+        val daemonTargetHeight = if (
+            status == Wallet.ConnectionStatus.ConnectionStatus_Connected
+        ) {
+            runCatching { wallet.getDaemonBlockChainTargetHeight() }
+                .getOrDefault(0L).coerceAtLeast(0L)
+        } else {
+            0L
+        }
+        walletState.updateDaemonTargetHeight(daemonTargetHeight)
         walletState.updateBlockHeights(wallet, daemonHeight)
         val scanHeight = walletState.currentWalletHeight
         Timber.tag(name).i(
@@ -95,9 +104,16 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
                 walletState.setLoading(false)
             } else {
                 wallet.isSynchronized = false
-                // If the selected height equals the current tip, keep the loader visible
-                // until the queued first rescan actually starts processing.
-                walletState.setLoading(walletState.currentWalletHeight >= daemonHeight)
+                if (daemonTargetHeight > daemonHeight) {
+                    // Keep showing real remaining blocks while the node catches up;
+                    // do not finish and restart the wallet's progress at every tip.
+                    walletState.updateSyncProgressFromWallet(wallet, daemonHeight)
+                    walletState.setLoading(false)
+                } else {
+                    // If a selected-height rescan is queued at the current tip, keep
+                    // the loader visible until the native scan starts processing.
+                    walletState.setLoading(walletState.currentWalletHeight >= daemonHeight)
+                }
             }
         }
 
