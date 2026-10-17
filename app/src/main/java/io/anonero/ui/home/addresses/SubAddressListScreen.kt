@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -60,22 +61,31 @@ class SubAddressListViewModel : ViewModel() {
     private val walletState: WalletState by inject(WalletState::class.java)
 
     val subAddresses = walletState.subAddresses.asLiveData()
-    private val _addAddressError = MutableStateFlow<String?>(null)
-    val addAddressError = _addAddressError.asLiveData()
+    private val _addAddressMessage = MutableStateFlow<String?>(null)
+    val addAddressMessage = _addAddressMessage.asLiveData()
+    private val _isAddingAddress = MutableStateFlow(false)
+    val isAddingAddress = _isAddingAddress.asLiveData()
 
     fun getNextAddress() {
+        if (_isAddingAddress.value) return
         viewModelScope.launch {
+            _isAddingAddress.value = true
             try {
-                withContext(Dispatchers.IO) { walletState.getNewAddress() }
+                val address = withContext(Dispatchers.IO) {
+                    walletState.getNewAddress()
+                }
+                _addAddressMessage.value = "已添加子地址 #" + address.addressIndex
             } catch (e: Exception) {
-                _addAddressError.value =
+                _addAddressMessage.value =
                     e.message?.takeIf(String::isNotBlank) ?: "添加子地址失败"
+            } finally {
+                _isAddingAddress.value = false
             }
         }
     }
 
-    fun clearAddAddressError() {
-        _addAddressError.value = null
+    fun clearAddAddressMessage() {
+        _addAddressMessage.value = null
     }
 
     fun updateAddressLabel(label: String, addressIndex: Int) {
@@ -99,14 +109,15 @@ fun SubAddressesScreen(
     }
     val vm = viewModel<SubAddressListViewModel>()
     val addresses by vm.subAddresses.observeAsState(listOf())
-    val addAddressError by vm.addAddressError.observeAsState()
+    val addAddressMessage by vm.addAddressMessage.observeAsState()
+    val isAddingAddress by vm.isAddingAddress.observeAsState(false)
     val snackbarHostState = remember { SnackbarHostState() }
     var editingAddress by remember { mutableStateOf<Subaddress?>(null) }
 
-    LaunchedEffect(addAddressError) {
-        val message = addAddressError ?: return@LaunchedEffect
+    LaunchedEffect(addAddressMessage) {
+        val message = addAddressMessage ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(message)
-        vm.clearAddAddressError()
+        vm.clearAddAddressMessage()
     }
 
     Scaffold(
@@ -120,8 +131,21 @@ fun SubAddressesScreen(
                 },
                 title = {},
                 actions = {
-                    IconButton(onClick = { vm.getNextAddress() }) {
-                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_subaddress_label))
+                    IconButton(
+                        onClick = { vm.getNextAddress() },
+                        enabled = !isAddingAddress
+                    ) {
+                        if (isAddingAddress) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.padding(2.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = stringResource(R.string.add_subaddress_label)
+                            )
+                        }
                     }
                 }
             )
