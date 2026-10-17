@@ -64,6 +64,7 @@ class WalletState(private val prefs: SharedPreferences) {
     private val _unlockShortcut = Channel<LockScreenShortCut>(capacity = 1)
     val unlockShortcut = _unlockShortcut.receiveAsFlow()
     private val bgSyncMutex = Mutex()
+    private val subaddressMutex = Mutex()
     // Wallet scan progress needs the live daemon target as soon as a scan starts.
     // Keep this request off the UI thread and avoid duplicate startup height RPCs.
     private val scanHeightScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -759,37 +760,45 @@ class WalletState(private val prefs: SharedPreferences) {
         _backgroundSync.update { startBackgroundSync }
     }
 
-    fun getNewAddress() {
-        val wallet = getWallet ?: return
+    suspend fun getNewAddress(): Subaddress = subaddressMutex.withLock {
+        val wallet = getWallet ?: throw IllegalStateException("钱包未打开")
         val accountIndex = wallet.getAccountIndex()
-        // Capture the exact index before native addSubaddress() increments the count.
-        // getLatestSubAddress() is transaction-history based and can point to an older
-        // unused address, so it must not be used to identify the address just created.
-        val newAddressIndex = wallet.numSubAddresses
-        wallet.addSubaddress(accountIndex, "Subaddress #$newAddressIndex")
-        wallet.store()
 
-        val addedAddress = wallet.getSubaddressObject(newAddressIndex)
+        // Serialize this mutation with receive-address generation and verify the native
+        // count before publishing the newly created address to the UI.
+        val addedAddress = synchronized(wallet) {
+            val oldCount = wallet.numSubAddresses
+            check(oldCount >= 1) { "钱包子地址状态无效" }
+            wallet.addSubaddress(accountIndex, "Subaddress #$oldCount")
+            val newCount = wallet.numSubAddresses
+            check(newCount == oldCount + 1) {
+                "添加子地址失败：钱包没有生成新的地址索引"
+            }
+            val address = wallet.getSubaddressObject(oldCount)
+            check(address.address.isNotBlank()) { "添加子地址失败：生成的地址为空" }
+            check(wallet.store()) { "子地址已生成，但保存钱包文件失败" }
+            address
+        }
 
-        // Publish the real new address immediately. Do not wait for a full wallet update
-        // or daemon refresh before the Compose address list receives a new StateFlow value.
+        // Publish immediately; this does not depend on a daemon refresh or scan.
         _subAddresses.update { current ->
             (current + addedAddress)
                 .distinctBy { it.address }
                 .sortedByDescending { it.addressIndex }
         }
 
-        // Keep the receive-page "next address" behavior independent from the list entry.
+        // Preserve the receive page's first-unused-address behavior. The helper only
+        // creates an address if the requested index has not been generated before.
         try {
-            _nextAddress.value = wallet.getLatestSubAddress()
+            _nextAddress.value = synchronized(wallet) { wallet.getLatestSubAddress() }
         } catch (e: Exception) {
             Timber.tag(TAG).w(e, "Unable to refresh next receive subaddress after adding one")
         }
 
-        // Reconcile from the native wallet, but always retain the exact address created
-        // above even if the history-based snapshot temporarily omits it.
         val allItems = try {
-            wallet.getAllUsedSubAddresses()
+            synchronized(wallet) {
+                (0 until wallet.numSubAddresses).map { wallet.getSubaddressObject(it) }
+            }
         } catch (e: Exception) {
             Timber.tag(TAG).w(e, "Unable to refresh subaddress list after adding one")
             emptyList()
@@ -799,6 +808,7 @@ class WalletState(private val prefs: SharedPreferences) {
                 .distinctBy { it.address }
                 .sortedByDescending { it.addressIndex }
         }
+        addedAddress
     }
 
     fun setTransactionNote(note: String, transactionInfo: TransactionInfo) {
