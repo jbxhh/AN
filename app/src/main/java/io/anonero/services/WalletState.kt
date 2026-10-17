@@ -753,6 +753,16 @@ class WalletState(private val prefs: SharedPreferences) {
         }
     }
 
+    /**
+     * The native wallet is about to be reinitialized after a real refresh failure.
+     * Only this lifecycle event may release the queued-restore guard for retry.
+     */
+    fun prepareForcedRestoreScanRetry() {
+        if (prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) {
+            forcedRestoreScanStarted.set(false)
+        }
+    }
+
     fun setConnectionStatus(status: Wallet.ConnectionStatus) {
         val previous = _previousConnectionStatus.getAndSet(status)
         _connectionStatus.update { status }
@@ -762,13 +772,10 @@ class WalletState(private val prefs: SharedPreferences) {
             if (!_scanTracking.get() || _syncProgress.value == null) clearSyncProgress()
             setLoading(false)
         }
-        if (status == Wallet.ConnectionStatus.ConnectionStatus_Disconnected &&
-            prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
-        ) {
-            // A reconnect calls native init again; allow the selected-height rescan to
-            // be re-queued after the daemon comes back.
-            forcedRestoreScanStarted.set(false)
-        }
+        // Do not reset forcedRestoreScanStarted merely because a status probe
+        // briefly reports Disconnected. That probe can race an already queued native
+        // rescan and cause the same restore scan to be queued again. Reset is done
+        // explicitly by the native reinitialization path below.
         if (previous == Wallet.ConnectionStatus.ConnectionStatus_Disconnected &&
             status == Wallet.ConnectionStatus.ConnectionStatus_Connected) {
             setLoading(true)
