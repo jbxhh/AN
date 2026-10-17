@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -261,6 +262,15 @@ fun LogViewer(
 
 @Composable
 private fun LogLine(text: AnonLog) {
+    // Enable Android's native long-press text selection and Copy menu for each log row.
+    // Keep the existing layout and do not add any buttons.
+    SelectionContainer {
+        LogLineContent(text)
+    }
+}
+
+@Composable
+private fun LogLineContent(text: AnonLog) {
 
     val color = when (text.priority) {
         Log.VERBOSE -> Color(0xFF4FC3F7)
