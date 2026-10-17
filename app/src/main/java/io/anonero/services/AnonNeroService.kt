@@ -130,14 +130,14 @@ class AnonNeroService : Service() {
         // every second can race wallet close during secure wipe and stall deletion.
         if (walletState.isSyncing) return
         val torState = if (torService.socks != null) {
-            " | Tor Daemon: \${torService.socks?.port}"
+            " | Tor Daemon: ${torService.socks?.port}"
         } else {
             ""
         }
 
         val notificationMessage = when {
             walletState.backgroundSync ->
-                "Wallet Locked: Synced: \${walletState.currentWalletHeight}"
+                "Wallet Locked: Synced: ${walletState.currentWalletHeight}"
             !wallet.isInitialized -> "Loading wallet..."
             !isNetworkAvailable() -> {
                 walletState.setConnectionStatus(Wallet.ConnectionStatus.ConnectionStatus_Disconnected)
@@ -148,7 +148,7 @@ class AnonNeroService : Service() {
                     Wallet.ConnectionStatus.ConnectionStatus_Connected ->
                 "Daemon Disconnected"
             walletState.currentWalletHeight > 1L ->
-                "Synced: \${walletState.currentWalletHeight}"
+                "Synced: ${walletState.currentWalletHeight}"
             else -> "Syncing..."
         }
 
@@ -156,7 +156,7 @@ class AnonNeroService : Service() {
         withContext(Dispatchers.Main) {
             notificationManager.notify(
                 NOTIFICATION_ID,
-                foregroundNotification("\$notificationMessage\$suffix")
+                foregroundNotification("$notificationMessage$suffix")
             )
         }
     }
