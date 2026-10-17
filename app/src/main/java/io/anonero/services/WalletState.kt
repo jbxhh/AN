@@ -329,6 +329,10 @@ class WalletState(private val prefs: SharedPreferences) {
     val currentDaemonHeight: Long
         get() = _connectedDaemon.value?.daemonHeight?.coerceAtLeast(0L) ?: 0L
 
+    /** Cached state only; reading this never calls through JNI or performs an RPC. */
+    val currentConnectionStatus: Wallet.ConnectionStatus?
+        get() = _walletStatus.value?.connectionStatus ?: _connectionStatus.value
+
     fun beginWalletScan(
         wallet: Wallet? = getWallet,
         scanStartHeight: Long? = null,
@@ -815,6 +819,31 @@ class WalletState(private val prefs: SharedPreferences) {
     fun clearSyncProgress() {
         _syncProgress.value = null
         _isSyncing.set(false)
+    }
+
+    /** Clear process-wide UI state once the wallet file has been safely deleted. */
+    fun resetAfterWalletWipe() {
+        _blockUpdates.set(false)
+        _isLoading.value = false
+        _backgroundSync.value = false
+        _transactions.value = emptyList()
+        _subAddresses.value = emptyList()
+        _balanceInfo.value = null
+        _walletHeight.value = 0L
+        _scanTracking.set(false)
+        _scanStartHeight.set(0L)
+        _unLockedBalance.value = null
+        _walletStatus.value = null
+        _nextAddress.value = null
+        _coins.value = emptyList()
+        _connectedDaemon.value = null
+        _daemonTargetHeight.set(0L)
+        _connectionStatus.value = null
+        _previousConnectionStatus.set(null)
+        daemonHeightQueryInFlight.set(false)
+        forcedRestoreScanInFlight.set(false)
+        forcedRestoreScanStarted.set(false)
+        clearSyncProgress()
     }
 
     fun toggleHideAmounts() {
