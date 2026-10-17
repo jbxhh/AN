@@ -1003,17 +1003,6 @@ class WalletState(private val prefs: SharedPreferences) {
             return@withLock primary
         }
 
-        // Native subaddress creation waits for a refresh batch boundary. If the
-        // wallet is offline or still restoring, that boundary may never arrive, so keep
-        // the receive page usable with the best already-generated address instead.
-        if (!wallet.isSynchronized ||
-            wallet.fullStatus.connectionStatus != Wallet.ConnectionStatus.ConnectionStatus_Connected
-        ) {
-            val availableAddress = _nextAddress.value ?: wallet.getLatestSubAddress()
-            _nextAddress.value = availableAddress
-            return@withLock availableAddress
-        }
-
         // Reuse the lowest already-generated address above the highest used index.
         // This relies on cached app state/history rather than querying native address
         // vectors while the scanner may be mutating them.
