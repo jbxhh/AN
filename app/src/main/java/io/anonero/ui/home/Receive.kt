@@ -59,6 +59,8 @@ fun ReceiveScreen(
 ) {
     val walletState: WalletState by inject(WalletState::class.java)
     val nextAddress by walletState.nextAddress.collectAsState(null)
+    val walletStatus by walletState.walletStatus.collectAsState(null)
+    val walletReady = walletStatus != null
     var labelDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -66,7 +68,8 @@ fun ReceiveScreen(
     // Apply the upstream receive-address rule when this screen opens: reuse the
     // lowest generated address above the highest index seen in transaction history,
     // or atomically create the next address if none is available in the cached state.
-    LaunchedEffect(walletState) {
+    LaunchedEffect(walletState, walletReady) {
+        if (!walletReady) return@LaunchedEffect
         try {
             walletState.ensureNextReceiveAddress()
         } catch (e: CancellationException) {
@@ -104,7 +107,9 @@ fun ReceiveScreen(
                 }
             )
         }) {
-        if (nextAddress != null) {
+        // Index 0 is the primary address. Do not display it as the receive address;
+        // wait for wallet initialization and the next generated/reused subaddress.
+        if (nextAddress != null && nextAddress!!.addressIndex > 0) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize(),
