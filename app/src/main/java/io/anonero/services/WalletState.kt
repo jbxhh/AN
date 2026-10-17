@@ -206,60 +206,68 @@ class WalletState(private val prefs: SharedPreferences) {
 
         scanHeightScope.launch {
             try {
-                if (getWallet !== wallet || !wallet.isInitialized) return@launch
-                if (wallet.fullStatus.connectionStatus !=
-                    Wallet.ConnectionStatus.ConnectionStatus_Connected
-                ) return@launch
+                daemonHeightQueryMutex.withLock {
+                    // A wipe closes the gate first, then waits for this critical section
+                    // before releasing the native wallet handle.
+                    if (walletWipeInProgress.get() || getWallet !== wallet || !wallet.isInitialized) {
+                        return@withLock
+                    }
+                    if (wallet.fullStatus.connectionStatus !=
+                        Wallet.ConnectionStatus.ConnectionStatus_Connected
+                    ) return@withLock
 
-                val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
-                val daemonTargetHeight = wallet.getDaemonBlockChainTargetHeight().coerceAtLeast(0L)
-                if (daemonHeight <= 1L || daemonTargetHeight <= 0L ||
-                    daemonHeight < daemonTargetHeight
-                ) {
-                    Timber.tag(TAG).i(
-                        "Restore scan pending until daemon is synchronized: height=%d target=%d",
-                        daemonHeight, daemonTargetHeight
+                    val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+                    val daemonTargetHeight = wallet.getDaemonBlockChainTargetHeight().coerceAtLeast(0L)
+                    if (daemonHeight <= 1L || daemonTargetHeight <= 0L ||
+                        daemonHeight < daemonTargetHeight
+                    ) {
+                        Timber.tag(TAG).i(
+                            "Restore scan pending until daemon is synchronized: height=%d target=%d",
+                            daemonHeight, daemonTargetHeight
+                        )
+                        return@withLock
+                    }
+
+                    // The saved restore height, not the native cache tip, is the source
+                    // of truth. Reapply it before queuing the native rescan.
+                    val selectedRestoreHeight = pendingSelectedRestoreHeight(wallet)
+                        ?: return@withLock
+                    wallet.setRestoreHeight(selectedRestoreHeight)
+                    check(wallet.getRestoreHeight().coerceAtLeast(0L) == selectedRestoreHeight) {
+                        "Selected restore height changed before rescan"
+                    }
+                    check(wallet.store()) { "Unable to persist selected restore height before rescan" }
+
+                    clearSyncProgress()
+                    _transactions.value = emptyList()
+                    _coins.value = emptyList()
+                    setLoading(true)
+
+                    beginWalletScan(
+                        wallet = wallet,
+                        scanStartHeight = selectedRestoreHeight,
+                        forceStartAtSelectedHeight = true
                     )
-                    return@launch
+                    updateBalanceFromWallet(wallet)
+
+                    // Do not queue/resume native scanning after secure wipe has closed the gate.
+                    if (walletWipeInProgress.get() || getWallet !== wallet) return@withLock
+                    wallet.rescanBlockchainAsync()
+                    wallet.startRefresh()
+                    forcedRestoreScanStarted.set(true)
+                    Timber.tag(TAG).i(
+                        "Started restored-wallet rescan from selected height %d",
+                        selectedRestoreHeight
+                    )
                 }
-
-                // The saved restore height, not the native cache tip, is the source
-                // of truth. Reapply it before queuing the native rescan.
-                val selectedRestoreHeight = pendingSelectedRestoreHeight(wallet)
-                    ?: return@launch
-                wallet.setRestoreHeight(selectedRestoreHeight)
-                check(wallet.getRestoreHeight().coerceAtLeast(0L) == selectedRestoreHeight) {
-                    "Selected restore height changed before rescan"
-                }
-                check(wallet.store()) { "Unable to persist selected restore height before rescan" }
-
-                clearSyncProgress()
-                _transactions.value = emptyList()
-                _coins.value = emptyList()
-                setLoading(true)
-
-                beginWalletScan(
-                    wallet = wallet,
-                    scanStartHeight = selectedRestoreHeight,
-                    forceStartAtSelectedHeight = true
-                )
-                updateBalanceFromWallet(wallet)
-
-                // A normal refresh can fast-forward the hash cache to the node tip.
-                // Only issue the native rescan once the daemon is fully synchronized,
-                // so the selected start height cannot be discarded by native doRefresh().
-                wallet.rescanBlockchainAsync()
-                wallet.startRefresh()
-                forcedRestoreScanStarted.set(true)
-                Timber.tag(TAG).i(
-                    "Started restored-wallet rescan from selected height %d",
-                    selectedRestoreHeight
-                )
             } catch (e: Exception) {
-                // Keep the preference set so a later refresh/reconnect can retry.
+                // Keep the preference set so a later refresh/reconnect can retry, except
+                // while secure wipe is deliberately shutting down the wallet.
                 Timber.tag(TAG).e(e, "Unable to start restored-wallet scan")
-                clearSyncProgress()
-                setLoading(false)
+                if (!walletWipeInProgress.get()) {
+                    clearSyncProgress()
+                    setLoading(false)
+                }
             } finally {
                 forcedRestoreScanInFlight.set(false)
             }
