@@ -82,9 +82,10 @@ fun SubAddressDetailScreen(
         SubAddressDetail(subAddress)
     }
     val transactions by subAddressDetailVm.transactions.observeAsState(listOf())
-    val isPrimaryAddressLabel =
-        subAddress.label.trim().equals("Primary address", ignoreCase = true) ||
-        subAddress.displayLabel.trim().equals("Primary address", ignoreCase = true)
+    val isPrimaryAddressLabel = listOf(subAddress.label, subAddress.displayLabel).any { label ->
+        label.trim().replace(Regex("\\s+"), " ")
+            .startsWith("Primary address", ignoreCase = true)
+    }
     var addressLabel by remember {
         mutableStateOf(
             if (subAddress.label.isEmpty() ||
