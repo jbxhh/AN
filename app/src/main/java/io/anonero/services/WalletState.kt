@@ -1049,7 +1049,11 @@ class WalletState(private val prefs: SharedPreferences) {
                 .sortedByDescending { it.addressIndex }
         }
         _nextAddress.update { current ->
-            if (current?.addressIndex == addedAddress.addressIndex) addedAddress else current
+            if (current == null || current.addressIndex == addedAddress.addressIndex) {
+                addedAddress
+            } else {
+                current
+            }
         }
         addedAddress
     }
