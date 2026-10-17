@@ -392,6 +392,7 @@ fun ResyncBlockchainScreen(
                                 onValueChange = {
                                     restoreHeightInput = it.filter(Char::isDigit)
                                     if (restoreHeightInput.isNotBlank()) restoreDateInput = ""
+                                    queryCompleted = false
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = MaterialTheme.shapes.medium,
@@ -420,6 +421,7 @@ fun ResyncBlockchainScreen(
                                 onValueChange = {
                                     restoreDateInput = it
                                     if (restoreDateInput.isNotBlank()) restoreHeightInput = ""
+                                    queryCompleted = false
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = MaterialTheme.shapes.medium,
@@ -445,11 +447,7 @@ fun ResyncBlockchainScreen(
                     onClick = {
                         if (isQuerying) {
                             // Avoid duplicate RPC lookups or rescan requests.
-                        } else if (
-                            !queryCompleted &&
-                            restoreHeightInput.isBlank() &&
-                            restoreDateInput.isBlank()
-                        ) {
+                        } else if (!queryCompleted) {
                             isQuerying = true
                             scope.launch {
                                 try {
@@ -459,23 +457,51 @@ fun ResyncBlockchainScreen(
                                         if (!wallet.isInitialized) {
                                             throw IllegalStateException("钱包尚未初始化")
                                         }
-                                        val height = wallet.getRestoreHeight()
-                                        if (height < 0L) {
-                                            throw IllegalStateException("无法获取恢复区块高度")
+                                        val lookup = MoneroBlockTimeLookup(walletPrefs, torService)
+                                        val selectedHeight = when {
+                                            restoreHeightInput.isNotBlank() -> {
+                                                restoreHeightInput.toLongOrNull()
+                                                    ?: throw IOException("请输入有效的区块高度")
+                                            }
+                                            restoreDateInput.isNotBlank() -> {
+                                                if (!Regex("""\\d{4}-\\d{2}-\\d{2}""")
+                                                        .matches(restoreDateInput)) {
+                                                    throw IOException("日期格式应为 YYYY-MM-DD")
+                                                }
+                                                val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                                                    isLenient = false
+                                                }
+                                                val date = try {
+                                                    parser.parse(restoreDateInput)
+                                                } catch (_: Exception) {
+                                                    null
+                                                } ?: throw IOException("请输入有效日期（YYYY-MM-DD）")
+                                                lookup.heightNearTimestamp(date.time / 1000L)
+                                            }
+                                            else -> wallet.getRestoreHeight().also {
+                                                if (it < 0L) throw IOException("无法获取恢复区块高度")
+                                            }
                                         }
-                                        val timestamp = MoneroBlockTimeLookup(walletPrefs, torService)
-                                            .headerAtHeight(height).timestamp
-                                        height to SimpleDateFormat("yyyy-MM-dd", Locale.US)
-                                            .format(Date(timestamp * 1000L))
+                                        val latestHeight = lookup.latestHeight()
+                                        if (selectedHeight < 0L || selectedHeight > latestHeight) {
+                                            throw IOException("恢复高度必须在 0 到节点最新高度 $latestHeight 之间")
+                                        }
+                                        val header = lookup.headerAtHeight(selectedHeight)
+                                        header.height to SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                                            .format(Date(header.timestamp * 1000L))
                                     }
-                                    delay(350)
                                     restoreHeightInput = restoreInfo.first.toString()
                                     restoreDateInput = restoreInfo.second
-                                    queryCompleted = restoreHeightInput.isNotBlank() &&
-                                        restoreDateInput.isNotBlank()
-                                } catch (e: Exception) {
+                                    queryCompleted = true
                                     toastState.show(
-                                        "查询失败：" + (e.message ?: "无法查询真实区块时间"),
+                                        "查询完成：已定位真实区块高度 " + restoreInfo.first,
+                                        type = ToastType.Success,
+                                        duration = 4.seconds
+                                    )
+                                } catch (e: Exception) {
+                                    queryCompleted = false
+                                    toastState.show(
+                                        "查询失败：" + (e.message ?: "无法查询真实区块信息"),
                                         type = ToastType.Warning,
                                         duration = 6.seconds
                                     )
@@ -607,11 +633,7 @@ fun ResyncBlockchainScreen(
                         )
                     } else {
                         Text(
-                        if (queryCompleted || restoreHeightInput.isNotBlank() || restoreDateInput.isNotBlank()) {
-                            "重置"
-                        } else {
-                            "查询"
-                        }
+                        if (queryCompleted) "重置" else "查询"
                     )
                     }
                 }
