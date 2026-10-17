@@ -16,12 +16,12 @@ def replace_once(path: Path, old: str, new: str) -> None:
 
 def insert_after_line(path: Path, expected_line: str, new_line: str) -> None:
     lines = path.read_text().splitlines(keepends=True)
-    matches = [i for i, line in enumerate(lines) if line.rstrip("\\r\\n").strip() == expected_line]
+    matches = [i for i, line in enumerate(lines) if line.rstrip("\r\n").strip() == expected_line]
     if len(matches) != 1:
         raise SystemExit(f"{path}: expected one line anchor, found {len(matches)}")
     index = matches[0]
-    indent = lines[index][:len(lines[index]) - len(lines[index].lstrip(" \\t"))]
-    lines.insert(index + 1, indent + new_line + "\\n")
+    indent = lines[index][:len(lines[index]) - len(lines[index].lstrip(" \t"))]
+    lines.insert(index + 1, indent + new_line + "\n")
     path.write_text("".join(lines))
 
 insert_after_line(
