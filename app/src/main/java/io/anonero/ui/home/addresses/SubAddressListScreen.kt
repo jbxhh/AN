@@ -168,9 +168,10 @@ fun SubAddressesScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                val isPrimaryAddressLabel =
-                                    address.label.trim().equals("Primary address", ignoreCase = true) ||
-                                    address.displayLabel.trim().equals("Primary address", ignoreCase = true)
+                                val isPrimaryAddressLabel = listOf(address.label, address.displayLabel).any { label ->
+                                    label.trim().replace(Regex("\\s+"), " ")
+                                        .startsWith("Primary address", ignoreCase = true)
+                                }
                                 val generatedLabel =
                                     address.label.isBlank() ||
                                     Subaddress.DEFAULT_LABEL_FORMATTER.matcher(address.label).matches() ||
