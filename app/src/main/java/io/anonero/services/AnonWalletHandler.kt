@@ -94,19 +94,22 @@ class AnonWalletHandler(
             if (useTor || proxyHost.isNullOrBlank()) {
                 torService.start()
                 val socket = withTimeoutOrNull(30_000L) {
-                    while (torService.socks == null) {
+                    while (torService.socks == null && !wipeInProgress.get()) {
                         delay(200)
                     }
-                    torService.socks
-                } ?: throw IllegalStateException("Timed out waiting for Tor SOCKS proxy")
+                    if (wipeInProgress.get()) null else torService.socks
+                }
                 if (wipeInProgress.get()) return
-                WalletManager.instance?.setProxy("${socket.value}")
+                val readySocket = socket
+                    ?: throw IllegalStateException("Timed out waiting for Tor SOCKS proxy")
+                WalletManager.instance?.setProxy("${readySocket.value}")
             } else if (proxyHost.isNotEmpty() && proxyPort != -1) {
                 WalletManager.instance?.setProxy("${proxyHost}:$proxyPort")
             } else {
                 throw Exception("no proxy")
             }
             if (host?.isNotEmpty() == true) {
+                if (wipeInProgress.get()) return
                 val nodeObj = JSONObject()
                     .apply {
                         put(NodeFields.RPC_HOST.value, host)
@@ -131,6 +134,7 @@ class AnonWalletHandler(
                 if (forceFreshScan) walletState.pendingSelectedRestoreHeight(wallet) else null
 
             val initialized = wallet.init(0)
+            if (wipeInProgress.get()) return
             if (initialized && wallet.isInitialized) {
                 if (forceFreshScan && selectedRestoreHeightBeforeInit != null) {
                     // The height entered on the restore screen is authoritative;
@@ -194,6 +198,7 @@ class AnonWalletHandler(
                 walletState.setLoading(false)
             }
         } catch (e: Exception) {
+            if (wipeInProgress.get()) return
             Timber.tag(TAG).e(e, "Wallet service startup failed")
             walletState.clearSyncProgress()
             walletState.setConnectionStatus(Wallet.ConnectionStatus.ConnectionStatus_Disconnected)
@@ -332,9 +337,6 @@ class AnonWalletHandler(
             walletClosed = true
 
             WalletManager.instance?.setDaemon(null)
-            // The native object is closed now. Clear all in-memory references even if
-            // filesystem deletion later needs recovery on the next process start.
-            walletState.resetAfterWalletWipe()
 
             val context = AnonConfig.context
                 ?: throw IllegalStateException("Application context unavailable")
@@ -343,6 +345,7 @@ class AnonWalletHandler(
             check(removed && !java.io.File(walletDir, "anon").exists()) {
                 "Native wallet closed, but wallet files could not be deleted"
             }
+            walletState.resetAfterWalletWipe()
 
             Timber.tag(TAG).i("Secure wipe: wallet files deleted")
             return true
