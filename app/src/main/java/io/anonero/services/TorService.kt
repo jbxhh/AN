@@ -11,6 +11,7 @@ import io.matthewnelson.kmp.tor.runtime.core.OnEvent
 import io.matthewnelson.kmp.tor.runtime.core.TorEvent
 import io.matthewnelson.kmp.tor.runtime.core.config.TorOption
 import io.matthewnelson.kmp.tor.runtime.core.net.IPSocketAddress
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.util.concurrent.atomic.AtomicBoolean
 
 
 private const val TAG = "TorService"
@@ -36,7 +38,9 @@ class TorService(prefs: SharedPreferences) {
             replay = 20, onBufferOverflow = BufferOverflow.DROP_OLDEST,
             extraBufferCapacity = 50
         )
+    @Volatile
     private var _socks: IPSocketAddress? = null
+    private val startRequested = AtomicBoolean(false)
     val socks get() = _socks
     val socksFlow get() = _socksSharedFlow
     val torLogs: Flow<String> get() = _torLogs.asSharedFlow()
@@ -71,14 +75,29 @@ class TorService(prefs: SharedPreferences) {
         required(TorEvent.INFO)
     }
 
+    /**
+     * Tor can be requested from application startup, node setup, and wallet startup.
+     * Launching the same runtime repeatedly while SOCKS is still coming up can race
+     * the listener initialization and leave wallet startup waiting forever.
+     */
     fun start() {
+        if (_socks != null || !startRequested.compareAndSet(false, true)) return
         scope.launch {
-            runtime.startDaemonAsync()
+            try {
+                runtime.startDaemonAsync()
+            } catch (e: CancellationException) {
+                startRequested.set(false)
+                throw e
+            } catch (e: Exception) {
+                startRequested.set(false)
+                Timber.tag(TAG).e(e, "Tor startup failed")
+            }
         }
     }
 
     fun stop() {
         _socks = null
+        startRequested.set(false)
         scope.launch {
             runtime.stopDaemonAsync()
         }
