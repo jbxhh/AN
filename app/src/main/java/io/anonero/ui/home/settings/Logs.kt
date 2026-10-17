@@ -309,7 +309,7 @@ fun LogViewer(
                             )
                             .padding(horizontal = 8.dp),
                         contentPadding = PaddingValues(0.dp),
-                        verticalArrangement = Arrangement.Bottom
+                        verticalArrangement = Arrangement.Top
                     ) {
                         items(logLines.size) { index ->
                             LogLine(logLines[index], textScale)
