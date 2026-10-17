@@ -28,8 +28,8 @@ slint::slint! {
             Rectangle {
                 background: #1b1d22;
                 border-radius: 14px;
-                padding: 18px;
                 VerticalLayout {
+                    padding: 18px;
                     spacing: 10px;
                     Text { text: "Rust Android shell"; color: #ffffff; font-size: 18px; }
                     Text {
