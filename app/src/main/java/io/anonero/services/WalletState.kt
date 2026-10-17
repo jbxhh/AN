@@ -952,28 +952,23 @@ class WalletState(private val prefs: SharedPreferences) {
         }
     }
 
-    fun resyncBlockchain(): Result<Boolean> {
+    fun resyncBlockchain(selectedRestoreHeight: Long? = null): Result<Boolean> {
         val wallet = getWallet
-        if (wallet == null || !wallet.isInitialized) {
-            clearSyncProgress()
-            setLoading(false)
+            ?: return Result.failure(Exception("Wallet is not initialized"))
+        if (!wallet.isInitialized) {
             return Result.failure(Exception("Wallet is not initialized"))
         }
-        if (wallet.fullStatus.connectionStatus != Wallet.ConnectionStatus.ConnectionStatus_Connected) {
-            clearSyncProgress()
-            setLoading(false)
+        if (wallet.fullStatus.connectionStatus !=
+            Wallet.ConnectionStatus.ConnectionStatus_Connected
+        ) {
+            // A rejected reset must not erase progress from the scan already in progress.
             return Result.failure(Exception("Please connect to daemon for resync"))
         }
         if (backgroundSync) {
-            clearSyncProgress()
-            setLoading(false)
             return Result.failure(Exception("Exit background sync before resetting the scan"))
         }
 
-        // Monero's native doRefresh() clears its queued rescan flag before checking
-        // daemonSynced(). If the connected node is still syncing, the rescan request
-        // can be discarded while the UI already believes a scan from the selected
-        // height has started. Require the same height/target condition as native Monero.
+        // Validate the daemon before changing the active scan or its visible progress.
         val daemonHeight = runCatching { wallet.getDaemonBlockChainHeight() }
             .getOrDefault(0L)
             .coerceAtLeast(0L)
@@ -981,39 +976,91 @@ class WalletState(private val prefs: SharedPreferences) {
             .getOrDefault(0L)
             .coerceAtLeast(0L)
         if (daemonHeight <= 1L || daemonTargetHeight <= 0L || daemonHeight < daemonTargetHeight) {
-            clearSyncProgress()
-            setLoading(false)
             return Result.failure(
                 Exception("节点尚未同步完成，请等待节点同步完成后再重置同步")
             )
         }
 
-        // Existing balances and history belong to the pre-rescan scan and must not
-        // be presented as current while the wallet rebuilds them from the chosen height.
-        clearSyncProgress()
-        _transactions.value = emptyList()
-        _coins.value = emptyList()
-        setLoading(true)
-        beginWalletScan(
-            wallet = wallet,
-            scanStartHeight = wallet.getRestoreHeight(),
-            forceStartAtSelectedHeight = true
-        )
-        // Publish the wallet's current balance immediately, then keep replacing it
-        // with the live balance discovered by each processed-block callback.
-        updateBalanceFromWallet(wallet)
+        val selectedHeight = selectedRestoreHeight ?: wallet.getRestoreHeight()
+        if (selectedHeight < 0L) {
+            return Result.failure(Exception("恢复区块高度无效"))
+        }
+        if (selectedHeight > daemonHeight) {
+            return Result.failure(
+                Exception("恢复高度不能高于当前节点高度（$daemonHeight）")
+            )
+        }
 
+        val previousRestoreHeight = wallet.getRestoreHeight()
+        var rescanQueued = false
         return try {
-            // Queue the selected-height rescan, then ensure Monero's refresh worker
-            // is enabled to consume the request even if refresh was paused/stopped.
+            // Pause native refresh before changing the restore point. The native rescan
+            // is queued while paused, then consumed by the native refresh worker after
+            // it resumes; this avoids asking a second scanner to run alongside it.
+            wallet.pauseRefresh()
+            wallet.setRestoreHeight(selectedHeight)
+            check(wallet.getRestoreHeight().coerceAtLeast(0L) == selectedHeight) {
+                "Selected restore height was not applied"
+            }
+            check(wallet.store()) { "Unable to persist selected restore height" }
+
+            // Queue the native rescan before replacing the current UI scan state. If
+            // queuing fails, the old scan/progress can remain intact after rollback.
             wallet.rescanBlockchainAsync()
+            rescanQueued = true
+
+            clearSyncProgress()
+            _transactions.value = emptyList()
+            _coins.value = emptyList()
+            setLoading(true)
+            beginWalletScan(
+                wallet = wallet,
+                scanStartHeight = selectedHeight,
+                forceStartAtSelectedHeight = true
+            )
+            updateBalanceFromWallet(wallet)
             wallet.startRefresh()
             Result.success(true)
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Wallet rescan failed to start")
-            clearSyncProgress()
-            setLoading(false)
-            Result.failure(e)
+            if (!rescanQueued) {
+                // Nothing was queued natively: restore the old setting and resume the
+                // existing scanner without disturbing its current progress indicators.
+                runCatching {
+                    wallet.setRestoreHeight(previousRestoreHeight)
+                    check(wallet.store()) { "Unable to restore previous restore height" }
+                }.onFailure { rollbackError ->
+                    Timber.tag(TAG).e(rollbackError, "Restore-height rollback failed")
+                }
+                runCatching { wallet.startRefresh() }.onFailure { restartError ->
+                    Timber.tag(TAG).e(restartError, "Unable to resume refresh after rejected rescan")
+                }
+                Result.failure(e)
+            } else {
+                // The native rescan is already queued, so do not roll the restore height
+                // back behind it. Re-establish progress state and make one more attempt
+                // to wake the native refresh worker.
+                runCatching {
+                    clearSyncProgress()
+                    _transactions.value = emptyList()
+                    _coins.value = emptyList()
+                    setLoading(true)
+                    beginWalletScan(
+                        wallet = wallet,
+                        scanStartHeight = selectedHeight,
+                        forceStartAtSelectedHeight = true
+                    )
+                    updateBalanceFromWallet(wallet)
+                }.onFailure { stateError ->
+                    Timber.tag(TAG).e(stateError, "Unable to publish rescan progress state")
+                }
+                val restart = runCatching { wallet.startRefresh() }
+                if (restart.isSuccess) {
+                    Result.success(true)
+                } else {
+                    Result.failure(restart.exceptionOrNull() ?: e)
+                }
+            }
         }
     }
 
