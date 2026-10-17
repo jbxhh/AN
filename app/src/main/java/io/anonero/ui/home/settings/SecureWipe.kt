@@ -101,7 +101,15 @@ class SecureWipeViewModel(
 
     fun wipe(passPhrase: String, activity: Activity): Job {
         return viewModelScope.launch(Dispatchers.IO) {
+            val recoveryPrefs = activity.getSharedPreferences(
+                AnonConfig.APP_PREFERENCES, android.content.Context.MODE_PRIVATE
+            )
+            check(recoveryPrefs.edit()
+                .putBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, true)
+                .commit()) { "Unable to persist secure-wipe recovery marker" }
+
             (activity as MainActivity).stopNotificationService()
+            delay(400)
             _wipeProgress.postValue(.3f)
             _wipeProgressMessage.postValue("Wiping Wallet")
             anonWalletHandler.wipe(passPhrase)
@@ -111,7 +119,9 @@ class SecureWipeViewModel(
             delay(1200)
             _wipeProgress.postValue(.6f)
             _wipeProgressMessage.postValue("Clearing Preferences")
-            sharedPreferences.edit { clear() }
+            check(sharedPreferences.edit().clear().commit()) {
+                "Unable to clear wallet PIN and passphrase preferences"
+            }
             delay(800)
             _wipeProgress.postValue(.7f)
             _wipeProgressMessage.postValue("Clearing Nodes")
@@ -121,6 +131,9 @@ class SecureWipeViewModel(
             delay(1000)
             logRepository.clear()
             AnonConfig.disposeState()
+            check(recoveryPrefs.edit()
+                .remove(AnonConfig.PREF_WALLET_WIPE_PENDING)
+                .commit()) { "Unable to finalize secure-wipe marker" }
             _wipeProgress.postValue(.8f)
             _wipeProgressMessage.postValue("Logs Cleared")
             delay(1200)
@@ -197,13 +210,16 @@ fun SecureWipe(
                     activity?.let { activity ->
                         secureWipeViewModel.wipe(passPhrase, activity)
                             .invokeOnCompletion {
-                                if (it == null) {
+                                val walletFileRemoved = runCatching {
+                                    !AnonConfig.getDefaultWalletFile(activity).exists()
+                                }.getOrDefault(false)
+                                if (it == null || walletFileRemoved) {
                                     view.performHapticFeedback(
                                         HapticFeedbackConstants.CONTEXT_CLICK
                                     )
                                     scope.launch(Dispatchers.Main) {
-                                        // Notify every open MainActivity, including another Android window,
-                                        // to rebuild its navigation after the wallet files are removed.
+                                        // Rebuild navigation even if non-wallet cleanup failed
+                                        // after the wallet file was already removed.
                                         activity.sendBroadcast(
                                             Intent(MainActivity.ACTION_WALLET_CLEARED)
                                                 .setPackage(activity.packageName)
