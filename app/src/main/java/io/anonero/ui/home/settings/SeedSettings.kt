@@ -333,6 +333,10 @@ fun SeedSettingsPage(onBackPress: () -> Unit = {}) {
 
     var showLegacy by remember { mutableStateOf(false) }
     var allowSeedCopy by remember { mutableStateOf(false) }
+
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { allowSeedCopy = false }
+    }
     val selectedSeed = if (showLegacy) legacySeed else seedWords
     val canCopySeed = !passPhraseDialog &&
         selectedSeed.isNotEmpty() &&
