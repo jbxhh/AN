@@ -317,7 +317,7 @@ fun SecureWipe(
                         ),
                     onClick = {
                         clearWallet()
-                    }) { Text(stringResource(id = R.string.wipe)) }
+                    }) { Text(stringResource(id = R.string.confirm)) }
             },
             dismissButton = {
                 Button(
