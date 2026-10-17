@@ -42,6 +42,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -634,7 +635,38 @@ fun TransactionScreen(
 
                 }
             },
-            indicator = { }
+            indicator = { state ->
+                // Keep the pull indicator in the PullToRefreshBox overlay rather than
+                // inside the LazyColumn. Its vertical position follows the live drag
+                // distance, so it tracks the finger instead of waiting for list layout
+                // and visibility animations to catch up.
+                val pullDistance = state.distanceFraction.coerceAtLeast(0f)
+                if (pullDistance > 0f) {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .offset(y = (pullDistance * 56f).dp)
+                            .fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        LinearProgressIndicator(
+                            progress = { pullDistance.coerceIn(0f, 1f) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                        )
+                        if (pullDistance > 0.2f && !showIndefiniteLoading) {
+                            Text(
+                                "拉动开始刷新",
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp)
+                            )
+                        }
+                    }
+                }
+            }
         ) {
                LazyColumn(
                 contentPadding = contentPadding,
@@ -643,32 +675,15 @@ fun TransactionScreen(
                 stickyHeader(key = "progress") {
                     Column {
                         AnimatedVisibility(
-                            visible = refreshState.distanceFraction > 0f || showIndefiniteLoading ||
+                            visible = showIndefiniteLoading ||
                                 syncProgress?.left?.let { it > 0L } == true,
                             enter = androidx.compose.animation.fadeIn(),
                             exit = androidx.compose.animation.fadeOut(
                                 animationSpec = androidx.compose.animation.core.tween(300)
                             )
                         ) {
-                            WalletProgressIndicator(
-                                refreshIndicatorProgress = refreshState.distanceFraction
-                            )
+                            WalletProgressIndicator()
                         }
-                        AnimatedVisibility(
-                            visible = refreshState.distanceFraction > .2f && !showIndefiniteLoading,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                "拉动开始刷新",
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(
-                                    top = 16.dp, bottom = 8.dp
-                                ),
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 9.sp
-                                )
-                            )
-                        };
                     }
                 }
                 item(key = "balance") {
