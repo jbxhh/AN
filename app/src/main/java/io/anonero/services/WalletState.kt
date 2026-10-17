@@ -59,6 +59,9 @@ class WalletState(private val prefs: SharedPreferences) {
     private val _coins = MutableStateFlow<List<CoinsInfo>>(arrayListOf())
     private val _syncProgress = MutableStateFlow<SyncProgress?>(null)
     private val _connectedDaemon = MutableStateFlow<DaemonInfo?>(null)
+    // Cache the daemon's real target height once per refresh callback so block
+    // callbacks can calculate progress without issuing an RPC for every block.
+    private val _daemonTargetHeight = AtomicLong(0L)
     private val _connectionStatus = MutableStateFlow<Wallet.ConnectionStatus?>(null)
     private val _previousConnectionStatus = AtomicReference<Wallet.ConnectionStatus?>(null)
     private val _unlockShortcut = Channel<LockScreenShortCut>(capacity = 1)
@@ -487,6 +490,10 @@ class WalletState(private val prefs: SharedPreferences) {
             try {
                 if (!wallet.isInitialized) return@launch
                 val latestDaemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+                val latestTargetHeight = wallet.getDaemonBlockChainTargetHeight().coerceAtLeast(0L)
+                if (wallet.isInitialized) {
+                    updateDaemonTargetHeight(latestTargetHeight)
+                }
                 if (latestDaemonHeight > 0L && wallet.isInitialized) {
                     updateBlockHeights(wallet, latestDaemonHeight)
                     updateSyncProgressFromWallet(wallet, latestDaemonHeight)
@@ -534,6 +541,15 @@ class WalletState(private val prefs: SharedPreferences) {
             // Keep listener-based height tracking enabled after sync, and do not issue
             // another node-height RPC that might observe a different tip mid-callback.
             val daemonHeight = (knownDaemonHeight ?: wallet.getDaemonBlockChainHeight()).coerceAtLeast(0L)
+            val targetHeight = maxOf(daemonHeight, _daemonTargetHeight.get())
+            if (daemonHeight > 0L && targetHeight > daemonHeight) {
+                // The wallet has caught up to the node's present tip, but the node
+                // itself still has blocks left. Keep scanning instead of finalizing
+                // and showing a second sync cycle when the daemon advances.
+                wallet.isSynchronized = false
+                updateSyncProgressFromWallet(wallet, daemonHeight)
+                return false
+            }
             updateBlockHeights(wallet, daemonHeight)
             // Once caught up, the next ordinary refresh must measure progress from
             // this completed wallet height, not from the original restore height.
@@ -633,9 +649,8 @@ class WalletState(private val prefs: SharedPreferences) {
             return
         }
 
-        val left = daemonHeight - chainHeight
-        if (left < 0L) {
-            // A restore point beyond the node tip is an invalid scan state, not sync success.
+        if (chainHeight > daemonHeight) {
+            // A restore point beyond the node's current chain is not sync success.
             wallet.isSynchronized = false
             clearSyncProgress()
             Timber.tag(TAG).w(
@@ -644,6 +659,12 @@ class WalletState(private val prefs: SharedPreferences) {
             )
             return
         }
+
+        // Do not declare the wallet finished merely because it caught the daemon's
+        // current tip while that daemon is still syncing. Keep the displayed backlog
+        // tied to the live target to avoid a completed bar restarting from zero.
+        val progressTargetHeight = maxOf(daemonHeight, _daemonTargetHeight.get())
+        val left = progressTargetHeight - chainHeight
         if (left == 0L) {
             syncUpdate(SyncProgress(progress = 1f, left = 0L))
             return
@@ -652,9 +673,9 @@ class WalletState(private val prefs: SharedPreferences) {
         wallet.isSynchronized = false
         // Progress is relative to this scan's start: restores begin at the selected
         // restore height; ordinary refreshes begin at the last processed wallet height.
-        // The denominator is the latest live daemon height, so a moving node tip is tracked.
-        val scanStartHeight = _scanStartHeight.get().coerceAtMost(daemonHeight)
-        val scanRange = (daemonHeight - scanStartHeight).coerceAtLeast(1L)
+        // The target follows the daemon's actual target while its chain is catching up.
+        val scanStartHeight = _scanStartHeight.get().coerceAtMost(progressTargetHeight)
+        val scanRange = (progressTargetHeight - scanStartHeight).coerceAtLeast(1L)
         val scanned = (chainHeight - scanStartHeight).coerceAtLeast(0L)
         val progress = (scanned.toDouble() / scanRange.toDouble())
             .toFloat()
@@ -724,6 +745,7 @@ class WalletState(private val prefs: SharedPreferences) {
         val previous = _previousConnectionStatus.getAndSet(status)
         _connectionStatus.update { status }
         if (status == Wallet.ConnectionStatus.ConnectionStatus_Disconnected) {
+            _daemonTargetHeight.set(0L)
             // Do not make the progress UI disappear during a temporary daemon outage.
             if (!_scanTracking.get() || _syncProgress.value == null) clearSyncProgress()
             setLoading(false)
@@ -747,6 +769,15 @@ class WalletState(private val prefs: SharedPreferences) {
 
     fun updateDaemon(daemonInfo: DaemonInfo) {
         this._connectedDaemon.update { daemonInfo }
+        if (daemonInfo.daemonHeight <= 0L ||
+            daemonInfo.connectionStatus == Wallet.ConnectionStatus.ConnectionStatus_Disconnected
+        ) {
+            _daemonTargetHeight.set(0L)
+        }
+    }
+
+    fun updateDaemonTargetHeight(height: Long) {
+        _daemonTargetHeight.set(height.coerceAtLeast(0L))
     }
 
     fun syncUpdate(syncProgress: SyncProgress) {
