@@ -52,7 +52,7 @@ fun SettingsTradePage(
                 MenuItem(stringResource(R.string.coins)) {
                     navigateTo(CoinsScreenRoute)
                 }
-                HorizontalDivider(thickness = 2.5.dp)
+                HorizontalDivider(thickness = 1.dp)
             }
         }
     }
