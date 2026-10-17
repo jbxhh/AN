@@ -121,6 +121,9 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
     }
 
     private fun tryRestartConnection() {
+        // This is a real native reinitialization, unlike a transient UI/service status
+        // probe. Permit a pending selected-height scan to be queued again after init.
+        walletState.prepareForcedRestoreScanRetry()
         // Reinitialization can overwrite a fresh restore's selected height just like
         // initial startup. Preserve the preference-backed height before refresh resumes.
         val initialized = wallet.init(0)
