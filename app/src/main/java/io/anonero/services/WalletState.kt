@@ -982,53 +982,23 @@ class WalletState(private val prefs: SharedPreferences) {
         val wallet = getWallet ?: throw IllegalStateException("钱包未打开")
         val accountIndex = wallet.getAccountIndex()
 
-        // Serialize this mutation with receive-address generation and verify the native
-        // count before publishing the newly created address to the UI.
+        // This native call pauses only at a refresh batch boundary, creates and stores the
+        // address, then returns its exact index/address before the scan resumes. Do not
+        // read or store the native wallet again here: the scan may already be running.
         val addedAddress = synchronized(wallet) {
-            val oldCount = wallet.numSubAddresses
-            check(oldCount >= 1) { "钱包子地址状态无效" }
-            wallet.addSubaddress(accountIndex, "Subaddress #$oldCount")
-            val newCount = wallet.numSubAddresses
-            check(newCount == oldCount + 1) {
-                "添加子地址失败：钱包没有生成新的地址索引"
-            }
-            val address = wallet.getSubaddressObject(oldCount)
-            check(address.address.isNotBlank()) { "添加子地址失败：生成的地址为空" }
-            check(wallet.store()) { "子地址已生成，但保存钱包文件失败" }
-            address
+            wallet.addSubaddressAndGetSubaddress(accountIndex)
         }
 
-        // Publish immediately; this does not depend on a daemon refresh or scan.
         _subAddresses.update { current ->
             (current + addedAddress)
                 .distinctBy { it.address }
                 .sortedByDescending { it.addressIndex }
         }
-
-        // Preserve the receive page's first-unused-address behavior. The helper only
-        // creates an address if the requested index has not been generated before.
-        try {
-            _nextAddress.value = synchronized(wallet) { wallet.getLatestSubAddress() }
-        } catch (e: Exception) {
-            Timber.tag(TAG).w(e, "Unable to refresh next receive subaddress after adding one")
-        }
-
-        val allItems = try {
-            synchronized(wallet) {
-                (0 until wallet.numSubAddresses).map { wallet.getSubaddressObject(it) }
-            }
-        } catch (e: Exception) {
-            Timber.tag(TAG).w(e, "Unable to refresh subaddress list after adding one")
-            emptyList()
-        }
-        _subAddresses.update { current ->
-            (allItems + addedAddress + current)
-                .distinctBy { it.address }
-                .sortedByDescending { it.addressIndex }
+        _nextAddress.update { current ->
+            if (current?.addressIndex == addedAddress.addressIndex) addedAddress else current
         }
         addedAddress
     }
-
     fun setTransactionNote(note: String, transactionInfo: TransactionInfo) {
         getWallet?.let {
             it.setUserNote(transactionInfo.hash, note)

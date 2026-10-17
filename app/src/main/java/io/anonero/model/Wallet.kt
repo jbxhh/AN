@@ -455,14 +455,31 @@ class Wallet {
     private external fun getNumSubaddresses(accountIndex: Int): Int
 
     private fun getNewSubaddress(accountIndex: Int): String {
-        val timeStamp = SimpleDateFormat("yyyy-MM-dd-HH:mm:ss", Locale.US).format(Date())
-        addSubaddress(accountIndex, timeStamp)
-        val subaddress = getLastSubaddress(accountIndex)
-        Timber.tag("Wallet").i("${getNumSubaddresses(accountIndex) - 1} : ${subaddress}")
-        return subaddress
+        val subaddress = addSubaddressAndGetSubaddress(accountIndex)
+        Timber.tag("Wallet").i("${subaddress.addressIndex} : ${subaddress.address}")
+        return subaddress.address
     }
 
     external fun addSubaddress(accountIndex: Int, label: String?)
+    private external fun addSubaddressAndGetAddressJ(accountIndex: Int): String
+
+    /**
+     * Create and persist one subaddress atomically with respect to the native refresh thread.
+     * The native result contains the exact assigned index and address, so callers need no
+     * follow-up wallet reads while a scan may resume.
+     */
+    fun addSubaddressAndGetSubaddress(accountIndex: Int): Subaddress {
+        val result = addSubaddressAndGetAddressJ(accountIndex)
+        val separator = result.indexOf('|')
+        check(separator > 0 && separator < result.lastIndex) {
+            "原生钱包未能创建并保存子地址"
+        }
+        val addressIndex = result.substring(0, separator).toIntOrNull()
+            ?: throw IllegalStateException("原生钱包返回了无效的子地址索引")
+        val address = result.substring(separator + 1)
+        check(address.isNotBlank()) { "原生钱包返回了空子地址" }
+        return Subaddress(accountIndex, addressIndex, address, "Subaddress #$addressIndex")
+    }
     private fun getLastSubaddress(accountIndex: Int): String {
         return getSubaddress(accountIndex, getNumSubaddresses(accountIndex) - 1)
     }

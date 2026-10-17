@@ -135,7 +135,7 @@ jobs:
             external-libs/arm64-v8a
             external-libs/include
             external-libs/VERSION
-          key: anon-native-arm64-${{ env.NATIVE_CACHE_SCHEMA }}-${{ env.MONERO_COMMIT }}-${{ env.MONERO_PATCH_COMMIT }}-${{ hashFiles('external-libs/patches/patch-wallet-scan-height.py') }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
+          key: anon-native-arm64-${{ env.NATIVE_CACHE_SCHEMA }}-${{ env.MONERO_COMMIT }}-${{ env.MONERO_PATCH_COMMIT }}-${{ hashFiles('external-libs/patches/patch-wallet-scan-height.py', 'external-libs/patches/patch-wallet-subaddress-refresh.py') }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
 
       - name: Validate restored arm64 native cache
         id: validate-arm64-cache
@@ -159,7 +159,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: external-libs/prebuilt
-          key: anon-jni-arm64-${{ env.NATIVE_CACHE_SCHEMA }}-ndk27.2.12479018-cmake3.22.1-api26-${{ env.MONERO_COMMIT }}-${{ env.MONERO_PATCH_COMMIT }}-${{ hashFiles('external-libs/patches/patch-wallet-scan-height.py') }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}-${{ hashFiles('app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
+          key: anon-jni-arm64-${{ env.NATIVE_CACHE_SCHEMA }}-ndk27.2.12479018-cmake3.22.1-api26-${{ env.MONERO_COMMIT }}-${{ env.MONERO_PATCH_COMMIT }}-${{ hashFiles('external-libs/patches/patch-wallet-scan-height.py', 'external-libs/patches/patch-wallet-subaddress-refresh.py') }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}-${{ hashFiles('app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
 
       - name: Validate restored JNI cache
         id: validate-jni-cache
@@ -215,6 +215,7 @@ jobs:
           # fast-refresh hash-chain cache. Suppress the cache-only callback so the
           # app's wallet height advances only after real block processing.
           python3 external-libs/patches/patch-wallet-scan-height.py
+          python3 external-libs/patches/patch-wallet-subaddress-refresh.py
 
           git -C external-libs/monero submodule update --init --recursive --depth 1
 
@@ -224,6 +225,7 @@ jobs:
           grep -Fq "viewOnlyBalance" "$api"
           grep -Fq "struct CoinsInfo" "$api"
           grep -Fq "preferred_inputs" "$api"
+          grep -Fq "addSubaddressAndGetAddress(uint32_t accountIndex)" "$api"
           echo "Verified custom wallet API: Polyseed + coin control + CoinsInfo"
 
       - name: Prepare cached Monero header and version
@@ -254,7 +256,7 @@ jobs:
             external-libs/arm64-v8a
             external-libs/include
             external-libs/VERSION
-          key: anon-native-arm64-${{ env.NATIVE_CACHE_SCHEMA }}-${{ env.MONERO_COMMIT }}-${{ env.MONERO_PATCH_COMMIT }}-${{ hashFiles('external-libs/patches/patch-wallet-scan-height.py') }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
+          key: anon-native-arm64-${{ env.NATIVE_CACHE_SCHEMA }}-${{ env.MONERO_COMMIT }}-${{ env.MONERO_PATCH_COMMIT }}-${{ hashFiles('external-libs/patches/patch-wallet-scan-height.py', 'external-libs/patches/patch-wallet-subaddress-refresh.py') }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}
 
       - name: Build and cache JNI shared libraries
         if: steps.validate-jni-cache.outputs.valid != 'true'
@@ -295,7 +297,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: external-libs/prebuilt
-          key: anon-jni-arm64-${{ env.NATIVE_CACHE_SCHEMA }}-ndk27.2.12479018-cmake3.22.1-api26-${{ env.MONERO_COMMIT }}-${{ env.MONERO_PATCH_COMMIT }}-${{ hashFiles('external-libs/patches/patch-wallet-scan-height.py') }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}-${{ hashFiles('app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
+          key: anon-jni-arm64-${{ env.NATIVE_CACHE_SCHEMA }}-ndk27.2.12479018-cmake3.22.1-api26-${{ env.MONERO_COMMIT }}-${{ env.MONERO_PATCH_COMMIT }}-${{ hashFiles('external-libs/patches/patch-wallet-scan-height.py', 'external-libs/patches/patch-wallet-subaddress-refresh.py') }}-${{ hashFiles('external-libs/build.sh', 'external-libs/Containerfile', 'external-libs/Makefile') }}-${{ hashFiles('app/CMakeLists.txt', 'app/src/main/cpp/anonero.cpp', 'app/src/main/cpp/anonero.h') }}
 
       - name: Verify native libraries
         run: |

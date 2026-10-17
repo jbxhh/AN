@@ -1667,6 +1667,15 @@ Java_io_anonero_model_Wallet_addSubaddress(JNIEnv *env, jobject instance,
     env->ReleaseStringUTFChars(label, _label);
 }
 
+JNIEXPORT jstring JNICALL
+Java_io_anonero_model_Wallet_addSubaddressAndGetAddressJ(JNIEnv *env, jobject instance,
+                                                         jint accountIndex) {
+    Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
+    const std::string result =
+        wallet->addSubaddressAndGetAddress(static_cast<uint32_t>(accountIndex));
+    return env->NewStringUTF(result.c_str());
+}
+
 /*JNIEXPORT jstring JNICALL
 Java_io_anonero_model_Wallet_getLastSubaddress(JNIEnv *env, jobject instance,
                                                          jint accountIndex) {
