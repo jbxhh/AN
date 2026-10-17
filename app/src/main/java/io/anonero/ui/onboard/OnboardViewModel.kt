@@ -189,12 +189,9 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
             // and queues its first native scan from that height after the daemon is synced.
             putBoolean(PREF_FORCE_FRESH_WALLET_SCAN, true)
         }
-        try {
-            anonWallet.close()
-        } catch (e: Exception) {
-            Timber.tag(TAG).w(e, "Unable to close wallet")
-        }
-
+        // Keep the recovered wallet managed by WalletManager. Onboarding launches
+        // AnonWalletHandler.startService() on Home; closing here clears WalletManager.wallet,
+        // so startService() returns before it can apply the saved node and connect.
         delay(500)
     }
 
