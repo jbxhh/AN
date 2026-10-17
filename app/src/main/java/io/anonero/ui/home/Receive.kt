@@ -149,6 +149,22 @@ fun ReceiveScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Top,
             ) {
+                item {
+                    Text(
+                        text = receiveAddress.displayLabel,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                labelDialog = true
+                            },
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 30.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                    )
+                }
                 item { Spacer(Modifier.height(24.dp)) }
                 item {
                     QrCodeView(
