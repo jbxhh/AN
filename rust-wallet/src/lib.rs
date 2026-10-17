@@ -5,9 +5,9 @@
 //! it is not yet a full Monero wallet.
 
 use jni::{
-    JNIEnv,
     objects::{JClass, JString},
-    sys::{JNI_FALSE, JNI_TRUE, jboolean, jint, jstring},
+    sys::{jboolean, jint, jstring, JNI_FALSE, JNI_TRUE},
+    JNIEnv,
 };
 use monero_wallet::address::{MoneroAddress, Network};
 
