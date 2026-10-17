@@ -29,6 +29,7 @@ import io.anonero.AnonConfig
 import io.anonero.R
 import io.anonero.model.node.NodeFields
 import io.anonero.ui.home.graph.routes.Home
+import io.anonero.ui.home.graph.routes.HomeScreenRoute
 import io.anonero.ui.home.settings.LogViewer
 import io.anonero.ui.home.settings.ProxySettings
 import io.anonero.ui.onboard.Mode
@@ -252,19 +253,15 @@ fun NavGraphBuilder.onboardingGraph(
                     }.invokeOnCompletion {
                         if (it == null) {
                             if (AnonConfig.viewOnly) {
-                                navController.navigate(
-                                    Home
-                                ) {
-                                    popUpTo(LandingScreenRoute)
-                                }
+                                navController.navigate(HomeScreenRoute()) {
+                        popUpTo(LandingScreenRoute)
+                    }
                                 startConfiguredNodeService(context, appViewModel)
                             } else {
                                 if (onboardViewModel.getMode() == Mode.RESTORE) {
-                                    navController.navigate(
-                                        Home
-                                    ) {
-                                        popUpTo(LandingScreenRoute)
-                                    }
+                                    navController.navigate(HomeScreenRoute()) {
+                        popUpTo(LandingScreenRoute)
+                    }
                                     startConfiguredNodeService(context, appViewModel)
                                 } else {
                                     navController.navigate(OnboardSeedScreen(onboardViewModel.getSeed()))
@@ -286,9 +283,7 @@ fun NavGraphBuilder.onboardingGraph(
                 seed = state.seed
                     .split(" ").toList(),
                 oNextPressed = {
-                    navController.navigate(
-                        Home
-                    ) {
+                    navController.navigate(HomeScreenRoute()) {
                         popUpTo(LandingScreenRoute)
                     }
                     startConfiguredNodeService(context, appViewModel)
