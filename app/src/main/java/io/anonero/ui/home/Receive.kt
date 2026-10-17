@@ -74,8 +74,10 @@ fun ReceiveScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
-    LaunchedEffect(nextAddress) {
-        if (displayedAddress == null && nextAddress != null) {
+    LaunchedEffect(nextAddress, isPreparingAddress) {
+        // Do not latch the fallback snapshot while address preparation is still running.
+        // Otherwise a newly generated unused address can never replace the fallback.
+        if (!isPreparingAddress && displayedAddress == null && nextAddress != null) {
             displayedAddress = nextAddress
         }
     }
@@ -167,7 +169,7 @@ fun ReceiveScreen(
                 }
             )
         }) {
-        if (isPreparingAddress || addressLoadError != null || activeReceiveAddress == null) {
+        if (activeReceiveAddress == null) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
