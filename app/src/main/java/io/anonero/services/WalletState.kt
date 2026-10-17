@@ -68,6 +68,8 @@ class WalletState(private val prefs: SharedPreferences) {
     val unlockShortcut = _unlockShortcut.receiveAsFlow()
     private val bgSyncMutex = Mutex()
     private val subaddressMutex = Mutex()
+    private val daemonHeightQueryMutex = Mutex()
+    private val walletWipeInProgress = AtomicBoolean(false)
     // Wallet scan progress needs the live daemon target as soon as a scan starts.
     // Keep this request off the UI thread and avoid duplicate startup height RPCs.
     private val scanHeightScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -101,7 +103,7 @@ class WalletState(private val prefs: SharedPreferences) {
     val incomingTx = _incomingTx.asSharedFlow()
 
     fun update() {
-        if (_blockUpdates.get()) return
+        if (_blockUpdates.get() || walletWipeInProgress.get()) return
         getWallet?.let { wallet ->
             if (!wallet.isInitialized) {
                 // Wallet files are already open at this point. Publish locally available
@@ -197,6 +199,7 @@ class WalletState(private val prefs: SharedPreferences) {
      * Keep the request pending until the daemon is connected and fully synchronized.
      */
     private fun maybeStartForcedRestoreScan(wallet: Wallet) {
+        if (walletWipeInProgress.get()) return
         if (!prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) return
         if (forcedRestoreScanStarted.get()) return
         if (!forcedRestoreScanInFlight.compareAndSet(false, true)) return
@@ -329,6 +332,20 @@ class WalletState(private val prefs: SharedPreferences) {
     val currentDaemonHeight: Long
         get() = _connectedDaemon.value?.daemonHeight?.coerceAtLeast(0L) ?: 0L
 
+    /** Close the gate before stopping native refresh so callbacks cannot start new work. */
+    @Synchronized
+    fun beginWalletWipe(): Boolean = walletWipeInProgress.compareAndSet(false, true)
+
+    @Synchronized
+    fun endWalletWipe() {
+        walletWipeInProgress.set(false)
+    }
+
+    /** Wait until any daemon-height JNI/RPC query started by scan progress has left its critical section. */
+    suspend fun awaitPendingNativeQueries() {
+        daemonHeightQueryMutex.withLock { }
+    }
+
     /** Cached state only; reading this never calls through JNI or performs an RPC. */
     val currentConnectionStatus: Wallet.ConnectionStatus?
         get() = _walletStatus.value?.connectionStatus ?: _connectionStatus.value
@@ -439,7 +456,7 @@ class WalletState(private val prefs: SharedPreferences) {
      */
     @Synchronized
     fun recordScannedBlockHeight(processedHeight: Long, wallet: Wallet? = getWallet) {
-        if (wallet == null || !wallet.isInitialized || processedHeight <= 0L) return
+        if (walletWipeInProgress.get() || wallet == null || !wallet.isInitialized || processedHeight <= 0L) return
 
         // Read the live node tip once per callback and use the same value throughout.
         val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
@@ -492,18 +509,25 @@ class WalletState(private val prefs: SharedPreferences) {
 
         scanHeightScope.launch {
             try {
-                if (!wallet.isInitialized) return@launch
-                val latestDaemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
-                val latestTargetHeight = wallet.getDaemonBlockChainTargetHeight().coerceAtLeast(0L)
-                if (wallet.isInitialized) {
+                daemonHeightQueryMutex.withLock {
+                    // Wipe waits for an in-flight query before native close. A queued
+                    // query must never begin against a closed wallet handle.
+                    if (walletWipeInProgress.get() || getWallet !== wallet || !wallet.isInitialized) {
+                        return@withLock
+                    }
+                    val latestDaemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+                    val latestTargetHeight = wallet.getDaemonBlockChainTargetHeight().coerceAtLeast(0L)
+                    if (walletWipeInProgress.get() || getWallet !== wallet || !wallet.isInitialized) {
+                        return@withLock
+                    }
                     updateDaemonTargetHeight(latestTargetHeight)
-                }
-                if (latestDaemonHeight > 0L && wallet.isInitialized) {
-                    updateBlockHeights(wallet, latestDaemonHeight)
-                    updateSyncProgressFromWallet(wallet, latestDaemonHeight)
-                    // Once a real target exists, the UI should show the determinate
-                    // sync bar (when blocks remain), not stay in the temporary loader.
-                    setLoading(false)
+                    if (latestDaemonHeight > 0L) {
+                        updateBlockHeights(wallet, latestDaemonHeight)
+                        updateSyncProgressFromWallet(wallet, latestDaemonHeight)
+                        // Once a real target exists, the UI should show the determinate
+                        // sync bar (when blocks remain), not stay in the temporary loader.
+                        setLoading(false)
+                    }
                 }
             } catch (e: Exception) {
                 // Keep the temporary loader active; refreshed()/newBlock callbacks
@@ -768,6 +792,7 @@ class WalletState(private val prefs: SharedPreferences) {
     }
 
     fun setConnectionStatus(status: Wallet.ConnectionStatus) {
+        if (walletWipeInProgress.get()) return
         val previous = _previousConnectionStatus.getAndSet(status)
         _connectionStatus.update { status }
         if (status == Wallet.ConnectionStatus.ConnectionStatus_Disconnected) {
@@ -844,6 +869,7 @@ class WalletState(private val prefs: SharedPreferences) {
         forcedRestoreScanInFlight.set(false)
         forcedRestoreScanStarted.set(false)
         clearSyncProgress()
+        walletWipeInProgress.set(false)
     }
 
     fun toggleHideAmounts() {
