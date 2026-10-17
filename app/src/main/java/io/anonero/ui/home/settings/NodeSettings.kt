@@ -346,6 +346,10 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
                         },
                         onAdd = { node ->
                             nodeSettingsVM.addItemFirst(node)
+                            // Saving a node should behave like selecting Connect from its menu.
+                            scope.launch {
+                                nodeSettingsVM.connect(node)
+                            }
                         },
                         nodeSettingsVM = nodeSettingsVM,
                         initialNode = editingNode,
