@@ -405,7 +405,7 @@ fun ResyncBlockchainScreen(
                                     imeAction = ImeAction.Next
                                 ),
                                 placeholder = {
-                                    Text("输入恢复区块高度", color = labelColor, fontSize = 18.sp)
+                                    Text("输入恢复区块高度", color = labelColor)
                                 }
                             )
                         }
@@ -433,7 +433,7 @@ fun ResyncBlockchainScreen(
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                                 placeholder = {
-                                    Text("YYYY-MM-DD", color = labelColor, fontSize = 18.sp)
+                                    Text("YYYY-MM-DD", color = labelColor)
                                 }
                             )
                         }
