@@ -21,12 +21,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,9 +46,7 @@ import io.anonero.services.WalletState
 import io.anonero.ui.components.SubAddressLabelDialog
 import io.anonero.util.Formats
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.koin.java.KoinJavaComponent.inject
 
 
@@ -60,31 +55,10 @@ class SubAddressListViewModel : ViewModel() {
     private val walletState: WalletState by inject(WalletState::class.java)
 
     val subAddresses = walletState.subAddresses.asLiveData()
-    private val _addAddressMessage = MutableStateFlow<String?>(null)
-    val addAddressMessage = _addAddressMessage.asLiveData()
-    private val _isAddingAddress = MutableStateFlow(false)
-    val isAddingAddress = _isAddingAddress.asLiveData()
-
     fun getNextAddress() {
-        if (_isAddingAddress.value) return
-        viewModelScope.launch {
-            _isAddingAddress.value = true
-            try {
-                val address = withContext(Dispatchers.IO) {
-                    walletState.getNewAddress()
-                }
-                _addAddressMessage.value = "已添加子地址 #" + address.addressIndex
-            } catch (e: Exception) {
-                _addAddressMessage.value =
-                    e.message?.takeIf(String::isNotBlank) ?: "添加子地址失败"
-            } finally {
-                _isAddingAddress.value = false
-            }
+        viewModelScope.launch(Dispatchers.IO) {
+            walletState.getNewAddress()
         }
-    }
-
-    fun clearAddAddressMessage() {
-        _addAddressMessage.value = null
     }
 
     fun updateAddressLabel(label: String, addressIndex: Int) {
@@ -108,19 +82,9 @@ fun SubAddressesScreen(
     }
     val vm = viewModel<SubAddressListViewModel>()
     val addresses by vm.subAddresses.observeAsState(listOf())
-    val addAddressMessage by vm.addAddressMessage.observeAsState()
-    val isAddingAddress by vm.isAddingAddress.observeAsState(false)
-    val snackbarHostState = remember { SnackbarHostState() }
     var editingAddress by remember { mutableStateOf<Subaddress?>(null) }
 
-    LaunchedEffect(addAddressMessage) {
-        val message = addAddressMessage ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(message)
-        vm.clearAddAddressMessage()
-    }
-
     Scaffold(
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             TopAppBar(
                 navigationIcon = {
@@ -131,8 +95,7 @@ fun SubAddressesScreen(
                 title = {},
                 actions = {
                     IconButton(
-                        onClick = { vm.getNextAddress() },
-                        enabled = !isAddingAddress
+                        onClick = { vm.getNextAddress() }
                     ) {
                         Icon(
                             Icons.Default.Add,
