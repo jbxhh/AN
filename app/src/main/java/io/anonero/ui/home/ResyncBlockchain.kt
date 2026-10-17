@@ -527,7 +527,6 @@ fun ResyncBlockchainScreen(
                             } else {
                                 isQuerying = true
                                 scope.launch {
-                                    var previousHeight: Long? = null
                                     try {
                                         val lookup = MoneroBlockTimeLookup(walletPrefs, torService)
                                         val selectedHeight = withContext(Dispatchers.IO) {
@@ -572,23 +571,10 @@ fun ResyncBlockchainScreen(
                                             return@launch
                                         }
 
-                                        previousHeight = withContext(Dispatchers.IO) {
-                                            wallet.getRestoreHeight()
-                                        }
                                         val result = withContext(Dispatchers.IO) {
-                                            wallet.setRestoreHeight(selectedHeight)
-                                            if (!wallet.store()) {
-                                                throw IllegalStateException("保存恢复高度失败")
-                                            }
-                                            walletState.resyncBlockchain()
+                                            walletState.resyncBlockchain(selectedHeight)
                                         }
                                         if (result.isFailure) {
-                                            withContext(Dispatchers.IO) {
-                                                previousHeight?.let {
-                                                    wallet.setRestoreHeight(it)
-                                                    wallet.store()
-                                                }
-                                            }
                                             toastState.show(
                                                 "重置失败：" + (result.exceptionOrNull()?.message ?: "未知错误"),
                                                 type = ToastType.Warning,
@@ -605,19 +591,6 @@ fun ResyncBlockchainScreen(
                                             onBackPress()
                                         }
                                     } catch (e: Exception) {
-                                        try {
-                                            withContext(Dispatchers.IO) {
-                                                previousHeight?.let {
-                                                    wallet.setRestoreHeight(it)
-                                                    wallet.store()
-                                                }
-                                            }
-                                        } catch (rollbackError: Exception) {
-                                            Timber.tag("ResyncBlockchain").e(
-                                                rollbackError,
-                                                "Restore-height rollback failed"
-                                            )
-                                        }
                                         toastState.show(
                                             "重置失败：" + (e.message ?: "无法查询真实区块信息"),
                                             type = ToastType.Warning,
