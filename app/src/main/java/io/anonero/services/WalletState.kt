@@ -522,33 +522,90 @@ class WalletState(private val prefs: SharedPreferences) {
         if (!daemonHeightQueryInFlight.compareAndSet(false, true)) return
 
         scanHeightScope.launch {
+            var attempts = 0
             try {
-                daemonHeightQueryMutex.withLock {
-                    // Wipe waits for an in-flight query before native close. A queued
-                    // query must never begin against a closed wallet handle.
-                    if (walletWipeInProgress.get() || getWallet !== wallet || !wallet.isInitialized) {
-                        return@withLock
+                // Keep retrying while the restore/scan is active. One early RPC can
+                // return zero while Tor or the daemon is still coming online; a one-shot
+                // request leaves the UI stuck on the wrong side of the refresh/sync handoff.
+                while (
+                    !walletWipeInProgress.get() &&
+                    getWallet === wallet &&
+                    wallet.isInitialized &&
+                    !wallet.isSynchronized &&
+                    (_scanTracking.get() || prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) &&
+                    _syncProgress.value == null
+                ) {
+                    attempts++
+                    try {
+                        daemonHeightQueryMutex.withLock {
+                            // Wipe waits for an in-flight query before native close. A queued
+                            // query must never begin against a closed wallet handle.
+                            if (walletWipeInProgress.get() ||
+                                getWallet !== wallet ||
+                                !wallet.isInitialized
+                            ) {
+                                return@withLock
+                            }
+                            // Don't hammer a disconnected daemon. Poll again after a short
+                            // delay, retaining the loader until a real height can be read.
+                            if (wallet.fullStatus.connectionStatus !=
+                                Wallet.ConnectionStatus.ConnectionStatus_Connected
+                            ) {
+                                return@withLock
+                            }
+
+                            val latestDaemonHeight =
+                                wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+                            val latestTargetHeight =
+                                wallet.getDaemonBlockChainTargetHeight().coerceAtLeast(0L)
+                            if (walletWipeInProgress.get() ||
+                                getWallet !== wallet ||
+                                !wallet.isInitialized
+                            ) {
+                                return@withLock
+                            }
+
+                            updateDaemonTargetHeight(latestTargetHeight)
+                            if (latestDaemonHeight > 0L) {
+                                updateBlockHeights(wallet, latestDaemonHeight)
+                                updateSyncProgressFromWallet(wallet, latestDaemonHeight)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // Avoid flooding the log if Tor/RPC is temporarily unavailable.
+                        if (attempts == 1 || attempts % 10 == 0) {
+                            Timber.tag(TAG).w(e, "Waiting for a live daemon height for sync progress")
+                        }
                     }
-                    val latestDaemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
-                    val latestTargetHeight = wallet.getDaemonBlockChainTargetHeight().coerceAtLeast(0L)
-                    if (walletWipeInProgress.get() || getWallet !== wallet || !wallet.isInitialized) {
-                        return@withLock
+
+                    if (_syncProgress.value != null) break
+                    if (walletWipeInProgress.get() ||
+                        getWallet !== wallet ||
+                        !wallet.isInitialized ||
+                        wallet.isSynchronized ||
+                        (!_scanTracking.get() &&
+                            !prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false))
+                    ) {
+                        break
                     }
-                    updateDaemonTargetHeight(latestTargetHeight)
-                    if (latestDaemonHeight > 0L) {
-                        updateBlockHeights(wallet, latestDaemonHeight)
-                        updateSyncProgressFromWallet(wallet, latestDaemonHeight)
-                        // Once a real target exists, the UI should show the determinate
-                        // sync bar (when blocks remain), not stay in the temporary loader.
-                        setLoading(false)
-                    }
+
+                    setLoading(true)
+                    delay(1_000L)
                 }
             } catch (e: Exception) {
-                // Keep the temporary loader active; refreshed()/newBlock callbacks
-                // continue trying to obtain a real daemon target.
-                Timber.tag(TAG).w(e, "Unable to fetch live daemon height for scan progress")
+                Timber.tag(TAG).w(e, "Daemon-height sync progress polling stopped")
             } finally {
                 daemonHeightQueryInFlight.set(false)
+                val hasProgress = _syncProgress.value != null
+                val scanPending = _scanTracking.get() ||
+                    prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+                setLoading(
+                    !hasProgress &&
+                        scanPending &&
+                        !walletWipeInProgress.get() &&
+                        wallet.isInitialized &&
+                        !wallet.isSynchronized
+                )
             }
         }
     }
@@ -820,9 +877,19 @@ class WalletState(private val prefs: SharedPreferences) {
         _connectionStatus.update { status }
         if (status == Wallet.ConnectionStatus.ConnectionStatus_Disconnected) {
             _daemonTargetHeight.set(0L)
-            // Do not make the progress UI disappear during a temporary daemon outage.
-            if (!_scanTracking.get() || _syncProgress.value == null) clearSyncProgress()
-            setLoading(false)
+            val restoreScanPending = prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+            // During mnemonic restore or an active scan, keep the temporary loader
+            // visible until we have a real remaining-block count. A transient disconnect
+            // must not create a blank gap between refresh and the sync progress bar.
+            if ((!_scanTracking.get() && !restoreScanPending) || _syncProgress.value == null) {
+                clearSyncProgress()
+            }
+            val scanPending = _scanTracking.get() || restoreScanPending
+            setLoading(
+                scanPending &&
+                    getWallet?.isSynchronized != true &&
+                    _syncProgress.value == null
+            )
         }
         // Do not reset forcedRestoreScanStarted merely because a status probe
         // briefly reports Disconnected. That probe can race an already queued native
@@ -1020,12 +1087,14 @@ class WalletState(private val prefs: SharedPreferences) {
             // its first real progress sample yet, retain the indeterminate indicator.
             val waitingForScanProgress = runCatching {
                 wallet.isInitialized &&
-                    wallet.fullStatus.connectionStatus ==
-                        Wallet.ConnectionStatus.ConnectionStatus_Connected &&
-                    _scanTracking.get() &&
                     !wallet.isSynchronized &&
-                    _syncProgress.value == null
+                    (_scanTracking.get() ||
+                        prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) &&
+                    _syncProgress.value == null &&
+                    !walletWipeInProgress.get()
             }.getOrDefault(false)
+            // Preserve the loader even through a temporary disconnect or while Tor is
+            // starting. It hands off to the determinate bar only after real heights arrive.
             setLoading(waitingForScanProgress)
         }
     }
