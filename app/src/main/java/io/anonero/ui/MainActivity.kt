@@ -318,7 +318,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        scope.launch { walletState.enterBackgroundSync() }
+        val wipePrefs = getSharedPreferences(AnonConfig.APP_PREFERENCES, MODE_PRIVATE)
+        if (wipePrefs.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)) return
+
+        scope.launch {
+            // Recheck after dispatching: a secure wipe may start between lifecycle callbacks.
+            if (!wipePrefs.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)) {
+                walletState.enterBackgroundSync()
+            }
+        }
     }
 
     override fun onDestroy() {
