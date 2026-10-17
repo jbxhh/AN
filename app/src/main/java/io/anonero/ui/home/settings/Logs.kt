@@ -83,7 +83,7 @@ class LogViewModel(private val logRepository: LogRepository) : ViewModel() {
     fun getLogsText(): String {
         val logs = logLines.value
         val deviceInfo = logDeviceInfo()
-        val lines = logs.joinToString(separator = "\\n") {
+        val lines = logs.joinToString(separator = "\n") {
             val instant = Instant.ofEpochMilli(it.date)
             val dateTime = LocalDateTime.ofInstant(instant, ZoneId.systemDefault())
             val formatter = DateTimeFormatter.ofPattern("MMM dd hh:mm:ssa")
@@ -98,7 +98,7 @@ class LogViewModel(private val logRepository: LogRepository) : ViewModel() {
             }
             "${formatter.format(dateTime)} | $level | ${it.tag} | ${it.message}"
         }
-        return "${'-'.toString().repeat(100)}\\n\\n$deviceInfo\\n\\n${'-'.toString().repeat(100)}\\n$lines"
+        return "${'-'.toString().repeat(100)}\n\n$deviceInfo\n\n${'-'.toString().repeat(100)}\n$lines"
     }
     fun clearLogs() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -240,20 +240,22 @@ fun LogViewer(
             )
         }
     ) {
-        LazyColumn(
-            state = listState,
-            reverseLayout = true,
-            modifier = Modifier
-                .padding(it)
-                .padding(
-                    horizontal = 8.dp
-                )
-                .fillMaxSize(),
-            contentPadding = PaddingValues(0.dp),
-            verticalArrangement = Arrangement.Bottom
-        ) {
-            items(logLines.size) { index ->
-                LogLine(logLines[index])
+        SelectionContainer {
+            LazyColumn(
+                state = listState,
+                reverseLayout = true,
+                modifier = Modifier
+                    .padding(it)
+                    .padding(
+                        horizontal = 8.dp
+                    )
+                    .fillMaxSize(),
+                contentPadding = PaddingValues(0.dp),
+                verticalArrangement = Arrangement.Bottom
+            ) {
+                items(logLines.size) { index ->
+                    LogLine(logLines[index])
+                }
             }
         }
     }
@@ -262,11 +264,8 @@ fun LogViewer(
 
 @Composable
 private fun LogLine(text: AnonLog) {
-    // Enable Android's native long-press text selection and Copy menu for each log row.
-    // Keep the existing layout and do not add any buttons.
-    SelectionContainer {
-        LogLineContent(text)
-    }
+    // The parent SelectionContainer covers all rows so users can select across log lines.
+    LogLineContent(text)
 }
 
 @Composable
