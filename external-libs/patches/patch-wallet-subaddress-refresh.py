@@ -14,26 +14,25 @@ def replace_once(path: Path, old: str, new: str) -> None:
         raise SystemExit(f"{path}: expected one API anchor, found {source.count(old)}")
     path.write_text(source.replace(old, new, 1))
 
-def replace_regex_once(path: Path, pattern: str, replacement) -> None:
-    source = path.read_text()
-    matches = list(re.finditer(pattern, source, re.MULTILINE))
+def insert_after_line(path: Path, expected_line: str, new_line: str) -> None:
+    lines = path.read_text().splitlines(keepends=True)
+    matches = [i for i, line in enumerate(lines) if line.rstrip("\\r\\n").strip() == expected_line]
     if len(matches) != 1:
-        raise SystemExit(f"{path}: expected one regex anchor, found {len(matches)}")
-    match = matches[0]
-    source = source[:match.start()] + replacement(match) + source[match.end():]
-    path.write_text(source)
+        raise SystemExit(f"{path}: expected one line anchor, found {len(matches)}")
+    index = matches[0]
+    indent = lines[index][:len(lines[index]) - len(lines[index].lstrip(" \\t"))]
+    lines.insert(index + 1, indent + new_line + "\\n")
+    path.write_text("".join(lines))
 
-replace_regex_once(
+insert_after_line(
     api_path,
-    r"^([ \\t]*)virtual void addSubaddress\\(uint32_t accountIndex, const std::string& label\\) = 0;$",
-    lambda m: m.group(0) + "\\n" + m.group(1)
-    + "virtual std::string addSubaddressAndGetAddress(uint32_t accountIndex) = 0;",
+    "virtual void addSubaddress(uint32_t accountIndex, const std::string& label) = 0;",
+    "virtual std::string addSubaddressAndGetAddress(uint32_t accountIndex) = 0;",
 )
-replace_regex_once(
+insert_after_line(
     impl_header_path,
-    r"^([ \\t]*)void addSubaddress\\(uint32_t accountIndex, const std::string& label\\) override;$",
-    lambda m: m.group(0) + "\\n" + m.group(1)
-    + "std::string addSubaddressAndGetAddress(uint32_t accountIndex) override;",
+    "void addSubaddress(uint32_t accountIndex, const std::string& label) override;",
+    "std::string addSubaddressAndGetAddress(uint32_t accountIndex) override;",
 )
 
 # Keep even legacy native additions from mutating wallet2 while its scan thread reads it.
