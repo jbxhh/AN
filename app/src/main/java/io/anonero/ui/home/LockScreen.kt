@@ -61,7 +61,7 @@ import io.anonero.icons.AnonIcons
 import io.anonero.services.WalletState
 import io.anonero.ui.MainActivity
 import io.anonero.ui.viewmodels.AppViewModel
-import io.anonero.util.CrazyPassEncoder
+import io.anonero.util.encodePinHash
 import io.anonero.util.PREFS_PIN_HASH
 import io.anonero.util.ShakeConfig
 import io.anonero.util.WALLET_PREFERENCES
@@ -147,13 +147,7 @@ fun LockScreen(
                 try {
                     if (mode == LockScreenMode.VERYFY_PIN) {
                         val prefsHash = prefs.getString(PREFS_PIN_HASH, "")
-                        val pinHash = CrazyPassEncoder.encode(
-                            pin.toByteArray().let { bytes ->
-                                if (bytes.size < 32) {
-                                    bytes + ByteArray(32 - bytes.size)
-                                } else bytes
-                            }
-                        )
+                        val pinHash = encodePinHash(pin)
                         if (prefsHash == pinHash) {
                             onUnLocked(pin, shortCut)
                         } else {
@@ -163,17 +157,12 @@ fun LockScreen(
                         }
                     } else if (mode == LockScreenMode.OPEN_WALLET) {
                         val result = appViewModel.openWallet(pin)
-                        prefs.edit(commit = true) {
-                            putString(
-                                PREFS_PIN_HASH,
-                                CrazyPassEncoder.encode(
-                                    pin.toByteArray().let { bytes ->
-                                        if (bytes.size < 32) {
-                                            bytes + ByteArray(32 - bytes.size)
-                                        } else bytes
-                                    }
-                                )
-                            )
+                        if (result) {
+                            // Only replace the known-good local PIN hash after the
+                            // native wallet has accepted the PIN.
+                            prefs.edit(commit = true) {
+                                putString(PREFS_PIN_HASH, encodePinHash(pin))
+                            }
                         }
                         withContext(Dispatchers.Main) {
                             if (result) {
@@ -193,12 +182,7 @@ fun LockScreen(
 
                         // Verify PIN locally against stored hash — instant, no network needed.
                         val prefsHash = prefs.getString(PREFS_PIN_HASH, "")
-                        val pinHash = CrazyPassEncoder.encode(
-                            pin.toByteArray().let { bytes ->
-                                if (bytes.size < 32) bytes + ByteArray(32 - bytes.size)
-                                else bytes
-                            }
-                        )
+                        val pinHash = encodePinHash(pin)
                         if (prefsHash != pinHash) {
                             withContext(Dispatchers.Main) { showError() }
                         } else {
