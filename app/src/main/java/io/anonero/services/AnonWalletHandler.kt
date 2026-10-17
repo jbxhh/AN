@@ -22,6 +22,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import timber.log.Timber
 import androidx.core.content.edit
+import java.util.concurrent.atomic.AtomicBoolean
 
 
 class InvalidPin : Exception("invalid pin")
@@ -39,6 +40,7 @@ class AnonWalletHandler(
     private val _scope = CoroutineScope(Dispatchers.Default) + SupervisorJob()
 
     private var handler: MoneroHandlerThread? = null
+    private val wipeInProgress = AtomicBoolean(false)
 
     val scope get() = _scope
 
@@ -46,7 +48,7 @@ class AnonWalletHandler(
         scope.launch {
             torService.socksFlow.collect {
                 val wallet = WalletManager.instance?.wallet
-                if (prefs.getBoolean(WALLET_USE_TOR, false) && wallet?.isInitialized == true) {
+                if (!wipeInProgress.get() && prefs.getBoolean(WALLET_USE_TOR, false) && wallet?.isInitialized == true) {
                     setProxy(it.address.toString(), it.port.value)
                 }
             }
@@ -70,7 +72,9 @@ class AnonWalletHandler(
     }
 
     suspend fun startService() {
+        if (wipeInProgress.get()) return
         val wallet = WalletManager.instance?.wallet ?: return
+        if (wipeInProgress.get()) return
         handler = MoneroHandlerThread(
             wallet,
             walletState
@@ -95,6 +99,7 @@ class AnonWalletHandler(
                     }
                     torService.socks
                 } ?: throw IllegalStateException("Timed out waiting for Tor SOCKS proxy")
+                if (wipeInProgress.get()) return
                 WalletManager.instance?.setProxy("${socket.value}")
             } else if (proxyHost.isNotEmpty() && proxyPort != -1) {
                 WalletManager.instance?.setProxy("${proxyHost}:$proxyPort")
@@ -115,6 +120,7 @@ class AnonWalletHandler(
                 updateDaemon(node)
                 walletState.setLoading(true)
             }
+            if (wipeInProgress.get()) return
             // Monero's WalletImpl::doInit() treats an opened wallet with only
             // the genesis cache as a brand-new wallet and replaces refresh_height with
             // the daemon tip. That destroys the user-selected restore height because the
@@ -246,6 +252,7 @@ class AnonWalletHandler(
     }
 
     fun setProxy(proxy: String?, port: Int?) {
+        if (wipeInProgress.get()) return
         Timber.tag(TAG).d("setProxy %s%s", proxy, port.toString())
         //disable proxy
         if (proxy == null && port == null) {
@@ -281,17 +288,73 @@ class AnonWalletHandler(
     }
 
     fun wipe(passPhrase: String): Boolean {
-        WalletManager.instance?.wallet?.pauseRefresh()
-        WalletManager.instance?.wallet?.stopBackgroundSync(passPhrase)
-        WalletManager.instance?.setDaemon(null)
-        if (WalletManager.instance?.wallet?.close() == true) {
-            AnonConfig.context?.let { AnonConfig.getDefaultWalletDir(it) }
-                ?.deleteRecursively()
-            return true
-        } else {
-            throw UnableToCloseWallet()
+        check(wipeInProgress.compareAndSet(false, true)) {
+            "Wallet wipe is already in progress"
         }
 
+        val wallet = WalletManager.instance?.wallet
+            ?: run {
+                wipeInProgress.set(false)
+                throw IllegalStateException("Wallet is not open; cannot safely close it")
+            }
+        var refreshPaused = false
+        var listenerDetached = false
+        var walletClosed = false
+
+        try {
+            // Stop background sync only if the app actually entered that mode.
+            // Calling the native stop routine unconditionally can stall normal wipes.
+            if (walletState.backgroundSync) {
+                check(wallet.stopBackgroundSync(passPhrase)) {
+                    "Unable to stop background sync; wallet was not deleted"
+                }
+                walletState.setBackGroundSync(false)
+            }
+
+            Timber.tag(TAG).i("Secure wipe: pausing wallet refresh")
+            wallet.pauseRefresh()
+            refreshPaused = true
+
+            // No native listener may call into WalletState while closeWallet() releases
+            // the native wallet and its JNI listener reference.
+            Timber.tag(TAG).i("Secure wipe: detaching wallet listener")
+            wallet.setListener(null)
+            listenerDetached = true
+
+            Timber.tag(TAG).i("Secure wipe: closing native wallet")
+            check(wallet.close()) { throw UnableToCloseWallet() }
+            walletClosed = true
+
+            WalletManager.instance?.setDaemon(null)
+
+            val context = AnonConfig.context
+                ?: throw IllegalStateException("Application context unavailable")
+            val walletDir = java.io.File(context.filesDir, "wallets")
+            val removed = !walletDir.exists() || walletDir.deleteRecursively()
+            check(removed && !java.io.File(walletDir, "anon").exists()) {
+                "Native wallet closed, but wallet files could not be deleted"
+            }
+
+            walletState.resetAfterWalletWipe()
+            Timber.tag(TAG).i("Secure wipe: wallet files deleted")
+            return true
+        } catch (e: Exception) {
+            if (!walletClosed) {
+                // Closing was rejected: reconnect the old listener and resume the
+                // existing wallet rather than leaving it open but inert.
+                if (listenerDetached) {
+                    runCatching { wallet.setListener(handler) }
+                        .onFailure { Timber.tag(TAG).e(it, "Unable to restore wallet listener after failed wipe") }
+                }
+                if (refreshPaused) {
+                    runCatching { wallet.startRefresh() }
+                        .onFailure { Timber.tag(TAG).e(it, "Unable to resume wallet refresh after failed wipe") }
+                }
+            }
+            throw e
+        } finally {
+            wipeInProgress.set(false)
+        }
     }
 
 }
