@@ -56,6 +56,15 @@ import kotlinx.coroutines.withContext
 import org.koin.java.KoinJavaComponent.inject
 
 
+private fun isDefaultPrimaryAddressLabel(label: String): Boolean {
+    val normalized = label.trim().replace(Regex("\\s+"), " ")
+    return normalized.equals("Primary", ignoreCase = true) ||
+        normalized.startsWith("Primary address", ignoreCase = true) ||
+        normalized.equals("Main", ignoreCase = true) ||
+        normalized.startsWith("Main address", ignoreCase = true) ||
+        normalized.equals("Default address", ignoreCase = true)
+}
+
 class SubAddressListViewModel : ViewModel() {
 
     private val walletState: WalletState by inject(WalletState::class.java)
@@ -168,10 +177,8 @@ fun SubAddressesScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                val isPrimaryAddressLabel = listOf(address.label, address.displayLabel).any { label ->
-                                    label.trim().replace(Regex("\\s+"), " ")
-                                        .startsWith("Primary address", ignoreCase = true)
-                                }
+                                val isPrimaryAddressLabel = listOf(address.label, address.displayLabel)
+                                    .any(::isDefaultPrimaryAddressLabel)
                                 val generatedLabel =
                                     address.label.isBlank() ||
                                     Subaddress.DEFAULT_LABEL_FORMATTER.matcher(address.label).matches() ||
@@ -213,9 +220,8 @@ fun SubAddressesScreen(
     }
 
     editingAddress?.let { addr ->
-        val isPrimaryAddressLabel =
-            addr.label.trim().equals("Primary address", ignoreCase = true) ||
-            addr.displayLabel.trim().equals("Primary address", ignoreCase = true)
+        val isPrimaryAddressLabel = listOf(addr.label, addr.displayLabel)
+            .any(::isDefaultPrimaryAddressLabel)
         SubAddressLabelDialog(
             label = if (isPrimaryAddressLabel) "" else addr.displayLabel,
             onSave = { label ->
