@@ -287,7 +287,7 @@ class AnonWalletHandler(
         return null
     }
 
-    fun wipe(passPhrase: String): Boolean {
+    suspend fun wipe(passPhrase: String): Boolean {
         check(wipeInProgress.compareAndSet(false, true)) {
             "Wallet wipe is already in progress"
         }
@@ -297,6 +297,10 @@ class AnonWalletHandler(
                 wipeInProgress.set(false)
                 throw IllegalStateException("Wallet is not open; cannot safely close it")
             }
+        if (!walletState.beginWalletWipe()) {
+            wipeInProgress.set(false)
+            throw IllegalStateException("Wallet wipe is already in progress")
+        }
         var refreshPaused = false
         var listenerDetached = false
         var walletClosed = false
@@ -314,6 +318,8 @@ class AnonWalletHandler(
             Timber.tag(TAG).i("Secure wipe: pausing wallet refresh")
             wallet.pauseRefresh()
             refreshPaused = true
+            // Drain the app's explicitly tracked daemon-height JNI query before closing.
+            walletState.awaitPendingNativeQueries()
 
             // No native listener may call into WalletState while closeWallet() releases
             // the native wallet and its JNI listener reference.
@@ -326,6 +332,9 @@ class AnonWalletHandler(
             walletClosed = true
 
             WalletManager.instance?.setDaemon(null)
+            // The native object is closed now. Clear all in-memory references even if
+            // filesystem deletion later needs recovery on the next process start.
+            walletState.resetAfterWalletWipe()
 
             val context = AnonConfig.context
                 ?: throw IllegalStateException("Application context unavailable")
@@ -335,7 +344,6 @@ class AnonWalletHandler(
                 "Native wallet closed, but wallet files could not be deleted"
             }
 
-            walletState.resetAfterWalletWipe()
             Timber.tag(TAG).i("Secure wipe: wallet files deleted")
             return true
         } catch (e: Exception) {
@@ -353,6 +361,7 @@ class AnonWalletHandler(
             }
             throw e
         } finally {
+            if (!walletClosed) walletState.endWalletWipe()
             wipeInProgress.set(false)
         }
     }
