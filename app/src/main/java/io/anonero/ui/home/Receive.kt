@@ -4,6 +4,8 @@ import io.anonero.ui.theme.AnonNeroTheme
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,12 +17,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -62,10 +67,15 @@ fun ReceiveScreen(
     val walletState: WalletState by inject(WalletState::class.java)
     val nextAddress by walletState.nextAddress.collectAsState(null)
     var labelDialog by remember { mutableStateOf(false) }
+    var addressLoadAttempt by remember { mutableStateOf(0) }
+    var isPreparingAddress by remember { mutableStateOf(true) }
+    var addressLoadError by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
-    LaunchedEffect(walletState) {
+    LaunchedEffect(walletState, addressLoadAttempt) {
+        isPreparingAddress = true
+        addressLoadError = null
         try {
             withContext(Dispatchers.IO) {
                 walletState.publishWalletSnapshot()
@@ -75,6 +85,9 @@ fun ReceiveScreen(
             throw e
         } catch (e: Exception) {
             Timber.tag("Receive").e(e, "Failed to prepare receive address")
+            addressLoadError = "无法加载收款地址，请重试"
+        } finally {
+            isPreparingAddress = false
         }
     }
     if (labelDialog)
@@ -91,7 +104,9 @@ fun ReceiveScreen(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = {},
+                title = {
+                    Text(stringResource(R.string.primary_address))
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackPress) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
@@ -101,12 +116,32 @@ fun ReceiveScreen(
                     IconButton(
                         onClick = navigateToSubAddresses
                     ) {
-                        Icon(AnonIcons.History, contentDescription = null)
+                        Icon(AnonIcons.History, contentDescription = stringResource(R.string.subaddress_label_list))
                     }
                 }
             )
         }) {
-        if (nextAddress != null) {
+        if (isPreparingAddress || addressLoadError != null || nextAddress == null) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (addressLoadError == null) {
+                        CircularProgressIndicator()
+                        Text("正在准备收款地址…")
+                    } else {
+                        Text(addressLoadError!!)
+                        TextButton(onClick = { addressLoadAttempt += 1 }) {
+                            Text("重试")
+                        }
+                    }
+                }
+            }
+        } else {
             val receiveAddress = nextAddress!!
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -114,25 +149,7 @@ fun ReceiveScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Top,
             ) {
-                item {
-                    Text(
-                        text = receiveAddress.displayLabel,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                labelDialog = true
-                            },
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 30.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                    )
-                }
-                item {
-                    Spacer(Modifier.height(24.dp))
-                }
+                item { Spacer(Modifier.height(24.dp)) }
                 item {
                     QrCodeView(
                         data = receiveAddress.address,
@@ -140,9 +157,7 @@ fun ReceiveScreen(
                             background = MaterialTheme.colorScheme.background,
                             foreground = MaterialTheme.colorScheme.onBackground,
                         ),
-                        modifier = Modifier
-                            .size(300.dp)
-                            .padding(18.dp),
+                        modifier = Modifier.size(300.dp).padding(18.dp),
                     )
                 }
                 item {
@@ -156,15 +171,10 @@ fun ReceiveScreen(
                             ).show()
                         }
                     ) {
-                        Text(
-                            receiveAddress.address,
-                            modifier = Modifier.width(300.dp)
-                        )
+                        Text(receiveAddress.address, modifier = Modifier.width(300.dp))
                     }
                 }
-                item {
-                    Spacer(Modifier.height(18.dp))
-                }
+                item { Spacer(Modifier.height(18.dp)) }
             }
         }
     }
