@@ -13,12 +13,12 @@ use monero_wallet::address::{MoneroAddress, Network};
 
 /// Parse and validate an address for the requested Monero network.
 ///
-/// Network IDs are stable at this boundary: 0 = mainnet, 1 = stagenet, 2 = testnet.
+/// Network IDs match AN's NetworkType enum: 0 = mainnet, 1 = testnet, 2 = stagenet.
 pub fn validate_monero_address(address: &str, network_id: i32) -> bool {
     let network = match network_id {
         0 => Network::Mainnet,
-        1 => Network::Stagenet,
-        2 => Network::Testnet,
+        1 => Network::Testnet,
+        2 => Network::Stagenet,
         _ => return false,
     };
 
@@ -74,7 +74,7 @@ mod tests {
 
     #[test]
     fn rejects_mainnet_address_for_testnet() {
-        assert!(!validate_monero_address(VALID_MAINNET_ADDRESS, 2));
+        assert!(!validate_monero_address(VALID_MAINNET_ADDRESS, 1));
     }
 
     #[test]
