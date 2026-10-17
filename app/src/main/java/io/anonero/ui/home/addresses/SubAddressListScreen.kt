@@ -15,7 +15,6 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -135,17 +134,10 @@ fun SubAddressesScreen(
                         onClick = { vm.getNextAddress() },
                         enabled = !isAddingAddress
                     ) {
-                        if (isAddingAddress) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.padding(2.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(
-                                Icons.Default.Add,
-                                contentDescription = stringResource(R.string.add_subaddress_label)
-                            )
-                        }
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = stringResource(R.string.add_subaddress_label)
+                        )
                     }
                 }
             )
