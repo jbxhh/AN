@@ -21,6 +21,8 @@ object AnonConfig {
     val ONE_XMR = Math.round(10.0.pow(XMR_DECIMALS.toDouble()))
     const val MAX_LOG_SIZE = 250
     const val PREFS = "anonPref"
+    const val APP_PREFERENCES = "anonero_prefs"
+    const val PREF_WALLET_WIPE_PENDING = "wallet_wipe_pending"
     var context: AnonApplication? = null
     private var walletFound: Boolean = false
 
