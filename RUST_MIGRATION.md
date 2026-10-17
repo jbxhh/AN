@@ -10,6 +10,10 @@ while the Rust backend is built and validated incrementally.
 - Rust Monero implementation: `monero-oxide/monero-oxide`, pinned to commit
   `731657ae3385be667abb556266369a497bc86f13` so builds do not silently follow upstream changes.
 - Kotlin bridge: `app/src/main/java/io/anonero/rust/RustNativeBridge.kt`
+- Wallet integration: `Wallet.isAddressValid` checks the Rust result first and retains the existing
+  C++ validator as a compatibility fallback if Rust cannot validate the address.
+- APK workflow: `.github/workflows/main.yml` compiles `libanonero_rust.so` for Android ARM64 and
+  places it beside the existing native library before packaging AN's existing APK.
 - Initial migrated primitive: Monero address parsing/validation through `monero-wallet`.
 
 Upstream's `monero-wallet` is a protocol/wallet-functionality library, not a full stateful wallet
