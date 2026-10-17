@@ -150,9 +150,9 @@ class WalletState(private val prefs: SharedPreferences) {
                 _subAddresses.update { wallet.getAllUsedSubAddresses().reversed() }
             }
 
-            // A newly restored wallet must perform a real native rescan from the
-            // selected restore height; updating height/progress alone is not enough.
-            maybeStartForcedRestoreScan(wallet)
+            // Do not start a forced blockchain rescan from generic state publication.
+            // Restore scans are started by the wallet startup/connection lifecycle,
+            // not by manual refreshes or unrelated balance/history updates.
         }
     }
 
@@ -837,57 +837,35 @@ class WalletState(private val prefs: SharedPreferences) {
     suspend fun refresh() {
         val wallet = getWallet
         if (wallet == null || !wallet.isInitialized) {
-            clearSyncProgress()
-            setLoading(false)
             return
         }
 
-        var connectionKnown = false
-        var connected = false
-        var daemonHeightKnown = false
-        setLoading(true)
+        // Manual refresh is a data refresh, not a command to start/resume blockchain
+        // scanning. The normal wallet lifecycle owns startRefresh(); this method only
+        // reads the current node height and republishes wallet history/balance.
         try {
-            // Native wallet/RPC calls run on IO so the main thread can render progress.
             withContext(Dispatchers.IO) {
-                connected = wallet.fullStatus.connectionStatus ==
+                val connected = wallet.fullStatus.connectionStatus ==
                     Wallet.ConnectionStatus.ConnectionStatus_Connected
-                connectionKnown = true
-                if (!connected) {
-                    clearSyncProgress()
-                    return@withContext
-                }
+                if (!connected) return@withContext
 
-                // Publish node height and remaining blocks from one snapshot before refresh.
                 val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
                 if (daemonHeight > 0L) {
-                    daemonHeightKnown = true
                     updateBlockHeights(wallet, daemonHeight)
-                    updateSyncProgressFromWallet(wallet, daemonHeight)
                 }
 
-                wallet.startRefresh()
                 wallet.refreshHistory()
                 update()
 
-                // The node tip may advance during refresh. Replace the target only when
-                // the RPC returned a valid height; a temporary zero must not erase progress.
+                // Update the displayed node height without manufacturing a new
+                // sync-progress state just because the user requested a refresh.
                 val latestDaemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
                 if (latestDaemonHeight > 0L) {
-                    daemonHeightKnown = true
                     updateBlockHeights(wallet, latestDaemonHeight)
-                    updateSyncProgressFromWallet(wallet, latestDaemonHeight)
                 }
             }
         } catch (e: Exception) {
-            // Keep any progress already computed from a real node height. A history/RPC
-            // exception after that point must not make the syncing bar disappear.
-            Timber.tag(TAG).e(e, "Wallet refresh failed")
-        } finally {
-            when {
-                connectionKnown && !connected -> setLoading(false)
-                daemonHeightKnown -> setLoading(false)
-                else -> setLoading(true)
-            }
+            Timber.tag(TAG).e(e, "Wallet data refresh failed")
         }
     }
 
