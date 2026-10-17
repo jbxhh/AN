@@ -1008,7 +1008,7 @@ class WalletState(private val prefs: SharedPreferences) {
         // vectors while the scanner may be mutating them.
         val lastUsedIndex = wallet.getLastUnusedIndex()
         val existingAddress = (
-            _subAddresses.value.asSequence() + sequenceOfNotNull(_nextAddress.value)
+            _subAddresses.value.asSequence() + listOfNotNull(_nextAddress.value).asSequence()
         )
             .filter { it.addressIndex > lastUsedIndex }
             .minByOrNull { it.addressIndex }
