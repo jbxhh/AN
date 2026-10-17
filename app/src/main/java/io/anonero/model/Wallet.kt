@@ -15,6 +15,7 @@
  */
 package io.anonero.model
 
+import io.anonero.rust.RustNativeBridge
 import timber.log.Timber
 import java.io.File
 import java.text.SimpleDateFormat
@@ -537,8 +538,22 @@ class Wallet {
         @JvmStatic
         external fun isPaymentIdValid(payment_id: String): Boolean
 
+        /**
+         * Validate addresses with the Rust/monero-oxide implementation first.
+         * Keep the original native validator as a compatibility fallback until
+         * Rust address parsing has full parity with the shipped Monero wallet.
+         */
         @JvmStatic
-        external fun isAddressValid(address: String?, networkType: Int): Boolean
+        fun isAddressValid(address: String?, networkType: Int): Boolean {
+            val candidate = address ?: return false
+            if (RustNativeBridge.validateAddressOrNull(candidate, networkType) == true) {
+                return true
+            }
+            return isAddressValidNative(candidate, networkType)
+        }
+
+        @JvmStatic
+        private external fun isAddressValidNative(address: String?, networkType: Int): Boolean
 
         @JvmStatic
         external fun getPaymentIdFromAddress(address: String?, networkType: Int): String?
