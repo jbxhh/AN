@@ -2,6 +2,7 @@ package io.anonero.ui.home.settings
 
 import io.anonero.ui.theme.AnonNeroTheme
 import android.app.Activity
+import android.content.Intent
 import android.content.SharedPreferences
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
@@ -201,7 +202,12 @@ fun SecureWipe(
                                         HapticFeedbackConstants.CONTEXT_CLICK
                                     )
                                     scope.launch(Dispatchers.Main) {
-                                        goToHome()
+                                        // Notify every open MainActivity, including another Android window,
+                                        // to rebuild its navigation after the wallet files are removed.
+                                        activity.sendBroadcast(
+                                            Intent(MainActivity.ACTION_WALLET_CLEARED)
+                                                .setPackage(activity.packageName)
+                                        )
                                     }
                                 } else {
                                     Timber.tag(TAG).e(it)
