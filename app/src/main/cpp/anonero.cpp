@@ -491,13 +491,28 @@ Java_io_anonero_model_WalletManager_recoveryWalletPolyseedJ(JNIEnv *env, jobject
     const char *_offset = env->GetStringUTFChars(offset, nullptr);
     Monero::NetworkType _networkType = static_cast<Monero::NetworkType>(networkType);
 
-    Monero::Wallet *wallet =
-            Monero::WalletManagerFactory::getWalletManager()->createWalletFromPolyseed(
-                    std::string(_path),
-                    std::string(_password),
-                    _networkType,
-                    std::string(_mnemonic),
-                    std::string(_offset), false);
+    Monero::Wallet *wallet = nullptr;
+    try {
+        wallet = Monero::WalletManagerFactory::getWalletManager()->createWalletFromPolyseed(
+                std::string(_path),
+                std::string(_password),
+                _networkType,
+                std::string(_mnemonic),
+                std::string(_offset), false);
+    } catch (const std::exception &e) {
+        // Invalid Polyseed phrases can throw from native code. Never let a C++
+        // exception escape JNI, which would terminate the entire Android process.
+        LOGE("recoveryWalletPolyseedJ(): invalid seed or native error: %s", e.what());
+        env->ReleaseStringUTFChars(path, _path);
+        env->ReleaseStringUTFChars(password, _password);
+        env->ReleaseStringUTFChars(mnemonic, _mnemonic);
+        env->ReleaseStringUTFChars(offset, _offset);
+        jclass exceptionClass = env->FindClass("java/lang/IllegalArgumentException");
+        if (exceptionClass != nullptr) {
+            env->ThrowNew(exceptionClass, e.what());
+        }
+        return 0;
+    }
     bool setupStatus = wallet->setupBackgroundSync(Monero::Wallet::BackgroundSync_ReusePassword,
                                                    std::string(_password), {});
     if (setupStatus == true) {
