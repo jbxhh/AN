@@ -1,0 +1,56 @@
+name: Pure Rust Android APK Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/pure-rust-v1]
+    paths:
+      - 'rust-android/**'
+      - '.github/workflows/pure-rust-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-pure-rust-arm64:
+    name: Build pure Rust APK (arm64-v8a)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: rust-android
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: experiment/pure-rust-v1
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: android-actions/setup-android@v3
+      - name: Install Android NDK
+        run: sdkmanager "ndk;27.2.12479018" "platforms;android-35" "build-tools;35.0.0"
+      - name: Configure Android toolchain
+        shell: bash
+        run: |
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "$ANDROID_SDK_ROOT/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+      - name: Install Rust APK packager
+        run: cargo install cargo-apk2 --locked
+      - name: Build ARM64 APK
+        run: cargo apk2 build --target aarch64-linux-android --release
+      - name: Locate APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          find target -type f -name '*.apk' -print
+          apk="$(find target -type f -name '*.apk' | head -n 1)"
+          test -n "$apk"
+          mkdir -p ../dist
+          cp "$apk" ../dist/ANONERO-Pure-Rust-arm64.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ANONERO-Pure-Rust-arm64
+          path: dist/ANONERO-Pure-Rust-arm64.apk
+          if-no-files-found: error
+          retention-days: 14
