@@ -1,0 +1,16 @@
+[package]
+name = "anonero-rust-test"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+slint = { version = "1.18.1", default-features = false, features = ["std", "compat-1-2", "backend-android-activity-06", "renderer-software"] }
+
+[package.metadata.android]
+package = "io.anonero.rusttest"
+label = "ANONERO Rust Test"
+min_sdk_version = 26
+target_sdk_version = 35
