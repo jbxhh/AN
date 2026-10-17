@@ -21,4 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "anonero"
 include(":app")
- 
+include(":rust-only-app")
