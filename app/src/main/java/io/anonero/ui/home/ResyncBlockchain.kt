@@ -335,6 +335,28 @@ private fun guessRestoreHeight(timestamp: Long): Long {
     }
 }
 
+private fun formatNumericRestoreDate(input: String): String {
+    val digits = input.filter(Char::isDigit).take(8)
+    return buildString {
+        digits.forEachIndexed { index, digit ->
+            if (index == 4 || index == 6) append('-')
+            append(digit)
+        }
+    }
+}
+
+private fun parseNumericRestoreDate(input: String): Date? {
+    if (!Regex("""\d{4}-\d{2}-\d{2}""").matches(input)) return null
+    val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+        isLenient = false
+    }
+    return try {
+        parser.parse(input)?.takeIf { parser.format(it) == input }
+    } catch (_: Exception) {
+        null
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ResyncBlockchainScreen(
@@ -423,7 +445,7 @@ fun ResyncBlockchainScreen(
                             OutlinedTextField(
                                 value = restoreDateInput,
                                 onValueChange = {
-                                    restoreDateInput = it
+                                    restoreDateInput = formatNumericRestoreDate(it)
                                     if (restoreDateInput.isNotBlank()) restoreHeightInput = ""
                                     queryCompleted = false
                                 },
@@ -431,9 +453,12 @@ fun ResyncBlockchainScreen(
                                 shape = MaterialTheme.shapes.medium,
                                 textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp),
                                 singleLine = true,
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Done
+                                ),
                                 placeholder = {
-                                    Text("YYYY-MM-DD", color = labelColor)
+                                    Text("格式：YYYY-MM-DD（例如 2026-10-18）", color = labelColor)
                                 }
                             )
                         }
@@ -469,18 +494,8 @@ fun ResyncBlockchainScreen(
                                                     ?: throw IOException("请输入有效的区块高度")
                                             }
                                             restoreDateInput.isNotBlank() -> {
-                                                if (!Regex("""\d{4}-\d{2}-\d{2}""")
-                                                        .matches(restoreDateInput)) {
-                                                    throw IOException("日期格式应为 YYYY-MM-DD")
-                                                }
-                                                val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
-                                                    isLenient = false
-                                                }
-                                                val date = try {
-                                                    parser.parse(restoreDateInput)
-                                                } catch (_: Exception) {
-                                                    null
-                                                } ?: throw IOException("请输入有效日期（YYYY-MM-DD）")
+                                                val date = parseNumericRestoreDate(restoreDateInput)
+                                                    ?: throw IOException("请输入有效日期，格式为 YYYY-MM-DD（例如 2026-10-18）")
                                                 lookup.heightNearTimestamp(date.time / 1000L)
                                             }
                                             else -> wallet.getRestoreHeight().also {
@@ -534,23 +549,16 @@ fun ResyncBlockchainScreen(
                                                 restoreHeightInput.isNotBlank() ->
                                                     restoreHeightInput.toLongOrNull()
                                                 restoreDateInput.isNotBlank() -> {
-                                                    val date = try {
-                                                        SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
-                                                            isLenient = false
-                                                        }.parse(restoreDateInput)
-                                                    } catch (_: Exception) {
-                                                        null
-                                                    }
-                                                    date?.let {
-                                                        lookup.heightNearTimestamp(it.time / 1000L)
-                                                    }
+                                                    val date = parseNumericRestoreDate(restoreDateInput)
+                                                        ?: throw IOException("请输入有效日期，格式为 YYYY-MM-DD（例如 2026-10-18）")
+                                                    lookup.heightNearTimestamp(date.time / 1000L)
                                                 }
                                                 else -> wallet.getRestoreHeight()
                                             }
                                         }
                                         if (selectedHeight == null || selectedHeight < 0L) {
                                             toastState.show(
-                                                "请输入有效的区块高度或日期（YYYY-MM-DD）",
+                                                "请输入有效的区块高度或日期（YYYY-MM-DD，例如 2026-10-18）",
                                                 type = ToastType.Warning
                                             )
                                             return@launch
