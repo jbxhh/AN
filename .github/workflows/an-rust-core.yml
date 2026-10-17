@@ -1,0 +1,87 @@
+name: AN Rust wallet core (ARM64)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/an-rust-port
+    paths:
+      - "rust-wallet/**"
+      - "app/src/main/java/io/anonero/rust/**"
+      - ".github/workflows/an-rust-core.yml"
+      - "RUST_MIGRATION.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: an-rust-core-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-rust-core:
+    name: Test Rust core and build Android ARM64 library
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: experiment/an-rust-port
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust-wallet -> target
+          cache-on-failure: true
+
+      - name: Test Rust core on host
+        run: cargo test --manifest-path rust-wallet/Cargo.toml
+
+      - name: Configure Android SDK and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_ROOT" || { echo "Android SDK not found at $SDK_ROOT"; exit 1; }
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager 2>/dev/null | sort -V | tail -n 1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager was not found under $SDK_ROOT/cmdline-tools"
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "ndk;27.2.12479018" "platforms;android-35" "build-tools;35.0.0"
+          NDK="$SDK_ROOT/ndk/27.2.12479018"
+          test -x "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang" >> "$GITHUB_ENV"
+          echo "CC_aarch64_linux_android=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang" >> "$GITHUB_ENV"
+          echo "AR_aarch64_linux_android=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar" >> "$GITHUB_ENV"
+
+      - name: Build Rust shared library for Android ARM64
+        run: cargo build --manifest-path rust-wallet/Cargo.toml --release --target aarch64-linux-android
+
+      - name: Verify shared library output
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="rust-wallet/target/aarch64-linux-android/release/libanonero_rust.so"
+          test -s "$FILE"
+          file "$FILE"
+          readelf -h "$FILE" | grep -E "Class:|Machine:"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ANONERO-Rust-Core-arm64
+          path: rust-wallet/target/aarch64-linux-android/release/libanonero_rust.so
+          if-no-files-found: error
+          retention-days: 14
