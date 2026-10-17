@@ -175,11 +175,11 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                     visible = showBottomNavigation,
                     enter = androidx.compose.animation.slideInVertically(
                         initialOffsetY = { it },
-                        animationSpec = tween(durationMillis = 500)
+                        animationSpec = tween(durationMillis = 150)
                     ),
                     exit = androidx.compose.animation.slideOutVertically(
                         targetOffsetY = { it },
-                        animationSpec = tween(durationMillis = 500)
+                        animationSpec = tween(durationMillis = 150)
                     )
                 ) {
                     MainBottomNavigation(
