@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -60,6 +61,7 @@ import timber.log.Timber
 @Composable
 fun ReceiveScreen(
     modifier: Modifier = Modifier,
+    onBackPress: () -> Unit = {},
     navigateToSubAddresses: () -> Unit = {}
 ) {
     val walletState: WalletState by inject(WalletState::class.java)
@@ -102,7 +104,14 @@ fun ReceiveScreen(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = {},
+                title = {
+                    Text(stringResource(R.string.primary_address))
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBackPress) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                    }
+                },
                 actions = {
                     IconButton(
                         onClick = navigateToSubAddresses
