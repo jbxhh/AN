@@ -4,7 +4,14 @@ import io.anonero.model.PendingTransaction
 import io.anonero.model.Wallet
 import io.anonero.model.WalletListener
 import io.anonero.model.WalletManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Handy class for starting a new thread that has a looper. The looper can then be
@@ -15,6 +22,9 @@ import timber.log.Timber
 class MoneroHandlerThread(private val wallet: Wallet, private val walletState: WalletState) :
     Thread(null, null, "MoneroHandler", THREAD_STACK_SIZE), WalletListener {
 
+    private val postCompletionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val postCompletionRefreshInFlight = AtomicBoolean(false)
+    private val lastPostCompletionRefreshHeight = AtomicLong(-1L)
 
     @Synchronized
     override fun start() {
@@ -99,6 +109,9 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
                 scanHeight, daemonHeight
             )
         } else if (scanHeight < daemonHeight) {
+            // A new backlog means a later caught-up transition may need a post-sync
+            // history refresh, even if the wallet previously completed at the same tip.
+            lastPostCompletionRefreshHeight.set(-1L)
             // Keep the loading phase active until the sync-progress flow is established.
             // The existing progress UI switches to its determinate bar as soon as it sees it.
             wallet.isSynchronized = false
@@ -113,6 +126,10 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
                 wallet.store()
                 refresh(true)
                 walletState.setLoading(false)
+                // History refresh inside the native callback can run before the native
+                // scan has published its final transaction list. Re-read it after the
+                // callback unwinds so the user does not need to pull-to-refresh.
+                schedulePostCompletionRefresh()
             } else {
                 wallet.isSynchronized = false
                 if (daemonTargetHeight > daemonHeight) {
@@ -129,6 +146,88 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
         }
 
         walletState.update()
+    }
+
+    /**
+     * Refresh transaction history outside the native refreshed() callback. The first
+     * read may observe an empty/stale history while the native scan is still unwinding.
+     * If a wallet with funds still has no history, retry once after another short delay.
+     */
+    private fun schedulePostCompletionRefresh() {
+        val completedHeight = walletState.currentWalletHeight
+        if (lastPostCompletionRefreshHeight.get() == completedHeight) return
+        if (!postCompletionRefreshInFlight.compareAndSet(false, true)) return
+        lastPostCompletionRefreshHeight.set(completedHeight)
+
+        postCompletionScope.launch {
+            try {
+                repeat(2) { attempt ->
+                    delay(if (attempt == 0) 600L else 1_200L)
+                    if (WalletManager.instance?.wallet !== wallet || !wallet.isInitialized) {
+                        return@launch
+                    }
+
+                    try {
+                        wallet.refreshHistory()
+                        walletState.update()
+                    } catch (e: Exception) {
+                        Timber.tag(name).w(e, "Deferred transaction history refresh failed")
+                    }
+
+                    if (WalletManager.instance?.wallet !== wallet || !wallet.isInitialized) {
+                        return@launch
+                    }
+
+                    // Re-check live heights after the native callback has returned.
+                    // Only finish the progress state when the wallet really caught up
+                    // and the daemon itself has no remaining target backlog.
+                    if (wallet.fullStatus.connectionStatus ==
+                        Wallet.ConnectionStatus.ConnectionStatus_Connected
+                    ) {
+                        val daemonHeight = runCatching {
+                            wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+                        }.getOrDefault(0L)
+                        val daemonTargetHeight = runCatching {
+                            wallet.getDaemonBlockChainTargetHeight().coerceAtLeast(0L)
+                        }.getOrDefault(0L)
+                        walletState.updateDaemonTargetHeight(daemonTargetHeight)
+                        if (daemonHeight > 0L) {
+                            walletState.updateBlockHeights(wallet, daemonHeight)
+                            if (walletState.currentWalletHeight == daemonHeight &&
+                                daemonTargetHeight <= daemonHeight
+                            ) {
+                                if (walletState.completeWalletScan(wallet, daemonHeight)) {
+                                    wallet.setSynchronized()
+                                    runCatching { wallet.store() }.onFailure { error ->
+                                        Timber.tag(name).w(error, "Unable to store completed wallet scan")
+                                    }
+                                    walletState.clearSyncProgress()
+                                    walletState.setLoading(false)
+                                }
+                            }
+                        }
+                    }
+
+                    val transactionCount = wallet.history?.all?.size ?: 0
+                    Timber.tag(name).i(
+                        "Post-sync refresh attempt=%d transactions=%d walletHeight=%d daemonHeight=%d",
+                        attempt + 1,
+                        transactionCount,
+                        walletState.currentWalletHeight,
+                        walletState.currentDaemonHeight
+                    )
+                    if (transactionCount > 0 ||
+                        (wallet.balance <= 0L && wallet.unlockedBalance <= 0L)
+                    ) {
+                        return@launch
+                    }
+                }
+            } catch (e: Exception) {
+                Timber.tag(name).w(e, "Post-sync history refresh failed")
+            } finally {
+                postCompletionRefreshInFlight.set(false)
+            }
+        }
     }
 
     private fun tryRestartConnection() {
