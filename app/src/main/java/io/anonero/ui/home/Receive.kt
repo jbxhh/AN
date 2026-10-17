@@ -25,6 +25,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -45,6 +46,8 @@ import io.anonero.ui.components.SubAddressLabelDialog
 import io.anonero.ui.components.qr.QrCodeColors
 import io.anonero.ui.components.qr.QrCodeView
 import org.koin.java.KoinJavaComponent.inject
+import kotlinx.coroutines.CancellationException
+import timber.log.Timber
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -59,6 +62,19 @@ fun ReceiveScreen(
     var labelDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+
+    // Apply the upstream receive-address rule when this screen opens: reuse the
+    // lowest generated address above the highest index seen in transaction history,
+    // or atomically create the next address if none is available in the cached state.
+    LaunchedEffect(walletState) {
+        try {
+            walletState.ensureNextReceiveAddress()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Timber.tag("ReceiveScreen").w(e, "Unable to ensure the next receive address")
+        }
+    }
     if (labelDialog)
         SubAddressLabelDialog(
             label = nextAddress!!.label,
