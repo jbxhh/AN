@@ -3,7 +3,7 @@ name: Build ANON APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, fix/native-api-compatible-base]
+    branches: [main, fix/native-api-compatible-base, experiment/an-rust-port]
     paths:
       - 'app/**'
       - 'external-libs/Makefile'
@@ -16,6 +16,8 @@ on:
       - 'settings.gradle*'
       - 'gradle.properties'
       - '.github/workflows/main.yml'
+      - 'rust-wallet/**'
+      - 'RUST_MIGRATION.md'
 
 permissions:
   contents: read
@@ -318,6 +320,36 @@ jobs:
           done
 
 
+      - name: Set up Rust toolchain for Android ARM64
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Test, build, and package Rust wallet core
+        shell: bash
+        env:
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+        run: |
+          set -euo pipefail
+          NDK="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
+          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          CLANG="$TOOLCHAIN/aarch64-linux-android26-clang"
+          test -x "$CLANG"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CLANG"
+          export CC_aarch64_linux_android="$CLANG"
+          export AR_aarch64_linux_android="$TOOLCHAIN/llvm-ar"
+
+          cargo test --manifest-path rust-wallet/Cargo.toml
+          cargo build --manifest-path rust-wallet/Cargo.toml --release --target aarch64-linux-android
+
+          mkdir -p external-libs/prebuilt/arm64-v8a
+          RUST_LIB="rust-wallet/target/aarch64-linux-android/release/libanonero_rust.so"
+          test -s "$RUST_LIB"
+          "$TOOLCHAIN/llvm-strip" --strip-unneeded "$RUST_LIB"
+          install -m 0644 "$RUST_LIB" external-libs/prebuilt/arm64-v8a/libanonero_rust.so
+          file external-libs/prebuilt/arm64-v8a/libanonero_rust.so
+          readelf -h external-libs/prebuilt/arm64-v8a/libanonero_rust.so | grep -E "Class:|Machine:"
+
       - name: Strip ARM64 JNI symbols and build standalone ANON APK
         run: |
           set -euo pipefail
@@ -346,7 +378,6 @@ jobs:
           echo "### Standalone ANON APK build (native cache + wallet source)" >> "$GITHUB_STEP_SUMMARY"
           echo "- Only the standalone ANON ARM64 APK is built and published." >> "$GITHUB_STEP_SUMMARY"
           echo "- No companion/base/config APK is required; each artifact is independently installable." >> "$GITHUB_STEP_SUMMARY"
-           >> "$GITHUB_STEP_SUMMARY"
           echo "- arm64 cache hit: ${{ steps.cache-arm64.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- 32-bit ARM build: disabled" >> "$GITHUB_STEP_SUMMARY"
           echo "- JNI cache hit: ${{ steps.cache-jni.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
