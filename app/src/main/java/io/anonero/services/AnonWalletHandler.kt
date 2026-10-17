@@ -221,6 +221,16 @@ class AnonWalletHandler(
             }
             walletManager?.setDaemon(node)
             wallet?.setTrustedDaemon(true)
+
+            // Changing the daemon pauses the native refresh worker above. If this
+            // wallet was already initialized, restart it here so daemon-height and
+            // block-processing callbacks resume without requiring a manual refresh.
+            // During initial startup isInitialized is false; startService() starts
+            // the worker after wallet.init() succeeds.
+            if (node != null && wallet?.isInitialized == true) {
+                wallet.startRefresh()
+            }
+
             walletState.setLoading(false)
         } catch (e: Exception) {
             walletState.updateDaemon(
