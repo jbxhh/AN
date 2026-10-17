@@ -199,7 +199,7 @@ fun QRScanner(
                         )
                         Text(
 
-                            "Allow camera access to scan QR code",
+                            "请允许使用相机扫描二维码",
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 color = Color.White
                             ),
@@ -221,7 +221,7 @@ fun QRScanner(
                             onClick = {
                                 cameraPermissionState.launchPermissionRequest()
                             }) {
-                            Text("Allow")
+                            Text("允许")
                         }
                     }
                 } else {
@@ -241,7 +241,7 @@ fun QRScanner(
                                 )
                         )
                         Text(
-                            "Camera permission is required to scan QR codes. Please enable it in app settings.",
+                            "扫描二维码需要相机权限，请前往应用设置中开启。",
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 color = Color.White
                             ),
@@ -268,7 +268,7 @@ fun QRScanner(
                                     }
                                 context.startActivity(intent)
                             }) {
-                            Text("Open App Settings")
+                            Text("打开应用设置")
                         }
                     }
                 }
@@ -581,7 +581,7 @@ fun QRScanner(
                             Row {
                                 Icon(Icons.Default.Close, contentDescription = "")
                                 Spacer(Modifier.padding(8.dp))
-                                Text("Close")
+                                Text("关闭")
                                 Spacer(Modifier.padding(12.dp))
                             }
                         }
