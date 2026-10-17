@@ -20,14 +20,16 @@ fun Wallet.getLatestSubAddress(): Subaddress = synchronized(this) {
     // Return the first address after the highest index seen in transaction history.
     // Create it only when it does not exist yet, not merely because its label is empty.
     val nextIndex = getLastUnusedIndex() + 1
+    var createdAddress = false
     while (numSubAddresses <= nextIndex) {
         val indexToCreate = numSubAddresses
         addSubaddress(getAccountIndex(), "Subaddress #$indexToCreate")
         check(numSubAddresses > indexToCreate) {
             "原生钱包未能创建收款子地址"
         }
+        createdAddress = true
     }
-    check(store()) { "保存收款子地址失败" }
+    if (createdAddress) check(store()) { "保存收款子地址失败" }
     getSubaddressObject(nextIndex)
 }
 
