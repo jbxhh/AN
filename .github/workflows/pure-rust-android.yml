@@ -1,0 +1,94 @@
+name: Build ANONERO pure Rust trial APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/an-pure-rust]
+    paths:
+      - 'rust-wallet/**'
+      - 'rust-only-app/**'
+      - 'settings.gradle.kts'
+      - '.github/workflows/pure-rust-android.yml'
+      - 'RUST_ONLY_TRIAL.md'
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TARGET_DIR: ${{ github.workspace }}/target
+
+jobs:
+  build-rust-only-trial:
+    name: Test Rust core and package standalone ARM64 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Rust and Android target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Set up Android SDK and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1 || true
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;36.0.0" "ndk;27.2.12479018" >/dev/null
+          ndk="/usr/local/lib/android/sdk/ndk/27.2.12479018"
+          linker="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+          test -x "$linker"
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$linker" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ndk" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ndk" >> "$GITHUB_ENV"
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path rust-wallet/Cargo.toml -- --check
+
+      - name: Run Rust unit tests
+        run: cargo test --manifest-path rust-wallet/Cargo.toml
+
+      - name: Cross-compile pure Rust backend for Android ARM64
+        run: cargo build --manifest-path rust-wallet/Cargo.toml --target aarch64-linux-android --release
+
+      - name: Package Rust library into the isolated app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p rust-only-app/src/main/jniLibs/arm64-v8a
+          install -m 0644 target/aarch64-linux-android/release/libanonero_rust.so rust-only-app/src/main/jniLibs/arm64-v8a/libanonero_rust.so
+
+      - name: Build standalone Rust trial APK
+        run: ./gradlew :rust-only-app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK has Rust and no legacy C++ wallet library
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="rust-only-app/build/outputs/apk/debug/rust-only-app-debug.apk"
+          test -s "$apk"
+          unzip -l "$apk" | grep -q 'lib/arm64-v8a/libanonero_rust.so'
+          if unzip -l "$apk" | grep -q 'lib/arm64-v8a/libanonero.so'; then
+            echo "Legacy C++ wallet library unexpectedly packaged in Rust trial APK" >&2
+            exit 1
+          fi
+          sha256sum "$apk"
+          ls -lh "$apk"
+
+      - name: Upload standalone trial APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ANONERO-Pure-Rust-Trial-arm64
+          path: rust-only-app/build/outputs/apk/debug/rust-only-app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
