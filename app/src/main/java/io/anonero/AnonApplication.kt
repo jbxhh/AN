@@ -261,18 +261,21 @@ class AnonApplication : Application(), Thread.UncaughtExceptionHandler {
     private fun initNotificationChannels() {
         val foregroundChannel = NotificationChannel(
             FOREGROUND_CHANNEL,
-            "AnonNero Service",
+            getString(R.string.notification_channel_service_name),
             NotificationManager.IMPORTANCE_LOW,
-        )
+        ).apply {
+            description = getString(R.string.notification_channel_service_description)
+        }
+        val transactionChannel = NotificationChannel(
+            TX_CHANNEL,
+            getString(R.string.notification_channel_transactions_name),
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            description = getString(R.string.notification_channel_transactions_description)
+        }
         val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.createNotificationChannel(foregroundChannel)
-        notificationManager.createNotificationChannel(
-            NotificationChannel(
-                TX_CHANNEL,
-                "Incoming Transactions",
-                NotificationManager.IMPORTANCE_HIGH,
-            )
-        )
+        notificationManager.createNotificationChannel(transactionChannel)
     }
 
     override fun onTerminate() {

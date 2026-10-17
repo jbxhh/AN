@@ -106,11 +106,9 @@ class AnonNeroService : Service() {
         }
         scope.launch {
             walletState.syncProgress.collect {
-                val torSate = if (torService.socks != null) {
-                    " | Tor 服务端口：${torService.socks?.port.toString()}"
-                } else {
-                    ""
-                }
+                val torSate = torService.socks?.port?.let { port ->
+                    getString(R.string.notification_tor_port_suffix, port.toString())
+                } ?: ""
                 if (it != null) {
                     withContext(Dispatchers.Main) {
                         showProgress(it, torSate)
@@ -129,27 +127,29 @@ class AnonNeroService : Service() {
         // Notification polling must use cached listener state. Calling native daemon RPCs
         // every second can race wallet close during secure wipe and stall deletion.
         if (walletState.isSyncing) return
-        val torState = if (torService.socks != null) {
-            " | Tor 服务端口：${torService.socks?.port}"
-        } else {
-            ""
-        }
+        val torState = torService.socks?.port?.let { port ->
+            getString(R.string.notification_tor_port_suffix, port.toString())
+        } ?: ""
 
+        val walletHeight = Formats.convertNumber(
+            walletState.currentWalletHeight,
+            Locale.getDefault()
+        )
         val notificationMessage = when {
             walletState.backgroundSync ->
-                "钱包已锁定｜已同步至区块：${walletState.currentWalletHeight}"
-            !wallet.isInitialized -> "正在加载钱包…"
+                getString(R.string.notification_wallet_locked_synced, walletHeight)
+            !wallet.isInitialized -> getString(R.string.notification_loading_wallet)
             !isNetworkAvailable() -> {
                 walletState.setConnectionStatus(Wallet.ConnectionStatus.ConnectionStatus_Disconnected)
-                "网络未连接"
+                getString(R.string.notification_network_unavailable)
             }
             walletState.currentDaemonHeight <= 0L ||
                 walletState.currentConnectionStatus !=
                     Wallet.ConnectionStatus.ConnectionStatus_Connected ->
-                "节点连接断开"
+                getString(R.string.notification_node_disconnected)
             walletState.currentWalletHeight > 1L ->
-                "已同步至区块：${walletState.currentWalletHeight}"
-            else -> "正在同步…"
+                getString(R.string.notification_synced_height, walletHeight)
+            else -> getString(R.string.notification_syncing)
         }
 
         val suffix = if (daemon.isEmpty()) "" else torState
@@ -162,13 +162,14 @@ class AnonNeroService : Service() {
     }
 
     private fun showProgress(it: SyncProgress, torSate: String) {
+        val remaining = Formats.convertNumber(it.left, Locale.getDefault())
+        val content = if (it.left != 0L) {
+            getString(R.string.notification_sync_progress, remaining, torSate)
+        } else {
+            getString(R.string.notification_sync_complete, torSate)
+        }
         val notification = foregroundNotification(
-            content = if (it.left != 0L) "正在同步，剩余区块：${
-                Formats.convertNumber(
-                    it.left,
-                    Locale.getDefault()
-                )
-            } 个区块 $torSate" else "区块同步完成 $torSate",
+            content = content,
             progress = it
         )
         val mNotificationManager =
@@ -177,7 +178,7 @@ class AnonNeroService : Service() {
     }
 
     private fun foregroundNotification(
-        content: String = "Loading wallet...",
+        content: String? = null,
         title: String = "[ΛИ0ИΞR0]",
         progress: SyncProgress? = null
     ): Notification {
@@ -198,7 +199,7 @@ class AnonNeroService : Service() {
             .setAutoCancel(false)
             .setContentIntent(pendingIntent)
             .setContentTitle(title)
-            .setContentText(content)
+            .setContentText(content ?: getString(R.string.notification_loading_wallet))
             .apply {
                 if (progress != null && progress.progress < 1) {
                     this.setProgress(100, (progress.progress * 100).toInt(), false)
@@ -224,7 +225,7 @@ class AnonNeroService : Service() {
         val notification = NotificationCompat.Builder(applicationContext, TX_CHANNEL)
             .setSmallIcon(R.drawable.anon_notification)
             .setContentTitle("[ΛИ0ИΞR0]")
-            .setContentText("收到新交易")
+            .setContentText(getString(R.string.notification_new_transaction))
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

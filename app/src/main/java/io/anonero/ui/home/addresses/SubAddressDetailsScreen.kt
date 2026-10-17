@@ -82,17 +82,11 @@ fun SubAddressDetailScreen(
         SubAddressDetail(subAddress)
     }
     val transactions by subAddressDetailVm.transactions.observeAsState(listOf())
-    val isPrimaryAddressLabel = listOf(subAddress.label, subAddress.displayLabel).any { label ->
-        label.trim().replace(Regex("\\s+"), " ")
-            .startsWith("Primary address", ignoreCase = true)
-    }
+    val generatedLabel =
+        Subaddress.isDefaultGeneratedLabel(subAddress.label) ||
+            Subaddress.isDefaultGeneratedLabel(subAddress.displayLabel)
     var addressLabel by remember {
-        mutableStateOf(
-            if (subAddress.label.isEmpty() ||
-                subAddress.label.startsWith("Subaddress", ignoreCase = true) ||
-                isPrimaryAddressLabel
-            ) "" else subAddress.displayLabel
-        )
+        mutableStateOf(if (generatedLabel) "" else subAddress.displayLabel)
     }
     BackHandler {
         onBackPress()
@@ -178,9 +172,11 @@ fun SubAddressDetailScreen(
                             ) {
                                 Text(
                                     addressLabel.ifEmpty {
-                                        if (subAddress.addressIndex == 0 &&
-                                            (subAddress.label.isBlank() || isPrimaryAddressLabel)
-                                        ) stringResource(R.string.primary_address) else "添加标签"
+                                        if (subAddress.addressIndex == 0 && generatedLabel) {
+                                            stringResource(R.string.primary_address)
+                                        } else {
+                                            stringResource(R.string.address_add_label)
+                                        }
                                     },
                                     modifier = Modifier.clickable {
                                         labelDialog = true

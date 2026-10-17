@@ -154,4 +154,19 @@
      <string name="enable_notifications_explain">Notifications are disabled for this app. Please enable them in Settings to receive important updates.</string>
      <string name="go_to_settings">Go to Settings</string>
     <string name="remaining_blocks">%1$s blocks left</string>
+    <string name="address_add_label">Add label</string>
+    <string name="notification_channel_service_name">Wallet background service</string>
+    <string name="notification_channel_service_description">Wallet synchronization and connection status.</string>
+    <string name="notification_channel_transactions_name">Wallet transaction notifications</string>
+    <string name="notification_channel_transactions_description">Notifications about incoming wallet transactions.</string>
+    <string name="notification_loading_wallet">Loading wallet…</string>
+    <string name="notification_wallet_locked_synced">Wallet locked | synced through block %1$s</string>
+    <string name="notification_network_unavailable">Network unavailable</string>
+    <string name="notification_node_disconnected">Node disconnected</string>
+    <string name="notification_synced_height">Synced through block %1$s</string>
+    <string name="notification_syncing">Synchronizing…</string>
+    <string name="notification_sync_progress">Syncing; %1$s blocks remaining%2$s</string>
+    <string name="notification_sync_complete">Block synchronization complete%1$s</string>
+    <string name="notification_tor_port_suffix"> | Tor service port: %1$s</string>
+    <string name="notification_new_transaction">New incoming transaction</string>
 </resources>

@@ -43,6 +43,34 @@ class Subaddress(
     companion object {
         val DEFAULT_LABEL_FORMATTER: Pattern =
             Pattern.compile("^[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{2}:[0-9]{2}:[0-9]{2}$")
+
+        /**
+         * Monero versions and old wallet files can store different English forms for
+         * the automatically generated primary-address label. Treat these as defaults,
+         * not user-entered labels, so Compose can render the localized resource instead.
+         */
+        fun isDefaultPrimaryAddressLabel(label: String): Boolean {
+            val normalized = label.trim().replace(Regex("\\s+"), " ")
+            return normalized.equals("Primary", ignoreCase = true) ||
+                normalized.startsWith("Primary address", ignoreCase = true) ||
+                normalized.equals("Primary account", ignoreCase = true) ||
+                normalized.equals("Main", ignoreCase = true) ||
+                normalized.startsWith("Main address", ignoreCase = true) ||
+                normalized.equals("Main account", ignoreCase = true) ||
+                normalized.equals("Default", ignoreCase = true) ||
+                normalized.startsWith("Default address", ignoreCase = true) ||
+                normalized.equals("Default account", ignoreCase = true) ||
+                normalized == "主地址" ||
+                normalized == "主要地址"
+        }
+
+        fun isDefaultGeneratedLabel(label: String): Boolean {
+            val normalized = label.trim()
+            return normalized.isEmpty() ||
+                DEFAULT_LABEL_FORMATTER.matcher(normalized).matches() ||
+                normalized.matches(Regex("(?i)^subaddress\\s*#\\d+$")) ||
+                isDefaultPrimaryAddressLabel(normalized)
+        }
     }
 
     val totalAmount: Long

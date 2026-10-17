@@ -140,4 +140,19 @@
     <string name="importing_key_images">Importando imágenes de clave</string>
     <string name="importing_signed_transaction">Importando transacción firmada</string>
     <string name="importing_unsigned_transaction">Importando transacción sin firmar</string>
+    <string name="address_add_label">Añadir etiqueta</string>
+    <string name="notification_channel_service_name">Servicio en segundo plano de la cartera</string>
+    <string name="notification_channel_service_description">Estado de sincronización y conexión de la cartera.</string>
+    <string name="notification_channel_transactions_name">Notificaciones de transacciones</string>
+    <string name="notification_channel_transactions_description">Avisos sobre transacciones entrantes.</string>
+    <string name="notification_loading_wallet">Cargando cartera…</string>
+    <string name="notification_wallet_locked_synced">Cartera bloqueada | sincronizada hasta el bloque %1$s</string>
+    <string name="notification_network_unavailable">Red no disponible</string>
+    <string name="notification_node_disconnected">Nodo desconectado</string>
+    <string name="notification_synced_height">Sincronizado hasta el bloque %1$s</string>
+    <string name="notification_syncing">Sincronizando…</string>
+    <string name="notification_sync_progress">Sincronizando; quedan %1$s bloques%2$s</string>
+    <string name="notification_sync_complete">Sincronización completada%1$s</string>
+    <string name="notification_tor_port_suffix"> | Puerto del servicio Tor: %1$s</string>
+    <string name="notification_new_transaction">Nueva transacción entrante</string>
 </resources>

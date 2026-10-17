@@ -156,4 +156,19 @@
     <string name="enable_notifications_explain">允许应用发送通知，以便接收重要提醒。</string>
     <string name="go_to_settings">前往设置</string>
     <string name="remaining_blocks">剩余 %1$s 个区块</string>
+    <string name="address_add_label">添加标签</string>
+    <string name="notification_channel_service_name">钱包后台服务</string>
+    <string name="notification_channel_service_description">显示钱包同步进度和节点连接状态。</string>
+    <string name="notification_channel_transactions_name">钱包交易通知</string>
+    <string name="notification_channel_transactions_description">收到钱包交易时发送提醒。</string>
+    <string name="notification_loading_wallet">钱包加载中…</string>
+    <string name="notification_wallet_locked_synced">钱包已锁定｜已同步至区块：%1$s</string>
+    <string name="notification_network_unavailable">网络未连接</string>
+    <string name="notification_node_disconnected">节点连接断开</string>
+    <string name="notification_synced_height">已同步至区块：%1$s</string>
+    <string name="notification_syncing">正在同步…</string>
+    <string name="notification_sync_progress">正在同步，剩余区块：%1$s 个区块%2$s</string>
+    <string name="notification_sync_complete">区块同步完成%1$s</string>
+    <string name="notification_tor_port_suffix">｜Tor 服务端口：%1$s</string>
+    <string name="notification_new_transaction">收到新交易</string>
 </resources>
