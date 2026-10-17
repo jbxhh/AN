@@ -170,16 +170,25 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(scrimColor),
         )
         setContent {
-            var walletExist by remember { mutableStateOf(AnonConfig.isWalletFileExist()) }
+            val context = LocalContext.current
+            var walletExist by remember {
+                mutableStateOf(
+                    !context.getSharedPreferences(AnonConfig.APP_PREFERENCES, MODE_PRIVATE)
+                        .getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false) &&
+                        AnonConfig.isWalletFileExist()
+                )
+            }
             var useTor by remember { mutableStateOf(true) }
             val onboardViewModel = koinViewModel<OnboardViewModel>()
-            val context = LocalContext.current
             val scope = rememberCoroutineScope()
 
             LaunchedEffect(key1 = true) {
                 scope.launch(Dispatchers.IO) {
                     try {
-                        walletExist = AnonConfig.getDefaultWalletFile(context).exists()
+                        val wipePending = context.getSharedPreferences(
+                            AnonConfig.APP_PREFERENCES, MODE_PRIVATE
+                        ).getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
+                        walletExist = !wipePending && AnonConfig.getDefaultWalletFile(context).exists()
                         useTor = anonPrefs.getBoolean(WALLET_USE_TOR, true)
                     } catch (e: Exception) {
                         // A corrupt/unavailable preference or wallet path must not leave
@@ -302,10 +311,9 @@ class MainActivity : ComponentActivity() {
     }
 
     fun stopNotificationService() {
-        Intent(applicationContext, AnonNeroService::class.java).also {
-            it.action = "stop"
-            ContextCompat.startForegroundService(applicationContext, it)
-        }
+        // Stop directly; starting a foreground service with a "stop" action can race
+        // native wallet close while the notification polling job is still running.
+        stopService(Intent(applicationContext, AnonNeroService::class.java))
     }
 
     override fun onUserLeaveHint() {
