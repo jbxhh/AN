@@ -458,7 +458,7 @@ fun ResyncBlockchainScreen(
                                     imeAction = ImeAction.Done
                                 ),
                                 placeholder = {
-                                    Text("格式：YYYY-MM-DD（例如 2026-10-18）", color = labelColor)
+                                    Text("例如：2026-10-18", color = labelColor)
                                 }
                             )
                         }
