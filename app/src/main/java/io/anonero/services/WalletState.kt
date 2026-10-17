@@ -1003,35 +1003,36 @@ class WalletState(private val prefs: SharedPreferences) {
             return@withLock primary
         }
 
-        // History-only lookup; this does not perform a series of native address reads.
-        val nextIndex = synchronized(wallet) { wallet.getLastUnusedIndex() + 1 }
-        var addressCount = wallet.numSubAddresses
-        val createdAddresses = mutableListOf<Subaddress>()
+        // Reuse the lowest already-generated address above the highest used index.
+        // This relies on cached app state/history rather than querying native address
+        // vectors while the scanner may be mutating them.
+        val lastUsedIndex = wallet.getLastUnusedIndex()
+        val existingAddress = (
+            _subAddresses.value.asSequence() + sequenceOfNotNull(_nextAddress.value)
+        )
+            .filter { it.addressIndex > lastUsedIndex }
+            .minByOrNull { it.addressIndex }
 
-        while (addressCount <= nextIndex) {
-            if (walletWipeInProgress.get() || getWallet !== wallet) {
-                throw IllegalStateException("钱包状态已改变")
-            }
-            // Important: don't wrap this call in synchronized(wallet). The native call
-            // waits for the current refresh callback to return before mutating wallet2.
-            val created = wallet.addSubaddressAndGetSubaddress(accountIndex)
-            check(created.addressIndex == addressCount) {
-                "添加子地址失败：原生地址索引不连续"
-            }
-            createdAddresses += created
-            addressCount = created.addressIndex + 1
+        if (existingAddress != null) {
+            _nextAddress.value = existingAddress
+            return@withLock existingAddress
         }
 
-        val address = createdAddresses.lastOrNull { it.addressIndex == nextIndex }
-            ?: synchronized(wallet) { wallet.getSubaddressObject(nextIndex) }
+        if (walletWipeInProgress.get() || getWallet !== wallet) {
+            throw IllegalStateException("钱包状态已改变")
+        }
 
-        _nextAddress.value = address
+        // Native code waits for a refresh batch boundary, then atomically appends,
+        // persists, and returns the newly generated index/address. Do not hold
+        // synchronized(wallet) while it waits for the callback to unwind.
+        val created = wallet.addSubaddressAndGetSubaddress(accountIndex)
+        _nextAddress.value = created
         _subAddresses.update { current ->
-            (createdAddresses + current)
+            (current + created)
                 .distinctBy { it.address }
                 .sortedByDescending { it.addressIndex }
         }
-        address
+        created
     }
 
     suspend fun getNewAddress(): Subaddress = subaddressMutex.withLock {
