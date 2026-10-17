@@ -71,9 +71,20 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
         )
 
         if (status == Wallet.ConnectionStatus.ConnectionStatus_Disconnected || status == null) {
-            // Keep a visible loading phase while trying to restore the daemon connection.
-            // The progress indicator will still prioritize any last known sync backlog.
-            walletState.setLoading(true)
+            // During first restore, the connection-status callback can lag behind a
+            // successful height RPC. If the node tip is already known, publish the
+            // actual selected-height backlog before attempting native reinitialization.
+            // Otherwise the UI remains stuck on the indeterminate refresh bar until
+            // the user leaves and re-enters the wallet.
+            val progressTargetHeight = maxOf(daemonHeight, daemonTargetHeight)
+            val hasKnownBacklog = daemonHeight > 0L && scanHeight < progressTargetHeight
+            if (hasKnownBacklog) {
+                wallet.isSynchronized = false
+                walletState.updateSyncProgressFromWallet(wallet, daemonHeight)
+                walletState.setLoading(false)
+            } else {
+                walletState.setLoading(true)
+            }
             tryRestartConnection()
         } else if (daemonHeight <= 0L) {
             // Unknown daemon height is not proof of synchronization or scan completion.
