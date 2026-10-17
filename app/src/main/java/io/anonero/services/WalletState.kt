@@ -351,20 +351,25 @@ class WalletState(private val prefs: SharedPreferences) {
         val hasCompletedScan = prefs.getBoolean(completedKey, false)
         val savedStartHeight = prefs.getLong(startKey, restoreHeight).coerceAtLeast(restoreHeight)
         val savedProcessedHeight = prefs.getLong(processedKey, -1L)
+        val hasTrustedCompletedScan =
+            hasCompletedScan && savedProcessedHeight >= restoreHeight
 
-        // Existing installations have no trusted processed-height marker yet. If the
-        // native hash-chain cache is already past the selected restore point, rebuild
-        // once instead of trusting a fast-forwarded hash-cache height.
-        val legacyNeedsRescan = !hasCompletedScan && !wasInterrupted &&
+        // Only rebuild legacy data when there is no trusted completed scan. A wallet
+        // that already completed a scan must continue from its confirmed processed
+        // height; the app must not turn every new wallet-service startup into a new
+        // "in progress" scan session.
+        val legacyNeedsRescan = !hasTrustedCompletedScan && !wasInterrupted &&
             nativeHeight > restoreHeight + 1L
         val requiresRescan = forceStartAtSelectedHeight || wasInterrupted || legacyNeedsRescan
         val initialHeight = when {
             forceStartAtSelectedHeight -> restoreHeight
             wasInterrupted -> savedStartHeight
             legacyNeedsRescan -> restoreHeight
-            hasCompletedScan && savedProcessedHeight >= restoreHeight -> savedProcessedHeight
+            hasTrustedCompletedScan -> savedProcessedHeight
             else -> restoreHeight
         }
+        val resumeCompletedScan = hasTrustedCompletedScan &&
+            !wasInterrupted && !forceStartAtSelectedHeight
         // Progress must begin at the real scan position, never the native hash-cache tip.
         val actualScanStart = initialHeight
 
@@ -375,12 +380,21 @@ class WalletState(private val prefs: SharedPreferences) {
         wallet.isSynchronized = false
         _walletHeight.value = initialHeight
         prefs.edit {
-            putBoolean(inProgressKey, true)
-            putBoolean(completedKey, false)
-            if (forceStartAtSelectedHeight || !wasInterrupted || !prefs.contains(startKey)) {
+            if (resumeCompletedScan) {
+                // Preserve the successful-scan marker. A daemon refresh or service
+                // restart must not make an already scanned wallet look interrupted.
+                putBoolean(inProgressKey, false)
+                putBoolean(completedKey, true)
                 putLong(startKey, actualScanStart)
+                putLong(processedKey, actualScanStart)
+            } else {
+                putBoolean(inProgressKey, true)
+                putBoolean(completedKey, false)
+                if (forceStartAtSelectedHeight || !wasInterrupted || !prefs.contains(startKey)) {
+                    putLong(startKey, actualScanStart)
+                }
+                putLong(processedKey, initialHeight)
             }
-            putLong(processedKey, initialHeight)
         }
         // Start scanning immediately from the selected height. Never make the
         // start of a restore/rescan wait on a synchronous daemon-height RPC. Use the
@@ -524,15 +538,16 @@ class WalletState(private val prefs: SharedPreferences) {
             // Once caught up, the next ordinary refresh must measure progress from
             // this completed wallet height, not from the original restore height.
             _scanStartHeight.set(_walletHeight.value)
-            prefs.edit {
+            // Persist completion and the final processed height before clearing
+            // the restore marker. Otherwise a fast service/process restart can read
+            // stale in-progress state and queue the same rescan again.
+            prefs.edit(commit = true) {
                 putBoolean(scanPreferenceKey(wallet, "in_progress"), false)
                 putBoolean(scanPreferenceKey(wallet, "completed"), true)
                 putLong(scanPreferenceKey(wallet, "processed_height"), _walletHeight.value)
                 putLong(scanPreferenceKey(wallet, "start_height"), _walletHeight.value)
+                remove(PREF_FORCE_FRESH_WALLET_SCAN)
             }
-            // Keep the fresh-restore marker until the selected-height scan actually
-            // catches the live daemon tip. Clearing it when merely queued is too early.
-            prefs.edit(commit = true) { remove(PREF_FORCE_FRESH_WALLET_SCAN) }
             forcedRestoreScanStarted.set(false)
         }
         clearSyncProgress()
