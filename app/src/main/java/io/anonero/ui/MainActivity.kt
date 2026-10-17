@@ -2,9 +2,11 @@ package io.anonero.ui
 
 import io.anonero.ui.theme.AnonNeroTheme
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -64,6 +66,20 @@ private const val TAG = "MainActivity"
 
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        const val ACTION_WALLET_CLEARED = "io.anonero.action.WALLET_CLEARED"
+    }
+
+    private val walletClearedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: Intent) {
+            if (intent.action == ACTION_WALLET_CLEARED && !isFinishing && !isDestroyed) {
+                // Every open Activity instance must rebuild navigation from the on-disk wallet state.
+                recreate()
+            }
+        }
+    }
+    private var walletClearedReceiverRegistered = false
+
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
     private val walletState: WalletState by inject()
     private val torService: TorService by inject()
@@ -76,6 +92,13 @@ class MainActivity : ComponentActivity() {
         val splashscreen = installSplashScreen()
         var isAppReady by mutableStateOf(false)
         super.onCreate(savedInstanceState)
+        ContextCompat.registerReceiver(
+            this,
+            walletClearedReceiver,
+            IntentFilter(ACTION_WALLET_CLEARED),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        walletClearedReceiverRegistered = true
         val crashPrefs = getSharedPreferences("crash_prefs", MODE_PRIVATE)
         if (crashPrefs.getBoolean("diagnostic_mode", false)) {
             val crash = crashPrefs.getString("last_crash", null)
@@ -291,6 +314,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (walletClearedReceiverRegistered) {
+            unregisterReceiver(walletClearedReceiver)
+            walletClearedReceiverRegistered = false
+        }
         // Activity recreation/background transitions must not close the process-wide
         // wallet or dispose the shared Tor service. Persist/close wallet through its
         // own lifecycle instead of racing an IO coroutine against scope cancellation.
