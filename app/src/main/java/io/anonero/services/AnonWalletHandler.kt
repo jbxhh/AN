@@ -93,15 +93,16 @@ class AnonWalletHandler(
             val useTor = prefs.getBoolean(WALLET_USE_TOR, true)
             if (useTor || proxyHost.isNullOrBlank()) {
                 torService.start()
-                val socket = withTimeoutOrNull(30_000L) {
-                    while (torService.socks == null && !wipeInProgress.get()) {
-                        delay(200)
-                    }
-                    if (wipeInProgress.get()) null else torService.socks
+                // Tor can take longer than 30 seconds to publish its SOCKS listener on
+                // first launch. Do not fail wallet startup and clear sync progress while
+                // Tor is still starting: wait for the live listener, then initialize the
+                // daemon and start the selected-height scan in this same startup attempt.
+                while (torService.socks == null && !wipeInProgress.get()) {
+                    delay(200)
                 }
                 if (wipeInProgress.get()) return
-                val readySocket = socket
-                    ?: throw IllegalStateException("Timed out waiting for Tor SOCKS proxy")
+                val readySocket = torService.socks
+                    ?: return
                 WalletManager.instance?.setProxy("${readySocket.value}")
             } else if (proxyHost.isNotEmpty() && proxyPort != -1) {
                 WalletManager.instance?.setProxy("${proxyHost}:$proxyPort")
