@@ -840,10 +840,15 @@ class WalletState(private val prefs: SharedPreferences) {
             return
         }
 
-        // Manual refresh is a data refresh, not a command to start/resume blockchain
-        // scanning. The normal wallet lifecycle owns startRefresh(); this method only
-        // reads the current node height and republishes wallet history/balance.
+        // Keep a visible refresh indicator from the moment the request starts.
+        // If this wallet is already behind the daemon, keep the indicator active
+        // until listener callbacks publish real scan progress; this avoids a blank
+        // gap between the pull-to-refresh animation and the sync progress bar.
+        setLoading(true)
         try {
+            // Manual refresh is a data refresh, not a command to start/resume blockchain
+            // scanning. The normal wallet lifecycle owns startRefresh(); this method only
+            // reads the current node height and republishes wallet history/balance.
             withContext(Dispatchers.IO) {
                 val connected = wallet.fullStatus.connectionStatus ==
                     Wallet.ConnectionStatus.ConnectionStatus_Connected
@@ -866,6 +871,19 @@ class WalletState(private val prefs: SharedPreferences) {
             }
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Wallet data refresh failed")
+        } finally {
+            // A refresh is complete when the wallet is caught up or no longer
+            // connected. When it is connected but an active scan has not published
+            // its first real progress sample yet, retain the indeterminate indicator.
+            val waitingForScanProgress = runCatching {
+                wallet.isInitialized &&
+                    wallet.fullStatus.connectionStatus ==
+                        Wallet.ConnectionStatus.ConnectionStatus_Connected &&
+                    _scanTracking.get() &&
+                    !wallet.isSynchronized &&
+                    _syncProgress.value == null
+            }.getOrDefault(false)
+            setLoading(waitingForScanProgress)
         }
     }
 
