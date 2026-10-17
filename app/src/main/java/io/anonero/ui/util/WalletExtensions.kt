@@ -16,30 +16,26 @@ fun Wallet.getLastUnusedIndex(): Int {
 }
 
 
-fun Wallet.getLatestSubAddress(): Subaddress {
-    val lastUsedSubAddress = getLastUnusedIndex()
-    //get the next address
-    val address = this.getSubaddressObject(lastUsedSubAddress + 1)
-    //if label is empty add new subaddress
-    if (address.label.isEmpty()) {
-        this.addSubaddress(getAccountIndex(), "Subaddress #${address.addressIndex}")
-        this.store()
+fun Wallet.getLatestSubAddress(): Subaddress = synchronized(this) {
+    // Return the first address after the highest index seen in transaction history.
+    // Create it only when it does not exist yet, not merely because its label is empty.
+    val nextIndex = getLastUnusedIndex() + 1
+    while (numSubAddresses <= nextIndex) {
+        val indexToCreate = numSubAddresses
+        addSubaddress(getAccountIndex(), "Subaddress #$indexToCreate")
+        check(numSubAddresses > indexToCreate) {
+            "原生钱包未能创建收款子地址"
+        }
     }
-    return address
+    check(store()) { "保存收款子地址失败" }
+    getSubaddressObject(nextIndex)
 }
 
-
-fun Wallet.getAllUsedSubAddresses(): List<Subaddress> {
-    val subAddresses = arrayListOf<Subaddress>()
-    for (i in 0 until this.numSubAddresses) {
-        subAddresses.add(this.getSubaddressObject(i))
-    }
-    this.getLatestSubAddress().let {
-        if (subAddresses.indexOf(it) == -1) subAddresses.add(it)
-    }
-    return subAddresses
-        .apply {
-            this.removeIf { it.addressIndex == 0 && it.totalAmount != 0L }
-        }
-        .distinctBy { it.address }.sortedBy { it.addressIndex }
+fun Wallet.getAllUsedSubAddresses(): List<Subaddress> = synchronized(this) {
+    // A read-only snapshot: refreshing the label list must not create native addresses.
+    val subAddresses = (0 until numSubAddresses).map { getSubaddressObject(it) }
+    subAddresses
+        .filterNot { it.addressIndex == 0 && it.totalAmount != 0L }
+        .distinctBy { it.address }
+        .sortedBy { it.addressIndex }
 }
