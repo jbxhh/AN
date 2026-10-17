@@ -464,7 +464,7 @@ fun ResyncBlockchainScreen(
                                                     ?: throw IOException("请输入有效的区块高度")
                                             }
                                             restoreDateInput.isNotBlank() -> {
-                                                if (!Regex("""\\d{4}-\\d{2}-\\d{2}""")
+                                                if (!Regex("""\d{4}-\d{2}-\d{2}""")
                                                         .matches(restoreDateInput)) {
                                                     throw IOException("日期格式应为 YYYY-MM-DD")
                                                 }
