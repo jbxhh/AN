@@ -987,7 +987,8 @@ class WalletState(private val prefs: SharedPreferences) {
      * against the native refresh lock. This explicit UI-driven operation may safely wait
      * for a refresh batch boundary because it does not hold synchronized(wallet).
      */
-    suspend fun ensureNextReceiveAddress(): Subaddress = subaddressMutex.withLock {
+    suspend fun ensureNextReceiveAddress(): Subaddress = withContext(Dispatchers.IO) {
+        subaddressMutex.withLock {
         if (walletWipeInProgress.get()) throw IllegalStateException("钱包正在安全删除")
         val wallet = getWallet ?: throw IllegalStateException("钱包未打开")
         val accountIndex = wallet.getAccountIndex()
@@ -1033,6 +1034,7 @@ class WalletState(private val prefs: SharedPreferences) {
                 .sortedByDescending { it.addressIndex }
         }
         created
+        }
     }
 
     suspend fun getNewAddress(): Subaddress = subaddressMutex.withLock {
