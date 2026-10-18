@@ -26,6 +26,7 @@ import org.json.JSONObject
 import timber.log.Timber
 import androidx.core.content.edit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 
 class InvalidPin : Exception("invalid pin")
@@ -46,6 +47,7 @@ class AnonWalletHandler(
     private val wipeInProgress = AtomicBoolean(false)
     private val serviceStartMutex = Mutex()
     private val walletInitializationMutex = Mutex()
+    private val manualNodeConnectionRequests = AtomicInteger(0)
     @Volatile private var serviceStartedWallet: Wallet? = null
 
     val scope get() = _scope
@@ -116,7 +118,7 @@ class AnonWalletHandler(
             return
         }
 
-        handler = MoneroHandlerThread(wallet, walletState)
+        handler = MoneroHandlerThread(wallet, walletState, this)
         wallet.setListener(handler)
         handler?.start()
         walletState.setLoading(true)
@@ -174,6 +176,17 @@ class AnonWalletHandler(
      */
     suspend fun <T> withWalletInitializationLock(block: () -> T): T =
         walletInitializationMutex.withLock { block() }
+
+    /** Mark a user-triggered connection while it prepares Tor and waits for native init. */
+    fun beginManualNodeConnection() {
+        manualNodeConnectionRequests.incrementAndGet()
+    }
+
+    fun endManualNodeConnection() {
+        manualNodeConnectionRequests.updateAndGet { current -> (current - 1).coerceAtLeast(0) }
+    }
+
+    fun isManualNodeConnectionInProgress(): Boolean = manualNodeConnectionRequests.get() > 0
 
     fun markWalletServiceStarted(wallet: Wallet) {
         if (wallet.isInitialized) serviceStartedWallet = wallet

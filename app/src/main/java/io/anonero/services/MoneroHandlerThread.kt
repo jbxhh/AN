@@ -19,12 +19,17 @@ import java.util.concurrent.atomic.AtomicLong
  * The started Thread has a stck size of STACK_SIZE (=5MB)
  */
 
-class MoneroHandlerThread(private val wallet: Wallet, private val walletState: WalletState) :
-    Thread(null, null, "MoneroHandler", THREAD_STACK_SIZE), WalletListener {
+class MoneroHandlerThread(
+    private val wallet: Wallet,
+    private val walletState: WalletState,
+    private val walletHandler: AnonWalletHandler
+) : Thread(null, null, "MoneroHandler", THREAD_STACK_SIZE), WalletListener {
 
     private val postCompletionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val postCompletionRefreshInFlight = AtomicBoolean(false)
     private val lastPostCompletionRefreshHeight = AtomicLong(-1L)
+    private val connectionRecoveryInFlight = AtomicBoolean(false)
+    private val lastConnectionRecoveryAtMillis = AtomicLong(0L)
 
     @Synchronized
     override fun start() {
@@ -249,17 +254,54 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
     }
 
     private fun tryRestartConnection() {
-        // This is a real native reinitialization, unlike a transient UI/service status
-        // probe. Permit a pending selected-height scan to be queued again after init.
-        walletState.prepareForcedRestoreScanRetry()
-        // Reinitialization can overwrite a fresh restore's selected height just like
-        // initial startup. Preserve the preference-backed height before refresh resumes.
-        val initialized = wallet.init(0)
-        if (initialized && wallet.isInitialized) {
-            walletState.preservePendingRestoreHeightAfterInit(wallet)
+        // This method is called from WalletListener.refreshed(), which is itself a
+        // native wallet callback. Never call wallet.init() inline here: re-entering
+        // native initialization from the refresh callback can stall refresh and race
+        // a manual node connection. Schedule a single, rate-limited recovery instead.
+        if (walletHandler.isManualNodeConnectionInProgress()) return
+        val now = System.currentTimeMillis()
+        if (now - lastConnectionRecoveryAtMillis.get() < CONNECTION_RECOVERY_COOLDOWN_MILLIS) return
+        if (!connectionRecoveryInFlight.compareAndSet(false, true)) return
+        lastConnectionRecoveryAtMillis.set(now)
+
+        postCompletionScope.launch {
+            try {
+                // Let the native refreshed() callback fully unwind before any JNI init.
+                delay(750L)
+                if (walletHandler.isManualNodeConnectionInProgress()) return@launch
+                walletHandler.withWalletInitializationLock {
+                    // A user-initiated connection takes priority over automatic recovery,
+                    // including a request that began while this coroutine was queued.
+                    if (walletHandler.isManualNodeConnectionInProgress()) {
+                        Timber.tag(name).i("Skipping automatic reconnect while manual node connection is pending")
+                        return@withWalletInitializationLock
+                    }
+                    if (WalletManager.instance?.wallet !== wallet || !wallet.isInitialized) {
+                        return@withWalletInitializationLock
+                    }
+                    if (runCatching { wallet.fullStatus.connectionStatus }.getOrNull() ==
+                        Wallet.ConnectionStatus.ConnectionStatus_Connected
+                    ) {
+                        walletState.update()
+                        return@withWalletInitializationLock
+                    }
+
+                    Timber.tag(name).w("Retrying daemon initialization outside native refresh callback")
+                    // Preserve a pending restore's selected height across this real retry.
+                    walletState.prepareForcedRestoreScanRetry()
+                    val initialized = wallet.init(0)
+                    if (initialized && wallet.isInitialized) {
+                        walletState.preservePendingRestoreHeightAfterInit(wallet)
+                    }
+                    wallet.startRefresh()
+                    walletState.update()
+                }
+            } catch (e: Exception) {
+                Timber.tag(name).e(e, "Automatic daemon reconnect failed")
+            } finally {
+                connectionRecoveryInFlight.set(false)
+            }
         }
-        wallet.startRefresh()
-        walletState.update()
     }
 
     private fun refresh() {
@@ -286,6 +328,10 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
     }
 
     companion object {
+        // Avoid repeated native init attempts when refreshed() reports Disconnected
+        // several times during one failed connection attempt.
+        private const val CONNECTION_RECOVERY_COOLDOWN_MILLIS = 15_000L
+
         // from src/cryptonote_config.h
         const val THREAD_STACK_SIZE = (5 * 1024 * 1024).toLong()
     }

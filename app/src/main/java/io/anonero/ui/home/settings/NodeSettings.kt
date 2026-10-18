@@ -247,7 +247,11 @@ class NodeSettingsViewModel(
     }
 
     suspend fun connect(node: Node) {
-        withContext(Dispatchers.IO) {
+        // Suppress automatic native reconnects from the wallet listener while this
+        // explicit request waits for Tor and serializes wallet initialization.
+        walletHandler.beginManualNodeConnection()
+        try {
+            withContext(Dispatchers.IO) {
             val editor = prefs.edit()
             try {
                 editor.putString(NodeFields.RPC_HOST.value, node.host)
@@ -364,6 +368,8 @@ class NodeSettingsViewModel(
                 walletState.setLoading(false)
                 uriValidationError.postValue(e.message)
             }
+        } finally {
+            walletHandler.endManualNodeConnection()
         }
     }
 
