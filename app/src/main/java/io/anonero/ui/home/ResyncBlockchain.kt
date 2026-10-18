@@ -560,22 +560,39 @@ fun ResyncBlockchainScreen(
                                     toastState.show("钱包尚未初始化，无法重置同步", type = ToastType.Warning)
                                 }
                             } else {
-                                isQuerying = true
-                                scope.launch {
-                                    try {
-                                        val lookup = MoneroBlockTimeLookup(walletPrefs, torService)
-                                        val selectedHeight = withContext(Dispatchers.IO) {
-                                            when {
-                                                restoreHeightInput.isNotBlank() ->
-                                                    restoreHeightInput.toLongOrNull()
-                                                restoreDateInput.isNotBlank() -> {
-                                                    val date = parseNumericRestoreDate(restoreDateInput)
-                                                        ?: throw IOException("请输入有效日期，格式为 YYYY-MM-DD（例如 2026-10-18）")
-                                                    lookup.heightAtOrAfterTimestamp(date.time / 1000L)
+                                // Reserve reset priority immediately on the actual Reset tap,
+                                // before RPC height lookup. Ordinary wallet tasks must yield.
+                                val reservation = walletState.reserveManualResyncRequest()
+                                if (reservation == null) {
+                                    scope.launch {
+                                        toastState.show(
+                                            if (walletState.isResyncPriorityActive) {
+                                                "区块重置已在执行，请勿重复点击"
+                                            } else {
+                                                "钱包正在安全删除或其他高优先级操作正在执行"
+                                            },
+                                            type = ToastType.Warning,
+                                            duration = 6.seconds
+                                        )
+                                    }
+                                } else {
+                                    isQuerying = true
+                                    scope.launch {
+                                        var handedOffToResync = false
+                                        try {
+                                            val lookup = MoneroBlockTimeLookup(walletPrefs, torService)
+                                            val selectedHeight = withContext(Dispatchers.IO) {
+                                                when {
+                                                    restoreHeightInput.isNotBlank() ->
+                                                        restoreHeightInput.toLongOrNull()
+                                                    restoreDateInput.isNotBlank() -> {
+                                                        val date = parseNumericRestoreDate(restoreDateInput)
+                                                            ?: throw IOException("请输入有效日期，格式为 YYYY-MM-DD（例如 2026-10-18）")
+                                                        lookup.heightAtOrAfterTimestamp(date.time / 1000L)
+                                                    }
+                                                    else -> wallet.getRestoreHeight()
                                                 }
-                                                else -> wallet.getRestoreHeight()
                                             }
-                                        }
                                         if (selectedHeight == null || selectedHeight < 0L) {
                                             toastState.show(
                                                 "请输入有效的区块高度或日期（YYYY-MM-DD，例如 2026-10-18）",
@@ -611,7 +628,8 @@ fun ResyncBlockchainScreen(
                                             walletState.resyncBlockchain(
                                                 selectedRestoreHeight = selectedHeight,
                                                 knownDaemonHeight = daemonHeights.height,
-                                                knownDaemonTargetHeight = daemonHeights.targetHeight
+                                                knownDaemonTargetHeight = daemonHeights.targetHeight,
+                                                reservation = reservation
                                             )
                                         }
                                         if (result.isFailure) {
@@ -621,6 +639,7 @@ fun ResyncBlockchainScreen(
                                                 duration = 6.seconds
                                             )
                                         } else {
+                                            handedOffToResync = true
                                             walletPrefs.edit(commit = true) {
                                                 putLong(RESTORE_HEIGHT, selectedHeight)
                                             }
@@ -640,7 +659,11 @@ fun ResyncBlockchainScreen(
                                             duration = 6.seconds
                                         )
                                     } finally {
+                                        if (!handedOffToResync) {
+                                            walletState.cancelManualResyncRequest(reservation)
+                                        }
                                         isQuerying = false
+                                    }
                                     }
                                 }
                             }
