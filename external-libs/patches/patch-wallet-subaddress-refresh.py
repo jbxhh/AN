@@ -26,6 +26,16 @@ def insert_after_line(path: Path, expected_line: str, new_line: str) -> None:
 
 insert_after_line(
     api_path,
+    "virtual void pauseRefresh() = 0;",
+    "virtual void pauseRefreshAndWait() = 0;",
+)
+insert_after_line(
+    impl_header_path,
+    "virtual void pauseRefresh() override;",
+    "void pauseRefreshAndWait() override;",
+)
+insert_after_line(
+    api_path,
     "virtual void addSubaddress(uint32_t accountIndex, const std::string& label) = 0;",
     "virtual std::string addSubaddressAndGetAddress(uint32_t accountIndex) = 0;",
 )
@@ -34,6 +44,37 @@ insert_after_line(
     "void addSubaddress(uint32_t accountIndex, const std::string& label) override;",
     "std::string addSubaddressAndGetAddress(uint32_t accountIndex) override;",
 )
+
+old_pause_refresh = """void WalletImpl::pauseRefresh()
+{
+    LOG_PRINT_L2(__FUNCTION__ << ": refresh paused...");
+    // TODO synchronize access
+    if (!m_refreshThreadDone) {
+        m_refreshEnabled = false;
+    }
+}"""
+new_pause_refresh = """void WalletImpl::pauseRefresh()
+{
+    LOG_PRINT_L2(__FUNCTION__ << ": refresh paused...");
+    // TODO synchronize access
+    if (!m_refreshThreadDone) {
+        m_refreshEnabled = false;
+    }
+}
+
+void WalletImpl::pauseRefreshAndWait()
+{
+    // Disable subsequent refreshes, stop the active batch, and wait until both native
+    // refresh locks are idle before daemon/init state changes. Caller restarts explicitly.
+    LOG_PRINT_L2(__FUNCTION__ << ": pausing and waiting for active refresh...");
+    m_refreshEnabled = false;
+    m_wallet->stop();
+    m_refreshCV.notify_one();
+    boost::mutex::scoped_lock lock(m_refreshMutex);
+    boost::mutex::scoped_lock lock2(m_refreshMutex2);
+}"""
+replace_once(wallet_cpp_path, old_pause_refresh, new_pause_refresh)
+
 insert_after_line(
     api_path,
     "virtual void setSubaddressLabel(uint32_t accountIndex, uint32_t addressIndex, const std::string &label) = 0;",

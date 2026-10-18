@@ -74,8 +74,11 @@ class MoneroHandlerThread(
     override fun updated() {
         // Listener callbacks run from native wallet code. Defer JNI history/status reads
         // so they cannot stall later newBlock callbacks during an ordinary initial scan.
-        if (walletState.isResyncPriorityActive || walletState.isWalletWipeInProgress) {
-            Timber.tag(name).d("Skipping wallet update while a priority operation owns wallet")
+        if (walletState.isResyncPriorityActive ||
+            walletState.isWalletWipeInProgress ||
+            walletHandler.isManualNodeConnectionInProgress()
+        ) {
+            Timber.tag(name).d("Skipping wallet update while a priority operation or node switch owns wallet")
             return
         }
         walletUpdateCallbackPending.set(true)
@@ -133,6 +136,9 @@ class MoneroHandlerThread(
     }
 
     private fun processRefreshedCallback() {
+        // The node-connect path pauses and drains native refresh before daemon/init changes.
+        // Drop any queued callback from the old daemon; the new refresh will emit fresh data.
+        if (walletHandler.isManualNodeConnectionInProgress() || walletState.isWalletWipeInProgress) return
         val status = wallet.fullStatus.connectionStatus
         // Use one live daemon snapshot plus its target. Reaching the current node tip
         // is not wallet sync completion while that node still has blocks to download.

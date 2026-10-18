@@ -274,11 +274,16 @@ class AnonWalletHandler(
         walletInitializationMutex.withLock { block() }
 
     /** Mark a user-triggered connection while it prepares Tor and waits for native init. */
-    fun beginManualNodeConnection(): Boolean {
-        if (wipeInProgress.get() || walletState.isResyncPriorityActive) return false
+    private fun canRunNodeChange(allowActiveResyncScan: Boolean): Boolean =
+        !wipeInProgress.get() &&
+            (!walletState.isResyncPriorityActive ||
+                (allowActiveResyncScan && walletState.canRetargetNodeDuringResync))
+
+    fun beginManualNodeConnection(allowActiveResyncScan: Boolean = false): Boolean {
+        if (!canRunNodeChange(allowActiveResyncScan)) return false
         manualNodeConnectionRequests.incrementAndGet()
-        // Close the small race with a reset request arriving just after the first check.
-        if (wipeInProgress.get() || walletState.isResyncPriorityActive) {
+        // Close the race with a reset/wipe arriving just after the first check.
+        if (!canRunNodeChange(allowActiveResyncScan)) {
             endManualNodeConnection()
             return false
         }
@@ -386,14 +391,22 @@ class AnonWalletHandler(
         }
     }
 
-    fun updateDaemon(node: Node?, restartRefresh: Boolean = true) {
-        if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
+    fun updateDaemon(
+        node: Node?,
+        restartRefresh: Boolean = true,
+        allowActiveResyncScan: Boolean = false,
+        refreshAlreadyPaused: Boolean = false
+    ) {
+        if (!canRunNodeChange(allowActiveResyncScan)) return
         walletState.setLoading(true)
         val wallet = WalletManager.instance?.wallet
         val walletManager = WalletManager.instance
-        wallet?.pauseRefresh()
         try {
-            if (wipeInProgress.get() || walletState.isResyncPriorityActive) {
+            if (!refreshAlreadyPaused) {
+                if (wallet?.isInitialized == true) wallet.pauseRefreshAndWait()
+                else wallet?.pauseRefresh()
+            }
+            if (!canRunNodeChange(allowActiveResyncScan)) {
                 if (!wipeInProgress.get()) walletState.setLoading(false)
                 return
             }
@@ -417,22 +430,14 @@ class AnonWalletHandler(
             walletManager?.setDaemon(node)
             wallet?.setTrustedDaemon(true)
 
-            // Changing the daemon pauses the native refresh worker above. If this
-            // wallet was already initialized, restart it here so daemon-height and
-            // block-processing callbacks resume without requiring a manual refresh.
-            // During initial startup isInitialized is false; startService() starts
-            // the worker after wallet.init() succeeds.
             if (restartRefresh && node != null && wallet?.isInitialized == true &&
-                !walletState.isResyncPriorityActive && !wipeInProgress.get()
+                canRunNodeChange(allowActiveResyncScan)
             ) {
                 wallet.startRefresh()
             }
-
-            if (!walletState.isResyncPriorityActive && !wipeInProgress.get()) {
-                walletState.setLoading(false)
-            }
+            if (canRunNodeChange(allowActiveResyncScan)) walletState.setLoading(false)
         } catch (e: Exception) {
-            if (wipeInProgress.get() || walletState.isResyncPriorityActive) {
+            if (!canRunNodeChange(allowActiveResyncScan)) {
                 if (!wipeInProgress.get()) walletState.setLoading(false)
                 return
             }
@@ -445,11 +450,14 @@ class AnonWalletHandler(
             )
             e.printStackTrace()
         }
-
     }
 
-    fun setProxy(proxy: String?, port: Int?) {
-        if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
+    fun setProxy(
+        proxy: String?,
+        port: Int?,
+        allowActiveResyncScan: Boolean = false
+    ) {
+        if (!canRunNodeChange(allowActiveResyncScan)) return
         Timber.tag(TAG).d("setProxy %s%s", proxy, port.toString())
         //disable proxy
         if (proxy == null && port == null) {

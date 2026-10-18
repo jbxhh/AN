@@ -91,6 +91,7 @@ class WalletState(private val prefs: SharedPreferences) {
     private val forcedRestoreScanInFlight = AtomicBoolean(false)
     private val forcedRestoreScanStarted = AtomicBoolean(false)
     private val manualResyncInProgress = AtomicBoolean(false)
+    private val refreshDeferredDuringResync = AtomicBoolean(false)
     private val manualResyncReservationSequence = AtomicLong(0L)
     private val activeManualResyncReservation =
         AtomicReference<ManualResyncReservation?>(null)
@@ -116,6 +117,17 @@ class WalletState(private val prefs: SharedPreferences) {
     /** True while a manual rescan request is being prepared/handed to native refresh. */
     val isManualResyncInProgress: Boolean
         get() = manualResyncInProgress.get()
+    /** The active rescan may be retargeted only after its native handoff has finished. */
+    val canRetargetNodeDuringResync: Boolean
+        get() = resetPriorityActive.get() &&
+            !manualResyncInProgress.get() &&
+            !walletWipeInProgress.get()
+    /** Scan start position cached from trusted app state; does not call JNI. */
+    val currentScanStartHeight: Long
+        get() = _scanStartHeight.get().coerceAtLeast(0L)
+    /** True while listener-based scan tracking owns an unsynchronized wallet. */
+    val isWalletScanActive: Boolean
+        get() = _scanTracking.get() && getWallet?.isSynchronized != true
 
     // While the native worker prepares reset state, callback data is suppressed.
     // Once scan state is published, block/progress callbacks must be allowed through,
@@ -691,6 +703,7 @@ class WalletState(private val prefs: SharedPreferences) {
             resetPriorityActive.set(false)
             manualResyncScanPrepared.set(false)
             manualResyncInProgress.set(false)
+            scheduleDeferredRefreshIfIdle()
         }
     }
 
@@ -1153,6 +1166,7 @@ class WalletState(private val prefs: SharedPreferences) {
             activeManualResyncReservation.set(null)
             resetPriorityActive.set(false)
         }
+        scheduleDeferredRefreshIfIdle()
         return true
     }
     /**
@@ -1435,6 +1449,7 @@ class WalletState(private val prefs: SharedPreferences) {
     /** Clear process-wide UI state once the wallet file has been safely deleted. */
     fun resetAfterWalletWipe() {
         scanPreferenceIdentity.set(null)
+        refreshDeferredDuringResync.set(false)
         _blockUpdates.set(false)
         _isLoading.value = false
         _backgroundSync.value = false
@@ -1529,8 +1544,9 @@ class WalletState(private val prefs: SharedPreferences) {
 
     suspend fun getNewAddress(): Subaddress = subaddressMutex.withLock {
         if (walletWipeInProgress.get()) throw IllegalStateException("钱包正在安全删除")
-        check(beginOrdinaryWalletOperation()) {
-            "区块重置或安全删除优先执行，请稍后再生成收款地址"
+        check(beginReceiveAddressOperation()) {
+            if (walletWipeInProgress.get()) "钱包正在安全删除"
+            else "区块重置正在准备，请稍后再生成收款地址"
         }
         try {
             val wallet = getWallet ?: throw IllegalStateException("钱包未打开")
@@ -1624,8 +1640,28 @@ class WalletState(private val prefs: SharedPreferences) {
         }
     }
 
-    suspend fun refresh() {
+    private fun scheduleDeferredRefreshIfIdle() {
         if (walletWipeInProgress.get() || isResyncPriorityActive) return
+        if (!refreshDeferredDuringResync.compareAndSet(true, false)) return
+        scanHeightScope.launch {
+            delay(250L)
+            if (walletWipeInProgress.get()) return@launch
+            if (isResyncPriorityActive) {
+                refreshDeferredDuringResync.set(true)
+                return@launch
+            }
+            refresh()
+        }
+    }
+
+    suspend fun refresh() {
+        if (walletWipeInProgress.get()) return
+        if (isResyncPriorityActive) {
+            // Keep explicit reset scanning exclusive; replay a manual refresh after it finishes.
+            refreshDeferredDuringResync.set(true)
+            Timber.tag(TAG).i("Wallet refresh queued until the priority rescan completes")
+            return
+        }
         val wallet = getWallet
         if (wallet == null || !wallet.isInitialized || !beginOrdinaryWalletOperation()) return
 
@@ -2008,6 +2044,7 @@ class WalletState(private val prefs: SharedPreferences) {
                     resetPriorityActive.set(false)
                 }
             }
+            scheduleDeferredRefreshIfIdle()
         }
     }
 

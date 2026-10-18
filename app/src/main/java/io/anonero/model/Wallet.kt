@@ -260,6 +260,7 @@ class Wallet {
 
     external fun startRefresh()
     external fun pauseRefresh()
+    external fun pauseRefreshAndWait()
     external fun refresh(): Boolean
     external fun refreshAsync()
     private external fun rescanBlockchainAsyncJ(): Boolean

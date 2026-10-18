@@ -1240,6 +1240,12 @@ Java_io_anonero_model_Wallet_pauseRefresh(JNIEnv *env, jobject instance) {
     wallet->pauseRefresh();
 }
 
+JNIEXPORT void JNICALL
+Java_io_anonero_model_Wallet_pauseRefreshAndWait(JNIEnv *env, jobject instance) {
+    Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
+    wallet->pauseRefreshAndWait();
+}
+
 JNIEXPORT jboolean JNICALL
 Java_io_anonero_model_Wallet_startBackgroundSync(JNIEnv *env, jobject instance) {
     LOGD("startBackgroundSync(): start");
