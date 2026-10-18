@@ -247,13 +247,23 @@ class NodeSettingsViewModel(
     }
 
     suspend fun connect(node: Node) {
+        // Reset ranks above every node connect/reconnect. Reject before changing the
+        // saved node preferences if a reset already owns wallet priority.
+        if (!walletHandler.beginManualNodeConnection()) {
+            throw IllegalStateException("区块重置或安全删除正在优先执行，节点连接已让路")
+        }
         // Suppress automatic native reconnects from the wallet listener while this
         // explicit request waits for Tor and serializes wallet initialization.
-        walletHandler.beginManualNodeConnection()
         try {
             withContext(Dispatchers.IO) {
+            check(!walletState.isResyncPriorityActive) {
+                "区块重置优先执行，节点连接已让路"
+            }
             val editor = prefs.edit()
             try {
+                check(!walletState.isResyncPriorityActive) {
+                    "区块重置优先执行，节点连接已让路"
+                }
                 editor.putString(NodeFields.RPC_HOST.value, node.host)
                 editor.putInt(NodeFields.RPC_PORT.value, node.rpcPort)
                 editor.putBoolean(NodeFields.RPC_SSL.value, node.usesSsl)
@@ -274,6 +284,9 @@ class NodeSettingsViewModel(
                         ?: throw IllegalStateException(
                             "Tor 尚未就绪，请稍后再次点击连接"
                         )
+                    check(!walletState.isResyncPriorityActive) {
+                        "区块重置优先执行，节点连接已让路"
+                    }
                     val proxyAddress = "${readySocket.address}:${readySocket.port.value}"
                     WalletManager.instance?.setProxy(proxyAddress)
                     WalletManager.instance?.wallet?.setProxy(proxyAddress)
@@ -286,6 +299,9 @@ class NodeSettingsViewModel(
                 }
 
                 walletHandler.withWalletInitializationLock {
+                    check(!walletState.isResyncPriorityActive) {
+                        "区块重置优先执行，节点连接已让路"
+                    }
                     val wallet = WalletManager.instance?.wallet
                         ?: throw IllegalStateException("钱包未打开")
                     val walletManager = WalletManager.instance
@@ -305,6 +321,9 @@ class NodeSettingsViewModel(
                     if (sameNodeAlreadyInitialized) {
                         // Startup may have connected the saved node while this manual
                         // attempt was waiting for Tor. Reuse its listener/scan state.
+                        check(!walletState.isResyncPriorityActive) {
+                            "区块重置优先执行，节点连接已让路"
+                        }
                         wallet.startRefresh()
                         walletState.update()
                         walletState.setLoading(!wallet.isSynchronized && !walletState.isSyncing)
@@ -313,7 +332,13 @@ class NodeSettingsViewModel(
                     }
 
                     wallet.pauseRefresh()
+                    check(!walletState.isResyncPriorityActive) {
+                        "区块重置优先执行，节点连接已让路"
+                    }
                     walletHandler.updateDaemon(node, restartRefresh = false)
+                    check(!walletState.isResyncPriorityActive) {
+                        "区块重置优先执行，节点连接已让路"
+                    }
                     walletState.setLoading(true)
 
                     val forceFreshScan = prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
@@ -321,6 +346,9 @@ class NodeSettingsViewModel(
                         if (forceFreshScan) walletState.pendingSelectedRestoreHeight(wallet) else null
 
                     val initialized = wallet.init(0)
+                    check(!walletState.isResyncPriorityActive) {
+                        "区块重置优先执行，节点连接已让路"
+                    }
                     if (!initialized || !wallet.isInitialized) {
                         throw IllegalStateException(
                             wallet.status.errorString.ifBlank { "钱包初始化失败" }
@@ -344,29 +372,37 @@ class NodeSettingsViewModel(
                         forceStartAtSelectedHeight = forceFreshScan
                     )
                     walletState.publishWalletSnapshot(wallet)
-                    if (forceFreshScan) {
-                        wallet.startRefresh()
-                    } else {
-                        if (resumeScan) wallet.rescanBlockchainAsync()
-                        wallet.startRefresh()
+                    if (!walletState.isResyncPriorityActive) {
+                        if (forceFreshScan) {
+                            wallet.startRefresh()
+                        } else {
+                            if (resumeScan) wallet.rescanBlockchainAsync()
+                            wallet.startRefresh()
+                        }
                     }
                     try {
-                        wallet.refreshHistory()
+                        if (!walletState.isResyncPriorityActive) wallet.refreshHistory()
                     } catch (e: Exception) {
                         Timber.tag(TAG).w(e, "Initial history refresh failed after node connection")
                     }
-                    walletState.update()
-                    walletHandler.markWalletServiceStarted(wallet)
-                    // Retain the indeterminate loader until a real sync-progress sample
-                    // arrives; do not end it merely because wallet.init() returned.
-                    walletState.setLoading(!wallet.isSynchronized && !walletState.isSyncing)
+                    if (!walletState.isResyncPriorityActive) {
+                        walletState.update()
+                        walletHandler.markWalletServiceStarted(wallet)
+                        // Retain the indeterminate loader until a real sync-progress sample
+                        // arrives; do not end it merely because wallet.init() returned.
+                        walletState.setLoading(!wallet.isSynchronized && !walletState.isSyncing)
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Timber.tag(TAG).e(e, "Failed to connect to node")
-                walletState.setLoading(false)
-                uriValidationError.postValue(e.message)
+                if (!walletState.isResyncPriorityActive) {
+                    Timber.tag(TAG).e(e, "Failed to connect to node")
+                    walletState.setLoading(false)
+                    uriValidationError.postValue(e.message)
+                } else {
+                    Timber.tag(TAG).i("Node connection yielded to reset priority")
+                }
             }
             }
         } finally {
@@ -402,8 +438,11 @@ class NodeSettingsViewModel(
     }
 
     fun disconnect() {
+        if (walletState.isResyncPriorityActive) return
         viewModelScope.launch(Dispatchers.IO) {
+            if (walletState.isResyncPriorityActive) return@launch
             WalletManager.instance?.wallet?.pauseRefresh()
+            if (walletState.isResyncPriorityActive) return@launch
             prefs.edit {
                 putString(
                     NodeFields.RPC_HOST.value,
@@ -424,8 +463,10 @@ class NodeSettingsViewModel(
                 )
             }
             walletHandler.updateDaemon(null)
-            walletState.update()
-            walletState.setLoading(false)
+            if (!walletState.isResyncPriorityActive) {
+                walletState.update()
+                walletState.setLoading(false)
+            }
         }
     }
 
