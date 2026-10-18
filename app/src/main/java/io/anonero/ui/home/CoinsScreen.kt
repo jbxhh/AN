@@ -1,6 +1,8 @@
 package io.anonero.ui.home
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import io.anonero.model.WalletManager
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.material3.SnackbarHostState
@@ -39,6 +41,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
@@ -63,6 +66,7 @@ import io.anonero.ui.components.WalletProgressIndicator
 import io.anonero.ui.home.graph.routes.SendScreenRoute
 import io.anonero.util.Formats
 import org.koin.java.KoinJavaComponent.inject
+import timber.log.Timber
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,6 +89,27 @@ fun CoinsScreen(
     )
     val loading by walletState.isLoading.asLiveData().observeAsState(false)
     val nodeConnected = connectionStatus == Wallet.ConnectionStatus.ConnectionStatus_Connected
+
+    // Native output enumeration is separate from transaction-history refresh. Re-read
+    // outputs when the connected wallet becomes idle and whenever this screen is opened,
+    // so a restore that finished before the first output refresh does not show an empty list.
+    LaunchedEffect(nodeConnected, loading) {
+        if (!nodeConnected || loading) return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            val wallet = WalletManager.instance?.wallet ?: return@withContext
+            if (!wallet.isInitialized || !wallet.isSynchronized) return@withContext
+            try {
+                wallet.refreshCoins()
+                walletState.update()
+                Timber.tag("CoinsScreen").i(
+                    "Refreshed outputs for output list: count=%d",
+                    wallet.coins?.all?.size ?: 0
+                )
+            } catch (e: Exception) {
+                Timber.tag("CoinsScreen").w(e, "Unable to refresh outputs for output list")
+            }
+        }
+    }
 
     var message: String? = null
     if (loading) {
