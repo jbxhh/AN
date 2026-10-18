@@ -314,7 +314,7 @@ fun LockScreen(
                         if (currentPin.size == 0 && key == BackSpaceKey) {
                             return@items
                         }
-                        if (currentPin.size <= 4 && key == ConfirmKey) {
+                        if (currentPin.size < 4 && key == ConfirmKey) {
                             return@items
                         }
                         Column(
@@ -375,11 +375,11 @@ fun LockScreen(
                 if (mode != LockScreenMode.VERYFY_PIN) {
                     Row(
                         modifier = Modifier
-                            .alpha(if (currentPin.size > 4) 1f else 0f)
+                            .alpha(if (currentPin.size >= 4) 1f else 0f)
                             .wrapContentHeight(),
                     ) {
                         IconButton(onClick = {
-                            if (currentPin.size > 4)
+                            if (currentPin.size >= 4)
                                 checkPin(LockScreenShortCut.RECEIVE)
                         }) {
                             Icon(
@@ -390,7 +390,7 @@ fun LockScreen(
                         }
                         Spacer(Modifier.width(24.dp))
                         IconButton(onClick = {
-                            if (currentPin.size > 4)
+                            if (currentPin.size >= 4)
                                 checkPin(LockScreenShortCut.SEND)
                         }) {
                             Icon(
