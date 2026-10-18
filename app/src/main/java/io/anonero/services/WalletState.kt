@@ -509,7 +509,9 @@ class WalletState(private val prefs: SharedPreferences) {
      * The onboarding screen persists the selected restore height before closing the
      * temporary wallet object. On the next wallet open, force a native blockchain
      * rescan from that height instead of inheriting a previous scan marker/hash cache.
-     * Keep the request pending until the daemon is connected and fully synchronized.
+     * Queue the rescan as soon as the native wallet connection is usable. The native
+     * patch preserves pending rescan requests while the daemon is still syncing, so we
+     * must not run an ordinary refresh to completion and then start a second full pass.
      */
     fun maybeStartForcedRestoreScan(wallet: Wallet) {
         if (walletWipeInProgress.get() || manualResyncInProgress.get() || isResyncPriorityActive) return
@@ -539,14 +541,15 @@ class WalletState(private val prefs: SharedPreferences) {
                         )
                         return@withLock
                     }
-                    // The native wallet skips rescan while its daemon is behind its target.
-                    // Keep the request pending and retry from the next refreshed() callback.
+                    // Queue the real scan now even if the remote daemon is still syncing.
+                    // The native API patch retains m_refreshShouldRescan until its daemon
+                    // reaches target height; delaying this handoff made the preceding normal
+                    // refresh look complete and then visibly restarted from the restore point.
                     if (daemonTargetHeight > daemonHeight) {
                         Timber.tag(TAG).i(
-                            "Restore scan pending until daemon is synced: height=%d target=%d",
+                            "Queueing restore rescan while daemon catches up: height=%d target=%d",
                             daemonHeight, daemonTargetHeight
                         )
-                        return@withLock
                     }
 
                     // The regular refresh loop was started so connection state can settle.
@@ -564,12 +567,13 @@ class WalletState(private val prefs: SharedPreferences) {
                     }
 
                     // Refresh may have been active while pauseRefreshAndWait was draining it.
-                    // Recheck the native node snapshot before handing a rescan to its worker.
+                    // Recheck connectivity and a usable tip, but do not wait for the daemon
+                    // target: native code keeps the asynchronous rescan request pending.
                     daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
                     daemonTargetHeight = wallet.getDaemonBlockChainTargetHeight().coerceAtLeast(0L)
-                    if (daemonHeight <= 1L || daemonTargetHeight > daemonHeight) {
+                    if (daemonHeight <= 1L) {
                         Timber.tag(TAG).i(
-                            "Restore scan still pending after refresh drain: height=%d target=%d",
+                            "Restore scan deferred until daemon exposes a usable chain tip: height=%d target=%d",
                             daemonHeight, daemonTargetHeight
                         )
                         return@withLock
