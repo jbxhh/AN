@@ -610,6 +610,9 @@ fun TransactionScreen(
                                     }
                                 },
                                 onClick = {
+                                    // Dismiss the overflow menu immediately before navigation;
+                                    // otherwise it remains visible over the destination during transition.
+                                    showMenu = false
                                     navigateTo(CoinsScreenRoute)
                                 }
                             )
