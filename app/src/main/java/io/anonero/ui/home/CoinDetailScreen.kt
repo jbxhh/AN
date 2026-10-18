@@ -238,15 +238,16 @@ fun CoinDetailScreen(
                 }
             }
             AnonOutlineButton(
+                enabled = coin != null && !busy && (!coin.spent || coin.frozen),
                 onClick = {
                     val selectedCoin = coin ?: return@AnonOutlineButton
-                    if (busy) return@AnonOutlineButton
+                    if (busy || (selectedCoin.spent && !selectedCoin.frozen)) return@AnonOutlineButton
                     busy = true
                     scope.launch(Dispatchers.IO) {
                         try {
                             if (selectedCoin.frozen) {
                                 walletState.thawCoin(selectedCoin.pub_key)
-                            } else {
+                            } else if (!selectedCoin.spent) {
                                 walletState.freezeCoin(selectedCoin.pub_key)
                             }
                         } finally {
@@ -258,7 +259,13 @@ fun CoinDetailScreen(
                     .fillMaxWidth()
                     .padding(bottom = 16.dp)
             ) {
-                Text(if (coin?.frozen == true) "解冻" else "冻结")
+                Text(
+                    when {
+                        coin?.spent == true && !coin.frozen -> "已花费"
+                        coin?.frozen == true -> "解冻"
+                        else -> "冻结"
+                    }
+                )
             }
         }
     }
