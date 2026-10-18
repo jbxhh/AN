@@ -18,7 +18,6 @@ import io.anonero.model.WalletManager
 import io.anonero.model.node.NodeFields
 import io.anonero.store.NodesRepository
 import io.anonero.ui.MainActivity
-import io.anonero.util.Formats
 import io.anonero.util.WALLET_PREFERENCES
 import io.anonero.util.WALLET_USE_TOR
 import kotlinx.coroutines.CoroutineScope
@@ -33,6 +32,7 @@ import org.koin.android.ext.android.inject
 import org.koin.core.qualifier.named
 import org.koin.java.KoinJavaComponent.inject
 import timber.log.Timber
+import java.text.NumberFormat
 import java.util.Locale
 
 
@@ -131,10 +131,8 @@ class AnonNeroService : Service() {
             getString(R.string.notification_tor_port_suffix, port.toString())
         } ?: ""
 
-        val walletHeight = Formats.convertNumber(
-            walletState.currentWalletHeight,
-            Locale.getDefault()
-        )
+        val walletHeight = NumberFormat.getIntegerInstance(Locale.getDefault())
+            .format(walletState.currentWalletHeight)
         val notificationMessage = when {
             walletState.backgroundSync ->
                 getString(R.string.notification_wallet_locked_synced, walletHeight)
@@ -162,7 +160,7 @@ class AnonNeroService : Service() {
     }
 
     private fun showProgress(it: SyncProgress, torSate: String) {
-        val remaining = Formats.convertNumber(it.left, Locale.getDefault())
+        val remaining = NumberFormat.getIntegerInstance(Locale.getDefault()).format(it.left)
         val content = if (it.left != 0L) {
             getString(R.string.notification_sync_progress, remaining, torSate)
         } else {
