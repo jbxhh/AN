@@ -811,6 +811,34 @@ class WalletState(private val prefs: SharedPreferences) {
                 updateSyncProgressFromWallet(wallet, daemonHeight)
                 return false
             }
+            // A native "refreshed" callback only means one refresh batch ended; it
+            // does not prove that a manual rescan from the selected restore height has
+            // reached the daemon tip. In particular, the first callback can race ahead
+            // of the queued rescan and otherwise mark the scan complete at its start
+            // height, clearing the already-known remaining-block progress forever.
+            val processedHeight = _walletHeight.value.coerceAtLeast(0L)
+            if (daemonHeight > 0L && processedHeight < daemonHeight) {
+                wallet.isSynchronized = false
+                updateSyncProgressFromWallet(wallet, daemonHeight)
+                setLoading(false)
+                Timber.tag(TAG).i(
+                    "Keeping wallet scan active: processedHeight=%d daemonHeight=%d targetHeight=%d",
+                    processedHeight, daemonHeight, targetHeight
+                )
+                return false
+            }
+
+            // A transient zero height cannot prove that an active scan completed.
+            val scanPending = _syncProgress.value != null ||
+                prefs.getBoolean(scanPreferenceKey(wallet, "in_progress"), false) ||
+                prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+            if (daemonHeight <= 0L && scanPending) {
+                wallet.isSynchronized = false
+                setLoading(true)
+                Timber.tag(TAG).w("Keeping wallet scan active because daemon height is unavailable")
+                return false
+            }
+
             updateBlockHeights(wallet, daemonHeight)
             // Once caught up, the next ordinary refresh must measure progress from
             // this completed wallet height, not from the original restore height.
