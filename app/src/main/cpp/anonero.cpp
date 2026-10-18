@@ -1693,6 +1693,18 @@ Java_io_anonero_model_Wallet_setSubaddressLabel(JNIEnv *env, jobject instance,
 }
 
 // virtual size_t numSubaddressAccounts() const = 0;
+JNIEXPORT jboolean JNICALL
+Java_io_anonero_model_Wallet_setOutputFrozenJ(JNIEnv *env, jobject instance,
+                                               jstring publicKey, jboolean frozen) {
+    const char *_publicKey = env->GetStringUTFChars(publicKey, nullptr);
+    Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
+    const bool result = wallet->setOutputFrozen(
+        std::string(_publicKey), frozen == JNI_TRUE
+    );
+    env->ReleaseStringUTFChars(publicKey, _publicKey);
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
 JNIEXPORT jint JNICALL
 Java_io_anonero_model_Wallet_getNumAccounts(JNIEnv *env, jobject instance) {
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
