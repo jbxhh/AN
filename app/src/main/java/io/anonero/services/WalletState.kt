@@ -138,6 +138,26 @@ class WalletState(private val prefs: SharedPreferences) {
             }) ?: emptyList()).fastDistinctBy { it.getListKey() }
             _transactions.value = updatedTransactions
 
+            // Remember the earliest confirmed transaction we've ever seen for this wallet.
+            // A rescan clears Monero's cached transfers; this durable marker lets us reject
+            // future restore heights that would skip known historical transactions.
+            val earliestTransactionHeight = updatedTransactions.asSequence()
+                .filter { !it.isPending && it.blockheight > 0L }
+                .minOfOrNull { it.blockheight }
+            if (earliestTransactionHeight != null) {
+                val earliestHeightKey = scanPreferenceKey(wallet, "earliest_transaction_height")
+                val savedEarliestHeight = prefs.getLong(earliestHeightKey, -1L)
+                if (savedEarliestHeight < 0L || earliestTransactionHeight < savedEarliestHeight) {
+                    prefs.edit(commit = true) {
+                        putLong(earliestHeightKey, earliestTransactionHeight)
+                    }
+                    Timber.tag(TAG).i(
+                        "Recorded earliest known transaction height=%d",
+                        earliestTransactionHeight
+                    )
+                }
+            }
+
             // Do not fire incoming-transaction notifications for every historical output
             // discovered during initial restore/rescan. Notifications resume once synced.
             if (wallet.isSynchronized && previousTransactions.isNotEmpty()) {
@@ -1427,6 +1447,44 @@ class WalletState(private val prefs: SharedPreferences) {
         if (selectedHeight > daemonHeight) {
             return Result.failure(
                 Exception("恢复高度不能高于当前节点高度（$daemonHeight）")
+            )
+        }
+
+        // A rescan discards Monero's current transfer cache and only rebuilds
+        // transactions from the configured refresh height. Protect an existing wallet
+        // from silently losing earlier transactions and their balance by refusing a
+        // start height later than the earliest confirmed transaction already known.
+        val earliestFromCurrentHistory = _transactions.value.asSequence()
+            .filter { !it.isPending && it.blockheight > 0L }
+            .minOfOrNull { it.blockheight }
+        val savedEarliestHeight = prefs.getLong(
+            scanPreferenceKey(wallet, "earliest_transaction_height"),
+            -1L
+        ).takeIf { it >= 0L }
+        val earliestKnownTransactionHeight = listOfNotNull(
+            earliestFromCurrentHistory,
+            savedEarliestHeight
+        ).minOrNull()
+        if (earliestKnownTransactionHeight != null &&
+            selectedHeight > earliestKnownTransactionHeight
+        ) {
+            return Result.failure(
+                Exception(
+                    "恢复高度 $selectedHeight 高于钱包最早已知交易区块 " +
+                        "$earliestKnownTransactionHeight。继续重扫会跳过更早交易并导致余额缺失，" +
+                        "请将高度调低至 $earliestKnownTransactionHeight 或更早。"
+                )
+            )
+        }
+        val walletHasFunds = runCatching {
+            wallet.balance > 0L || wallet.unlockedBalance > 0L
+        }.getOrDefault(false)
+        if (earliestKnownTransactionHeight == null && walletHasFunds && selectedHeight > 0L) {
+            return Result.failure(
+                Exception(
+                    "当前无法确认钱包最早交易区块，而钱包已有余额。为避免重扫后旧交易和余额缺失，" +
+                        "请将恢复高度设为 0，或先确保交易历史已加载。"
+                )
             )
         }
 
