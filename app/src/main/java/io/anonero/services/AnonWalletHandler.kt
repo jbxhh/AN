@@ -103,6 +103,10 @@ class AnonWalletHandler(
         val wallet = WalletManager.instance?.wallet ?: return
         if (wipeInProgress.get()) return
         if (serviceStartedWallet === wallet && wallet.isInitialized) {
+            // Manual same-node Connect resumes refresh on an initialized wallet. Do the
+            // same on repeated automatic startup so a missed first refresh kick does not
+            // leave the daemon disconnected until the user taps Connect.
+            wallet.startRefresh()
             walletState.update()
             return
         }
