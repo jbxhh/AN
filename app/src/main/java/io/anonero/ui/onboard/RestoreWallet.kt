@@ -109,9 +109,13 @@ fun RestoreWallet(
         }
     }
 
-    fun validateSeed() {
-        // Accept pasted phrases separated by spaces, newlines, or tabs.
-        val candidate = seed.trim()
+    fun validateSeed(input: String = seed) {
+        // Validate the value received from the text field directly. Compose state
+        // writes are asynchronous with respect to this callback, so reading "seed"
+        // immediately after seed = input can otherwise validate the previous phrase.
+        // Normalize pasted words and accept spaces, newlines, tabs, and mixed case.
+        val candidate = input.trim()
+            .lowercase()
             .split(Regex("\\s+"))
             .filter { it.isNotBlank() }
         val isPolyseed = candidate.size == 16 &&
@@ -189,9 +193,9 @@ fun RestoreWallet(
                         OutlinedTextField(
                             value = seed,
                             shape = MaterialTheme.shapes.medium,
-                            onValueChange = {
-                                seed = it
-                                validateSeed()
+                            onValueChange = { input ->
+                                seed = input
+                                validateSeed(input)
                             },
                             isError = invalidSeed,
                             supportingText = {
