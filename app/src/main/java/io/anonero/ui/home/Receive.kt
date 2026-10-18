@@ -77,22 +77,22 @@ fun ReceiveScreen(
                 return@LaunchedEffect
             }
 
-            if (!walletState.isResyncPriorityActive) {
-                try {
-                    val address = walletState.ensureNextReceiveAddress()
-                    if (address.addressIndex > 0 && address.address.isNotBlank()) {
-                        return@LaunchedEffect
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    // Keep retrying while startup settles, but avoid flooding the log.
-                    if (retryCount == 0 || retryCount % 10 == 0) {
-                        Timber.tag("ReceiveScreen").w(
-                            e,
-                            "Waiting for a usable receive subaddress"
-                        )
-                    }
+            try {
+                // WalletState blocks this during reset setup/wipe, but allows the
+                // short address-generation call once the async rescan has been queued.
+                val address = walletState.ensureNextReceiveAddress()
+                if (address.addressIndex > 0 && address.address.isNotBlank()) {
+                    return@LaunchedEffect
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Keep retrying while startup/reset setup settles, but avoid flooding the log.
+                if (retryCount == 0 || retryCount % 10 == 0) {
+                    Timber.tag("ReceiveScreen").w(
+                        e,
+                        "Waiting for a usable receive subaddress"
+                    )
                 }
             }
 
