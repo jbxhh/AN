@@ -50,7 +50,9 @@ pause_wait_method = """void WalletImpl::pauseRefreshAndWait()
     // Disable subsequent refreshes, stop the active batch, and wait until both native
     // refresh locks are idle before daemon/init state changes. Caller restarts explicitly.
     LOG_PRINT_L2(__FUNCTION__ << ": pausing and waiting for active refresh...");
-    m_refreshEnabled = false;
+    // Use the public pause method to disable subsequent refreshes, then stop the
+    // active refresh and wait for both native locks before daemon/init changes.
+    pauseRefresh();
     m_wallet->stop();
     m_refreshCV.notify_one();
     boost::mutex::scoped_lock lock(m_refreshMutex);
