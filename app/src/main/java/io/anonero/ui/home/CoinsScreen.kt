@@ -279,16 +279,16 @@ fun CoinsScreen(
                                 }
                             },
                             trailingContent = {
-                                if (isFrozen) {
+                                if (coin.spent) {
                                     Text(
-                                        "已冻结",
+                                        "已花费",
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontWeight = FontWeight.Medium,
                                         style = MaterialTheme.typography.bodyLarge
                                     )
-                                } else if (coin.spent) {
+                                } else if (isFrozen) {
                                     Text(
-                                        "已花费",
+                                        "已冻结",
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontWeight = FontWeight.Medium,
                                         style = MaterialTheme.typography.bodyLarge
