@@ -48,7 +48,7 @@
     <string name="confirm">确认</string>
     <string name="spend">确认</string>
     <string name="coins">未花费输出</string>
-    <string name="output_number">输出%1$d</string>
+    <string name="output_number">输出 %1$d</string>
     <string name="battery_optimization_title">电池优化</string>
     <string name="battery_optimization_message">为了让 ANONERO 在后台正常运行，建议关闭电池优化。\n你可以随时在 Android 的应用设置中更改此设置。\n\n是否继续？</string>
     <string name="enable">开启</string>
