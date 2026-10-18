@@ -45,24 +45,7 @@ insert_after_line(
     "std::string addSubaddressAndGetAddress(uint32_t accountIndex) override;",
 )
 
-old_pause_refresh = """void WalletImpl::pauseRefresh()
-{
-    LOG_PRINT_L2(__FUNCTION__ << ": refresh paused...");
-    // TODO synchronize access
-    if (!m_refreshThreadDone) {
-        m_refreshEnabled = false;
-    }
-}"""
-new_pause_refresh = """void WalletImpl::pauseRefresh()
-{
-    LOG_PRINT_L2(__FUNCTION__ << ": refresh paused...");
-    // TODO synchronize access
-    if (!m_refreshThreadDone) {
-        m_refreshEnabled = false;
-    }
-}
-
-void WalletImpl::pauseRefreshAndWait()
+pause_wait_method = """void WalletImpl::pauseRefreshAndWait()
 {
     // Disable subsequent refreshes, stop the active batch, and wait until both native
     // refresh locks are idle before daemon/init state changes. Caller restarts explicitly.
@@ -73,7 +56,11 @@ void WalletImpl::pauseRefreshAndWait()
     boost::mutex::scoped_lock lock(m_refreshMutex);
     boost::mutex::scoped_lock lock2(m_refreshMutex2);
 }"""
-replace_once(wallet_cpp_path, old_pause_refresh, new_pause_refresh)
+replace_once(
+    wallet_cpp_path,
+    "bool WalletImpl::isNewWallet() const",
+    pause_wait_method + "\n\nbool WalletImpl::isNewWallet() const"
+)
 
 insert_after_line(
     api_path,
