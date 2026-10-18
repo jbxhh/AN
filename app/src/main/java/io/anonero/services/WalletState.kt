@@ -394,6 +394,20 @@ class WalletState(private val prefs: SharedPreferences) {
         val completedKey = scanPreferenceKey(wallet, "completed")
         val startKey = scanPreferenceKey(wallet, "start_height")
         val processedKey = scanPreferenceKey(wallet, "processed_height")
+        // Older builds persisted the native callback's zero-based block index while the
+        // progress model compares against the daemon's one-based block count. Migrate
+        // that stored value once so a previously completed wallet is not left one block
+        // behind after the callback height is normalized.
+        val heightCountSemanticsKey = scanPreferenceKey(wallet, "height_count_semantics_v1")
+        if (!prefs.getBoolean(heightCountSemanticsKey, false)) {
+            val legacyProcessedHeight = prefs.getLong(processedKey, -1L)
+            prefs.edit(commit = true) {
+                if (legacyProcessedHeight >= 0L) {
+                    putLong(processedKey, legacyProcessedHeight + 1L)
+                }
+                putBoolean(heightCountSemanticsKey, true)
+            }
+        }
         val wasInterrupted = prefs.getBoolean(inProgressKey, false)
         val hasCompletedScan = prefs.getBoolean(completedKey, false)
         val savedStartHeight = prefs.getLong(startKey, restoreHeight).coerceAtLeast(restoreHeight)
@@ -471,8 +485,8 @@ class WalletState(private val prefs: SharedPreferences) {
         val path = wallet.getPath()?.takeIf { it.isNotBlank() } ?: wallet.name
         val identity = path + "|" + wallet.address
         val hash = identity.fold(0) { acc, char -> 31 * acc + char.code }
-        // v4 invalidates markers created before sequential scan-callback validation.
-        // Only heights confirmed in order by transaction-processing callbacks are trusted.
+        // Keep the v4 key namespace; heightCountSemanticsKey migrates v4's stored
+        // zero-based callback heights to the one-based processed-block count model.
         return "anonero_scan_v4_" + hash + "_" + suffix
     }
 
