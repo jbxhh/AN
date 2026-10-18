@@ -660,17 +660,18 @@ class WalletState(private val prefs: SharedPreferences) {
                 Timber.tag(TAG).w(e, "Daemon-height sync progress polling stopped")
             } finally {
                 daemonHeightQueryInFlight.set(false)
-                val hasProgress = _syncProgress.value != null
-                val scanPending = _scanTracking.get() ||
-                    prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
-                setLoading(
-                    !hasProgress &&
-                        scanPending &&
-                        !walletWipeInProgress.get() &&
-                        !manualResyncInProgress.get() &&
-                        wallet.isInitialized &&
-                        !wallet.isSynchronized
-                )
+                if (!manualResyncInProgress.get()) {
+                    val hasProgress = _syncProgress.value != null
+                    val scanPending = _scanTracking.get() ||
+                        prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+                    setLoading(
+                        !hasProgress &&
+                            scanPending &&
+                            !walletWipeInProgress.get() &&
+                            wallet.isInitialized &&
+                            !wallet.isSynchronized
+                    )
+                }
             }
         }
     }
