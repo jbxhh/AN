@@ -295,7 +295,13 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                             },
                             navigateToReview = { bottomNavController.navigate(it) },
                             modifier = Modifier.padding(bottom = paddingValues.calculateBottomPadding()),
-                            onBackPress = { bottomNavController.popBackStack() },
+                            onBackPress = {
+                                val returningToOutputList =
+                                    bottomNavController.previousBackStackEntry?.destination?.route ==
+                                        CoinsScreenRoute::class.qualifiedName
+                                showBottomNavigation = !returningToOutputList
+                                bottomNavController.popBackStack()
+                            },
                             paymentUri = params,
                         )
                     }
