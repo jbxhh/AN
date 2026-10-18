@@ -456,6 +456,7 @@ class WalletState(private val prefs: SharedPreferences) {
         if (!forcedRestoreScanInFlight.compareAndSet(false, true)) return
 
         scanHeightScope.launch {
+            var refreshPaused = false
             try {
                 daemonHeightQueryMutex.withLock {
                     // A wipe closes the gate first, then waits for this critical section
@@ -467,8 +468,8 @@ class WalletState(private val prefs: SharedPreferences) {
                         Wallet.ConnectionStatus.ConnectionStatus_Connected
                     ) return@withLock
 
-                    val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
-                    val daemonTargetHeight = wallet.getDaemonBlockChainTargetHeight().coerceAtLeast(0L)
+                    var daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+                    var daemonTargetHeight = wallet.getDaemonBlockChainTargetHeight().coerceAtLeast(0L)
                     if (daemonHeight <= 1L) {
                         Timber.tag(TAG).i(
                             "Restore scan pending until daemon exposes a usable chain tip: height=%d target=%d",
@@ -476,9 +477,7 @@ class WalletState(private val prefs: SharedPreferences) {
                         )
                         return@withLock
                     }
-                    // Monero's WalletImpl::doRefresh() skips refresh/rescan while the
-                    // daemon is below its target height. Queueing a rescan before then can
-                    // be discarded by native code, while the app incorrectly marks it started.
+                    // The native wallet skips rescan while its daemon is behind its target.
                     // Keep the request pending and retry from the next refreshed() callback.
                     if (daemonTargetHeight > daemonHeight) {
                         Timber.tag(TAG).i(
@@ -488,8 +487,33 @@ class WalletState(private val prefs: SharedPreferences) {
                         return@withLock
                     }
 
-                    // The saved restore height, not the native cache tip, is the source
-                    // of truth. Reapply it before queuing the native rescan.
+                    // The regular refresh loop was started so connection state can settle.
+                    // Drain any active native refresh before changing restore height/cache.
+                    wallet.pauseRefreshAndWait()
+                    refreshPaused = true
+                    if (walletWipeInProgress.get() || getWallet !== wallet || !wallet.isInitialized) {
+                        return@withLock
+                    }
+                    if (wallet.fullStatus.connectionStatus !=
+                        Wallet.ConnectionStatus.ConnectionStatus_Connected
+                    ) {
+                        Timber.tag(TAG).i("Restore scan deferred because native daemon disconnected while pausing")
+                        return@withLock
+                    }
+
+                    // Refresh may have been active while pauseRefreshAndWait was draining it.
+                    // Recheck the native node snapshot before handing a rescan to its worker.
+                    daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+                    daemonTargetHeight = wallet.getDaemonBlockChainTargetHeight().coerceAtLeast(0L)
+                    if (daemonHeight <= 1L || daemonTargetHeight > daemonHeight) {
+                        Timber.tag(TAG).i(
+                            "Restore scan still pending after refresh drain: height=%d target=%d",
+                            daemonHeight, daemonTargetHeight
+                        )
+                        return@withLock
+                    }
+
+                    // The saved restore height, not the native cache tip, is authoritative.
                     val selectedRestoreHeight = pendingSelectedRestoreHeight(wallet)
                         ?: return@withLock
                     wallet.setRestoreHeight(selectedRestoreHeight)
@@ -513,8 +537,9 @@ class WalletState(private val prefs: SharedPreferences) {
                     // Do not queue/resume native scanning after secure wipe has closed the gate.
                     if (walletWipeInProgress.get() || getWallet !== wallet) return@withLock
                     wallet.rescanBlockchainAsync()
-                    wallet.startRefresh()
                     forcedRestoreScanStarted.set(true)
+                    wallet.startRefresh()
+                    refreshPaused = false
                     Timber.tag(TAG).i(
                         "Started restored-wallet rescan from selected height %d",
                         selectedRestoreHeight
@@ -529,11 +554,18 @@ class WalletState(private val prefs: SharedPreferences) {
                     setLoading(false)
                 }
             } finally {
+                // Never leave normal refresh disabled if a reset/wipe or disconnect raced
+                // the forced-restore handoff. A secure wipe owns the wallet close instead.
+                if (refreshPaused && !walletWipeInProgress.get() &&
+                    getWallet === wallet && wallet.isInitialized
+                ) {
+                    runCatching { wallet.startRefresh() }
+                        .onFailure { Timber.tag(TAG).e(it, "Unable to resume refresh after deferred restore scan") }
+                }
                 forcedRestoreScanInFlight.set(false)
             }
         }
     }
-
 
     /**
      * Publish local wallet data independently from daemon startup and blockchain scanning.
