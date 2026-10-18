@@ -25,6 +25,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -63,7 +64,14 @@ fun CoinDetailScreen(
     val coins by walletState.coins.collectAsState(arrayListOf())
     val hideAmounts by walletState.hideAmountsFlow.collectAsState(false)
     val coinIndex = coins.indexOfFirst { it.key == coinKey }
-    val coin = coins.getOrNull(coinIndex)
+    val currentCoin = coins.getOrNull(coinIndex)
+    // Keep the opened output visible while WalletState temporarily hides the output
+    // inventory during a rescan. A successful freeze/thaw updates this local snapshot.
+    var lastKnownCoin by remember(coinKey) { mutableStateOf(currentCoin) }
+    LaunchedEffect(currentCoin) {
+        if (currentCoin != null) lastKnownCoin = currentCoin
+    }
+    val coin = currentCoin ?: lastKnownCoin
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val clipboardManager = LocalClipboardManager.current
@@ -212,9 +220,10 @@ fun CoinDetailScreen(
                     if (busy) return@AnonOutlineButton
                     busy = true
                     scope.launch {
+                        val wasFrozen = selectedCoin.frozen
                         val error = try {
                             val result = withContext(Dispatchers.IO) {
-                                if (selectedCoin.frozen) {
+                                if (wasFrozen) {
                                     walletState.thawCoin(selectedCoin.pub_key)
                                 } else {
                                     walletState.freezeCoin(selectedCoin.pub_key)
@@ -226,11 +235,14 @@ fun CoinDetailScreen(
                         } finally {
                             busy = false
                         }
-                        error?.let {
+                        if (error != null) {
                             snackbarHostState.showSnackbar(
-                                (if (selectedCoin.frozen) "解冻失败：" else "冻结失败：") +
-                                    (it.message ?: "未知错误")
+                                (if (wasFrozen) "解冻失败：" else "冻结失败：") +
+                                    (error.message ?: "未知错误")
                             )
+                        } else {
+                            lastKnownCoin = selectedCoin.copy(frozen = !wasFrozen)
+                            snackbarHostState.showSnackbar(if (wasFrozen) "解冻成功" else "冻结成功")
                         }
                     }
                 },
