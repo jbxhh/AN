@@ -290,43 +290,77 @@ class WalletState(private val prefs: SharedPreferences) {
         }
     }
 
-    fun freezeCoin(publicKey: String): Result<Boolean> {
-        if (!beginOrdinaryWalletOperation()) {
-            return Result.failure(Exception("区块重置或安全删除优先执行，请稍后再操作输出"))
+    fun freezeCoin(publicKey: String): Result<Boolean> =
+        setCoinFrozen(publicKey, frozen = true)
+
+    fun thawCoin(publicKey: String): Result<Boolean> =
+        setCoinFrozen(publicKey, frozen = false)
+
+    /**
+     * Output freeze state is local wallet data, not a blockchain mutation. Allow it
+     * during an active scan once reset setup has handed off to the native scanner.
+     * Wallet.setOutputFrozen() serializes the short mutation with native refresh.
+     */
+    private fun setCoinFrozen(publicKey: String, frozen: Boolean): Result<Boolean> {
+        if (!beginCoinControlOperation()) {
+            return Result.failure(
+                Exception("钱包正在安全删除或区块重置准备中，请稍后再修改输出")
+            )
         }
         return try {
-            val wallet = getWallet ?: return Result.failure(Exception("Wallet not initialized"))
-            val coins = wallet.coins ?: return Result.failure(Exception("Coins not initialized"))
-            coins.setFrozen(publicKey)
-            check(wallet.store()) { "Unable to persist frozen output state" }
+            val wallet = getWallet ?: throw IllegalStateException("钱包未打开")
+            check(wallet.isInitialized) { "钱包尚未初始化" }
+            check(wallet.setOutputFrozen(publicKey, frozen)) {
+                wallet.status.errorString.takeIf { it.isNotBlank() }
+                    ?: if (frozen) "原生钱包未能冻结该输出" else "原生钱包未能解冻该输出"
+            }
+
+            val coins = wallet.coins ?: throw IllegalStateException("输出列表尚未初始化")
             coins.refresh()
-            update()
+            val refreshed = coins.all
+            val changedCoin = refreshed.firstOrNull { it.pub_key.equals(publicKey, ignoreCase = true) }
+                ?: throw IllegalStateException("当前钱包输出列表中找不到该输出，请等待同步更新后重试")
+            check(changedCoin.frozen == frozen) {
+                if (frozen) "钱包未确认输出已冻结" else "钱包未确认输出已解冻"
+            }
+
+            publishCoinControlSnapshot(refreshed)
+            Timber.tag(TAG).i(
+                "Output freeze state updated: frozen=%s outputIndex=%d",
+                frozen,
+                changedCoin.globalOutputIndex
+            )
             Result.success(true)
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Unable to freeze output")
+            Timber.tag(TAG).e(e, "Unable to change output frozen state to %s", frozen)
             Result.failure(e)
         } finally {
             endOrdinaryWalletOperation()
         }
     }
 
-    fun thawCoin(publicKey: String): Result<Boolean> {
-        if (!beginOrdinaryWalletOperation()) {
-            return Result.failure(Exception("区块重置或安全删除优先执行，请稍后再操作输出"))
+    /**
+     * Do not republish a selectable output inventory during a scan. If this detail
+     * screen was already open, update only rows that were already visible so its
+     * current output can show the new frozen state without exposing new spend inputs.
+     */
+    private fun publishCoinControlSnapshot(refreshed: List<CoinsInfo>) {
+        val scanOwnsInventory = isResyncPriorityActive ||
+            manualResyncInProgress.get() ||
+            _isLoading.value ||
+            _isSyncing.get() ||
+            _syncProgress.value != null ||
+            backgroundSync
+
+        if (!scanOwnsInventory) {
+            _coins.value = refreshed
+            return
         }
-        return try {
-            val wallet = getWallet ?: return Result.failure(Exception("Wallet not initialized"))
-            val coins = wallet.coins ?: return Result.failure(Exception("Coins not initialized"))
-            coins.thaw(publicKey)
-            check(wallet.store()) { "Unable to persist thawed output state" }
-            coins.refresh()
-            update()
-            Result.success(true)
-        } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Unable to thaw output")
-            Result.failure(e)
-        } finally {
-            endOrdinaryWalletOperation()
+
+        val byPublicKey = refreshed.associateBy { it.pub_key.lowercase() }
+        _coins.update { current ->
+            if (current.isEmpty()) current
+            else current.map { old -> byPublicKey[old.pub_key.lowercase()] ?: old }
         }
     }
 
@@ -567,6 +601,20 @@ class WalletState(private val prefs: SharedPreferences) {
      * wallet deletion waits before closing the native handle.
      */
     private fun beginReceiveAddressOperation(): Boolean {
+        if (walletWipeInProgress.get() || manualResyncInProgress.get()) return false
+        ordinaryWalletOperationsInFlight.incrementAndGet()
+        if (walletWipeInProgress.get() || manualResyncInProgress.get()) {
+            endOrdinaryWalletOperation()
+            return false
+        }
+        return true
+    }
+
+    /**
+     * Freeze/thaw uses the same short native refresh lock as address creation.
+     * Secure wipe and reset preparation retain priority; a queued scan does not block it.
+     */
+    private fun beginCoinControlOperation(): Boolean {
         if (walletWipeInProgress.get() || manualResyncInProgress.get()) return false
         ordinaryWalletOperationsInFlight.incrementAndGet()
         if (walletWipeInProgress.get() || manualResyncInProgress.get()) {
