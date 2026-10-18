@@ -84,7 +84,7 @@ class AnonWalletHandler(
         }
     }
 
-    fun openWallet(pin: String): Boolean {
+    suspend fun openWallet(pin: String): Boolean {
         val walletFile = AnonConfig.getDefaultWalletFile(AnonConfig.context!!)
         val anonWallet = WalletManager.instance?.openWallet(
             walletFile.path,
@@ -103,9 +103,23 @@ class AnonWalletHandler(
             return false
         }
 
-        // Publish balance/address from the opened wallet immediately. The asynchronous
-        // service still has to configure Tor and initialize the daemon connection.
+        // Publish local wallet data and create a child receive address before starting
+        // node initialization/refresh. This avoids racing the first native address
+        // creation against wallet.init() or the scan thread, and does not wait for sync.
         walletState.publishWalletSnapshot(anonWallet)
+        try {
+            val address = walletState.ensureNextReceiveAddress()
+            Timber.tag(TAG).i(
+                "Prepared initial receive subaddress index=%d",
+                address.addressIndex
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Unlock should still succeed if local address creation temporarily fails.
+            // ReceiveScreen keeps retrying until a usable child address is available.
+            Timber.tag(TAG).w(e, "Initial receive subaddress not ready; screen will retry")
+        }
         return true
     }
 
