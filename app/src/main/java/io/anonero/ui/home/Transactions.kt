@@ -803,7 +803,7 @@ fun TransactionScreen(
 
 
 @Composable
-fun TransactionItem(tx: TransactionInfo, hideAmounts: Boolean = false, amountCenter: Boolean = false, modifier: Modifier = Modifier, showTime: Boolean = false, timePattern: String = "HH:mm\\ndd/MM") {
+fun TransactionItem(tx: TransactionInfo, hideAmounts: Boolean = false, amountCenter: Boolean = false, modifier: Modifier = Modifier, showTime: Boolean = false, timePattern: String = "HH:mm\ndd/MM") {
     val isIncoming = tx.direction == TransactionInfo.Direction.Direction_In
     val amount = tx.amount
     val amountText = if (hideAmounts) Formats.maskAmount(amount)
