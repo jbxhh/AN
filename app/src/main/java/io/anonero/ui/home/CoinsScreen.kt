@@ -9,7 +9,6 @@ import kotlinx.coroutines.withContext
 import io.anonero.model.WalletManager
 import io.anonero.ui.theme.AnonNeroTheme
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -74,7 +73,6 @@ fun CoinsScreen(
     navigateToSpend: (route: SendScreenRoute) -> Unit = {},
     onBackPress: () -> Unit = {},
     selected: Set<String> = setOf(),
-    onCoinClick: (CoinsInfo) -> Unit = {},
 ) {
     val walletState: WalletState by inject(WalletState::class.java)
     val coins by walletState.coins.collectAsState(arrayListOf())
@@ -232,8 +230,7 @@ fun CoinsScreen(
 
                         ListItem(
                             modifier = Modifier
-                                .padding(horizontal = 4.dp, vertical = 6.dp)
-                                .clickable { onCoinClick(coin) },
+                                .padding(horizontal = 4.dp, vertical = 6.dp),
                             headlineContent = {
                                 Row(
                                     horizontalArrangement = Arrangement.SpaceBetween,
