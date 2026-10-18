@@ -45,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
@@ -252,12 +253,30 @@ class NodeSettingsViewModel(
     }
 
     suspend fun connect(node: Node) {
-        // A handed-off scan can safely be retargeted: pause and drain native refresh,
-        // preserve its scan baseline, then requeue from that height on the new node.
-        // Reset preparation and secure deletion still take priority over node switching.
+        uriValidationError.postValue(null)
+
+        // A reset request reserves priority before its native handoff. Queue this node
+        // switch until that finite preparation stage finishes instead of silently rejecting
+        // the tap. Once the reset scan is handed to native refresh, node switching can
+        // pause/drain the active refresh and resume from the same scan baseline.
+        while (walletState.isManualResyncInProgress && !walletState.isWalletWipeInProgress) {
+            delay(50L)
+        }
+        if (walletState.isWalletWipeInProgress) {
+            uriValidationError.postValue("钱包正在安全删除，节点连接已取消")
+            return
+        }
+
         val allowActiveResyncScan = walletState.canRetargetNodeDuringResync
         if (!walletHandler.beginManualNodeConnection(allowActiveResyncScan)) {
-            throw IllegalStateException("区块重置准备或安全删除正在优先执行，节点连接已让路")
+            uriValidationError.postValue(
+                if (walletState.isWalletWipeInProgress) {
+                    "钱包正在安全删除，节点连接已取消"
+                } else {
+                    "区块重置仍在准备，请稍后再连接节点"
+                }
+            )
+            return
         }
         var refreshPausedForConnect = false
         // Suppress automatic native reconnects from the wallet listener while this
@@ -525,6 +544,14 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
     val activeNode by nodeSettingsVM.activeNode.collectAsState(null)
     val scope = rememberCoroutineScope()
     val toastState = rememberToasterState()
+    val connectionError by nodeSettingsVM.connectionError.observeAsState(null)
+
+    // Surface connection failures without changing the existing node-list layout.
+    LaunchedEffect(connectionError) {
+        connectionError?.takeIf { it.isNotBlank() }?.let { message ->
+            toastState.show(message, type = ToastType.Warning, duration = 6.seconds)
+        }
+    }
 
     if (showNodeDetails || editingNode != null)
         Dialog(
