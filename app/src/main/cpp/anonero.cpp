@@ -17,6 +17,7 @@
 #include <inttypes.h>
 #include <cstring>
 #include <mutex>
+#include <condition_variable>
 #include "anonero.h"
 #include "wallet2_api.h"
 
@@ -76,6 +77,7 @@ static jclass class_CoinsInfo;
 static jclass class_Pair;
 
 std::mutex _listenerMutex;
+std::condition_variable _listenerCv;
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *jvm, void *reserved) {
     cachedJVM = jvm;
@@ -136,36 +138,61 @@ void detachJVM(JNIEnv *jenv, int envStat) {
 
 struct MyWalletListener : Monero::WalletListener {
     jobject jlistener;
+    int activeCallbacks = 0;
 
     MyWalletListener(JNIEnv *env, jobject aListener) {
         LOGD("Created Listener");
-        jlistener = env->NewGlobalRef(aListener);;
+        jlistener = env->NewGlobalRef(aListener);
     }
 
     ~MyWalletListener() {
         LOGD("Destroyed Listener");
     };
 
-    void deleteGlobalJavaRef(JNIEnv *env) {
+    // Copy a local JNI reference while protected, then release the mutex before calling
+    // Java. Wallet callbacks call back into JNI, so holding this mutex across CallVoidMethod
+    // can deadlock against listener replacement or another wallet callback.
+    jobject acquireListenerForCallback(JNIEnv *env) {
         std::lock_guard<std::mutex> lock(_listenerMutex);
-        env->DeleteGlobalRef(jlistener);
+        if (jlistener == nullptr) return nullptr;
+        jobject localRef = env->NewLocalRef(jlistener);
+        if (localRef != nullptr) ++activeCallbacks;
+        return localRef;
+    }
+
+    void releaseListenerAfterCallback(JNIEnv *env, jobject localRef) {
+        if (localRef != nullptr) env->DeleteLocalRef(localRef);
+        std::lock_guard<std::mutex> lock(_listenerMutex);
+        if (activeCallbacks > 0) --activeCallbacks;
+        if (activeCallbacks == 0) _listenerCv.notify_all();
+    }
+
+    void deleteGlobalJavaRef(JNIEnv *env) {
+        std::unique_lock<std::mutex> lock(_listenerMutex);
+        jobject oldRef = jlistener;
         jlistener = nullptr;
+        if (oldRef != nullptr) env->DeleteGlobalRef(oldRef);
+        // Do not destroy this listener while a callback is using its local Java ref.
+        _listenerCv.wait(lock, [this] { return activeCallbacks == 0; });
     }
 
     /**
  * @brief updated  - generic callback, called when any event (sent/received/block reveived/etc) happened with the wallet;
  */
     void updated() {
-        std::lock_guard<std::mutex> lock(_listenerMutex);
-        if (jlistener == nullptr) return;
-        LOGD("updated");
         JNIEnv *jenv;
         int envStat = attachJVM(&jenv);
         if (envStat == JNI_ERR) return;
+        jobject listenerRef = acquireListenerForCallback(jenv);
+        if (listenerRef == nullptr) {
+            detachJVM(jenv, envStat);
+            return;
+        }
 
+        LOGD("updated");
         jmethodID listenerClass_updated = jenv->GetMethodID(class_WalletListener, "updated", "()V");
-        jenv->CallVoidMethod(jlistener, listenerClass_updated);
-
+        jenv->CallVoidMethod(listenerRef, listenerClass_updated);
+        releaseListenerAfterCallback(jenv, listenerRef);
         detachJVM(jenv, envStat);
     }
 
@@ -200,22 +227,26 @@ struct MyWalletListener : Monero::WalletListener {
      * @param amount        - amount
      */
     void unconfirmedMoneyReceived(const std::string &txId, uint64_t amount) {
-        std::lock_guard<std::mutex> lock(_listenerMutex);
-        if (jlistener == nullptr) return;
-        LOGD("unconfirmedMoneyReceived %"
-                     PRIu64, amount);
         JNIEnv *jenv;
         int envStat = attachJVM(&jenv);
         if (envStat == JNI_ERR) return;
+        jobject listenerRef = acquireListenerForCallback(jenv);
+        if (listenerRef == nullptr) {
+            detachJVM(jenv, envStat);
+            return;
+        }
 
+        LOGD("unconfirmedMoneyReceived %"
+                     PRIu64, amount);
         jlong amountLong = static_cast<jlong>(amount);
-        jstring jstring1 = jenv->NewStringUTF(txId.c_str());
+        jstring txIdRef = jenv->NewStringUTF(txId.c_str());
 
-        jmethodID listenerClass_newBlock = jenv->GetMethodID(class_WalletListener,
-                                                             "unconfirmedMoneyReceived",
-                                                             "(Ljava/lang/String;J)V");
-        jenv->CallVoidMethod(jlistener, listenerClass_newBlock, jstring1, amountLong);
-
+        jmethodID callback = jenv->GetMethodID(class_WalletListener,
+                                               "unconfirmedMoneyReceived",
+                                               "(Ljava/lang/String;J)V");
+        jenv->CallVoidMethod(listenerRef, callback, txIdRef, amountLong);
+        if (txIdRef != nullptr) jenv->DeleteLocalRef(txIdRef);
+        releaseListenerAfterCallback(jenv, listenerRef);
         detachJVM(jenv, envStat);
     }
 
@@ -224,19 +255,20 @@ struct MyWalletListener : Monero::WalletListener {
      * @param height        - block height
      */
     void newBlock(uint64_t height) {
-        std::lock_guard<std::mutex> lock(_listenerMutex);
-        if (jlistener == nullptr) return;
-        //LOGD("newBlock");
         JNIEnv *jenv;
         int envStat = attachJVM(&jenv);
         if (envStat == JNI_ERR) return;
+        jobject listenerRef = acquireListenerForCallback(jenv);
+        if (listenerRef == nullptr) {
+            detachJVM(jenv, envStat);
+            return;
+        }
 
         // wallet2 reports a zero-based block index. Expose the processed block count to Java.
         jlong h = static_cast<jlong>(height + 1ULL);
-        jmethodID listenerClass_newBlock = jenv->GetMethodID(class_WalletListener, "newBlock",
-                                                             "(J)V");
-        jenv->CallVoidMethod(jlistener, listenerClass_newBlock, h);
-
+        jmethodID callback = jenv->GetMethodID(class_WalletListener, "newBlock", "(J)V");
+        jenv->CallVoidMethod(listenerRef, callback, h);
+        releaseListenerAfterCallback(jenv, listenerRef);
         detachJVM(jenv, envStat);
     }
 
@@ -244,17 +276,19 @@ struct MyWalletListener : Monero::WalletListener {
  * @brief refreshed - called when wallet refreshed by background thread or explicitly refreshed by calling "refresh" synchronously
  */
     void refreshed() {
-        std::lock_guard<std::mutex> lock(_listenerMutex);
-        if (jlistener == nullptr) return;
-        LOGD("refreshed");
         JNIEnv *jenv;
-
         int envStat = attachJVM(&jenv);
         if (envStat == JNI_ERR) return;
+        jobject listenerRef = acquireListenerForCallback(jenv);
+        if (listenerRef == nullptr) {
+            detachJVM(jenv, envStat);
+            return;
+        }
 
-        jmethodID listenerClass_refreshed = jenv->GetMethodID(class_WalletListener, "refreshed",
-                                                              "()V");
-        jenv->CallVoidMethod(jlistener, listenerClass_refreshed);
+        LOGD("refreshed");
+        jmethodID callback = jenv->GetMethodID(class_WalletListener, "refreshed", "()V");
+        jenv->CallVoidMethod(listenerRef, callback);
+        releaseListenerAfterCallback(jenv, listenerRef);
         detachJVM(jenv, envStat);
     }
 };
