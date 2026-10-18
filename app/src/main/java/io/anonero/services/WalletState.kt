@@ -56,6 +56,9 @@ class WalletState(private val prefs: SharedPreferences) {
     private val _isLoading = MutableStateFlow(false)
     private var _isSyncing = AtomicBoolean(false)
     private val _backgroundSync = MutableStateFlow(false)
+    // UI lock visibility is separate from the native background-sync operation state.
+    // A valid PIN may dismiss the overlay while native shutdown/restart finishes on IO.
+    private val _pinLockVisible = MutableStateFlow(false)
     private val _incomingTx = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
     private val _transactions = MutableStateFlow<List<TransactionInfo>>(listOf())
     private val _subAddresses = MutableStateFlow<List<Subaddress>>(listOf())
@@ -138,6 +141,12 @@ class WalletState(private val prefs: SharedPreferences) {
     private fun isManualResyncPreparing(): Boolean =
         manualResyncInProgress.get() && !manualResyncScanPrepared.get()
     val backgroundSyncFlow: Flow<Boolean> = _backgroundSync
+    val pinLockVisibleFlow: Flow<Boolean> = _pinLockVisible
+    val pinLockVisible get() = _pinLockVisible.value
+
+    fun dismissPinLockScreen() {
+        _pinLockVisible.value = false
+    }
 
     val walletStatus: Flow<Wallet.Status?> = _walletStatus
     val syncProgress: Flow<SyncProgress?> = _syncProgress
@@ -182,6 +191,7 @@ class WalletState(private val prefs: SharedPreferences) {
         _isLoading.value = false
         _isSyncing.set(false)
         _backgroundSync.value = false
+        _pinLockVisible.value = false
         scanPreferenceIdentity.set(null)
     }
 
@@ -1433,11 +1443,19 @@ class WalletState(private val prefs: SharedPreferences) {
     }
     
     suspend fun enterBackgroundSync(): Boolean = bgSyncMutex.withLock {
-        if (walletWipeInProgress.get() || isResyncPriorityActive) return false
+        if (walletWipeInProgress.get()) return false
         val wallet = getWallet ?: return false
-        if (!wallet.isInitialized || backgroundSync) return false
+        if (!wallet.isInitialized) return false
+        // If native background sync is still active after a prior resume failure,
+        // re-lock the UI on the next app-background transition without starting a second worker.
+        if (backgroundSync) {
+            _pinLockVisible.value = true
+            return true
+        }
+        if (isResyncPriorityActive) return false
         emitUnlockShortcut(LockScreenShortCut.HOME)
         _backgroundSync.value = true
+        _pinLockVisible.value = true
         if (AnonConfig.viewOnly) return true
         _blockUpdates.set(true)
         try {
@@ -1446,10 +1464,12 @@ class WalletState(private val prefs: SharedPreferences) {
                 return true
             }
             _backgroundSync.value = false
+            _pinLockVisible.value = false
             Timber.tag(TAG).e("startBackgroundSync returned false")
             return false
         } catch (e: Exception) {
             _backgroundSync.value = false
+            _pinLockVisible.value = false
             Timber.tag(TAG).e(e, "startBackgroundSync error")
             return false
         } finally {
@@ -1462,6 +1482,7 @@ class WalletState(private val prefs: SharedPreferences) {
         val wallet = getWallet ?: return false
         if (AnonConfig.viewOnly) {
             _backgroundSync.value = false
+            _pinLockVisible.value = false
             update()
             return true
         }
@@ -1469,9 +1490,11 @@ class WalletState(private val prefs: SharedPreferences) {
         var refreshRestarted = false
         try {
             if (wallet.stopBackgroundSync(pin)) {
-                // Start normal native refresh before dismissing the PIN overlay.
-                wallet.startRefresh()
+                // Unlock the app as soon as the native background worker has stopped.
+                // Refresh startup must not keep the PIN overlay blocking navigation.
                 _backgroundSync.value = false
+                _pinLockVisible.value = false
+                wallet.startRefresh()
                 refreshRestarted = true
                 Timber.tag(TAG).i("Exited background sync; normal refresh restarted")
                 return true
@@ -1577,6 +1600,7 @@ class WalletState(private val prefs: SharedPreferences) {
         _blockUpdates.set(false)
         _isLoading.value = false
         _backgroundSync.value = false
+        _pinLockVisible.value = false
         _transactions.value = emptyList()
         _subAddresses.value = emptyList()
         _balanceInfo.value = null
@@ -1610,6 +1634,7 @@ class WalletState(private val prefs: SharedPreferences) {
 
     fun setBackGroundSync(startBackgroundSync: Boolean) {
         _backgroundSync.update { startBackgroundSync }
+        if (!startBackgroundSync) _pinLockVisible.value = false
     }
 
     /**
