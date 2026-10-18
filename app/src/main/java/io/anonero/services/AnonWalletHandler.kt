@@ -428,6 +428,10 @@ class AnonWalletHandler(
         var walletClosed = false
 
         try {
+            // The wipe gate is already raised. Drain reset/height-query operations before
+            // invoking any more native wallet methods, so secure deletion has priority.
+            walletState.awaitPendingNativeQueries()
+
             // Stop background sync only if the app actually entered that mode.
             // Calling the native stop routine unconditionally can stall normal wipes.
             if (walletState.backgroundSync) {
@@ -437,9 +441,8 @@ class AnonWalletHandler(
                 walletState.setBackGroundSync(false)
             }
 
-            // Gate and drain app-side JNI calls first; only then stop native refresh.
-            // This prevents an in-flight scan task from restarting refresh after pause.
-            walletState.awaitPendingNativeQueries()
+            // App-side JNI calls are gated; only now stop native refresh. This prevents
+            // an in-flight scan task from restarting refresh after pause.
             Timber.tag(TAG).i("Secure wipe: pausing wallet refresh")
             wallet.pauseRefresh()
             refreshPaused = true
