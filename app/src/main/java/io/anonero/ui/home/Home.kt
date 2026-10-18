@@ -6,8 +6,9 @@ import android.content.Intent
 import android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -190,7 +191,17 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
         Scaffold(
             contentWindowInsets = WindowInsets(top = 0.dp, bottom = 0.dp),
             bottomBar = {
-                if (showBottomNavigation) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showBottomNavigation,
+                    enter = androidx.compose.animation.slideInVertically(
+                        initialOffsetY = { it },
+                        animationSpec = tween(durationMillis = 150)
+                    ),
+                    exit = androidx.compose.animation.slideOutVertically(
+                        targetOffsetY = { it },
+                        animationSpec = tween(durationMillis = 150)
+                    )
+                ) {
                     MainBottomNavigation(
                         currentRoute = currentRoute,
                         onTabSelected = {
@@ -205,15 +216,10 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
         ) { paddingValues ->
             Box(modifier = modifier.padding(0.dp)) {
                 NavHost(
-                    navController = bottomNavController,
+                    bottomNavController,
                     startDestination = startDestination,
-                    // Disable NavHost route crossfades explicitly. Falling back to the
-                    // navigation library defaults can keep the outgoing screen composited
-                    // over the incoming page and make every page switch feel delayed.
-                    enterTransition = { EnterTransition.None },
-                    exitTransition = { ExitTransition.None },
-                    popEnterTransition = { EnterTransition.None },
-                    popExitTransition = { ExitTransition.None }
+                    exitTransition = { fadeOut(animationSpec = tween(340)) },
+                    enterTransition = { fadeIn(animationSpec = tween(340)) }
                 ) {
                     composable<TransactionsRoute> {
                         TransactionScreen(
