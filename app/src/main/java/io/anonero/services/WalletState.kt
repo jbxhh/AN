@@ -1602,20 +1602,23 @@ class WalletState(private val prefs: SharedPreferences) {
                 // The reset yielded to secure wipe before the native scan was queued.
                 // Release its preparation marker so the wipe can continue.
                 manualResyncScanPrepared.set(false)
-                // Nothing was queued natively: restore the old setting and resume the
-                // existing scanner without disturbing its current progress indicators.
-                previousRestoreHeight?.let { restoreHeight ->
-                    runCatching {
-                        wallet.setRestoreHeight(restoreHeight)
-                        check(wallet.store()) { "Unable to restore previous restore height" }
-                    }.onFailure { rollbackError ->
-                        Timber.tag(TAG).e(rollbackError, "Restore-height rollback failed")
-                    }
-                }
+                // Nothing was queued natively. Normally roll back and resume the
+                // existing scan; if secure wipe has priority, avoid every further JNI
+                // call because the wallet is about to be paused and closed.
                 if (!walletWipeInProgress.get()) {
+                    previousRestoreHeight?.let { restoreHeight ->
+                        runCatching {
+                            wallet.setRestoreHeight(restoreHeight)
+                            check(wallet.store()) { "Unable to restore previous restore height" }
+                        }.onFailure { rollbackError ->
+                            Timber.tag(TAG).e(rollbackError, "Restore-height rollback failed")
+                        }
+                    }
                     runCatching { wallet.startRefresh() }.onFailure { restartError ->
                         Timber.tag(TAG).e(restartError, "Unable to resume refresh after rejected rescan")
                     }
+                } else {
+                    Timber.tag(TAG).i("Skipping reset rollback and refresh restart because secure wipe has priority")
                 }
                 Result.failure(e)
             } else {
