@@ -235,6 +235,43 @@ class WalletState(private val prefs: SharedPreferences) {
     }
 
 
+    fun getAddressForCoin(txHash: String?): String? {
+        if (txHash.isNullOrEmpty()) return null
+        val tx = _transactions.value.firstOrNull { it.hash == txHash } ?: return null
+        return try {
+            getWallet?.getSubaddress(tx.accountIndex, tx.addressIndex)
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "Unable to resolve address for output transaction")
+            null
+        }
+    }
+
+    fun freezeCoin(publicKey: String): Result<Boolean> = try {
+        val wallet = getWallet ?: return Result.failure(Exception("Wallet not initialized"))
+        val coins = wallet.coins ?: return Result.failure(Exception("Coins not initialized"))
+        coins.setFrozen(publicKey)
+        wallet.store()
+        coins.refresh()
+        update()
+        Result.success(true)
+    } catch (e: Exception) {
+        Timber.tag(TAG).e(e, "Unable to freeze output")
+        Result.failure(e)
+    }
+
+    fun thawCoin(publicKey: String): Result<Boolean> = try {
+        val wallet = getWallet ?: return Result.failure(Exception("Wallet not initialized"))
+        val coins = wallet.coins ?: return Result.failure(Exception("Coins not initialized"))
+        coins.thaw(publicKey)
+        wallet.store()
+        coins.refresh()
+        update()
+        Result.success(true)
+    } catch (e: Exception) {
+        Timber.tag(TAG).e(e, "Unable to thaw output")
+        Result.failure(e)
+    }
+
     /**
      * SharedPreferences is written by the seed-restore flow before its temporary
      * wallet is closed. Treat that selected value as authoritative across native init.
