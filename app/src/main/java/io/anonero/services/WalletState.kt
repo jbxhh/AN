@@ -1543,15 +1543,27 @@ class WalletState(private val prefs: SharedPreferences) {
         var previousRestoreHeight: Long? = null
         var rescanQueued = false
         return try {
+            check(!walletWipeInProgress.get()) {
+                "钱包安全删除优先，已取消区块重置"
+            }
             previousRestoreHeight = wallet.getRestoreHeight()
+            check(!walletWipeInProgress.get()) {
+                "钱包安全删除优先，已取消区块重置"
+            }
             // Finish all state and wallet reads before requesting native rescan.
             // Once rescan starts, JNI reads such as balance/history can contend with
             // the refresh worker and keep the reset coroutine suspended indefinitely.
             wallet.setRestoreHeight(selectedHeight)
+            check(!walletWipeInProgress.get()) {
+                "钱包安全删除优先，已取消区块重置"
+            }
             check(wallet.getRestoreHeight().coerceAtLeast(0L) == selectedHeight) {
                 "Selected restore height was not applied"
             }
             check(wallet.store()) { "Unable to persist selected restore height" }
+            check(!walletWipeInProgress.get()) {
+                "钱包安全删除优先，已取消区块重置"
+            }
 
             // The reset screen already queried the real daemon tip directly. Seed the
             // determinate progress state before queuing the native rescan, rather than
@@ -1565,6 +1577,9 @@ class WalletState(private val prefs: SharedPreferences) {
                 maxOf(daemonHeight, daemonTargetHeight) // native wallet heights are already counts
             }
             prepareManualResyncScanState(wallet, selectedHeight, progressTargetHeight)
+            check(!walletWipeInProgress.get()) {
+                "钱包安全删除优先，已取消区块重置"
+            }
             manualResyncScanPrepared.set(true)
 
             // This is the last operation that schedules the native scan. Do not make
