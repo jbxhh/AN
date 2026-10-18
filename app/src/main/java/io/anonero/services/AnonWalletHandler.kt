@@ -102,6 +102,14 @@ class AnonWalletHandler(
 
     private suspend fun startServiceLocked() {
         if (wipeInProgress.get()) return
+        // A manual Connect click has priority over automatic startup. Home and
+        // onboarding can both request startup while Tor is bootstrapping; without
+        // this guard, an automatic init can take the wallet initialization lock
+        // just before the user's explicit connection request.
+        if (isManualNodeConnectionInProgress()) {
+            Timber.tag(TAG).i("Skipping automatic wallet startup while manual node connection is pending")
+            return
+        }
         val wallet = WalletManager.instance?.wallet ?: return
         if (wipeInProgress.get()) return
         if (
@@ -150,8 +158,19 @@ class AnonWalletHandler(
             }
 
             if (wipeInProgress.get()) return
+            // Tor may have become ready while the user was opening Node Management.
+            // Re-check before locking/initializing so automatic startup cannot steal
+            // the native init slot from the manual connection request.
+            if (isManualNodeConnectionInProgress()) {
+                Timber.tag(TAG).i("Deferring automatic wallet init to the pending manual node connection")
+                return
+            }
             walletInitializationMutex.withLock {
                 if (wipeInProgress.get()) return@withLock
+                if (isManualNodeConnectionInProgress()) {
+                    Timber.tag(TAG).i("Skipping automatic wallet init because manual node connection took priority")
+                    return@withLock
+                }
                 if (serviceStartedWallet === wallet && wallet.isInitialized) {
                     walletState.update()
                 } else {
