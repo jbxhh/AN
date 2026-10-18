@@ -413,12 +413,16 @@ class WalletState(private val prefs: SharedPreferences) {
         return try {
             val wallet = getWallet ?: throw IllegalStateException("钱包未打开")
             check(wallet.isInitialized) { "钱包尚未初始化" }
+            val coins = wallet.coins ?: throw IllegalStateException("输出列表尚未初始化")
+            val currentCoin = coins.all.firstOrNull {
+                it.pub_key.equals(publicKey, ignoreCase = true)
+            } ?: throw IllegalStateException("当前钱包输出列表中找不到该输出，请等待同步更新后重试")
+            check(!frozen || !currentCoin.spent) { "已花费的输出不能冻结" }
             check(wallet.setOutputFrozen(publicKey, frozen)) {
                 wallet.status.errorString.takeIf { it.isNotBlank() }
                     ?: if (frozen) "原生钱包未能冻结该输出" else "原生钱包未能解冻该输出"
             }
 
-            val coins = wallet.coins ?: throw IllegalStateException("输出列表尚未初始化")
             coins.refresh()
             val refreshed = coins.all
             val changedCoin = refreshed.firstOrNull { it.pub_key.equals(publicKey, ignoreCase = true) }
