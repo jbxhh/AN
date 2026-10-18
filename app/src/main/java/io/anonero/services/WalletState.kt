@@ -1272,12 +1272,13 @@ class WalletState(private val prefs: SharedPreferences) {
             )
         }
 
-        val previousRestoreHeight = wallet.getRestoreHeight()
         if (!manualResyncInProgress.compareAndSet(false, true)) {
             return Result.failure(Exception("区块重置正在执行，请勿重复点击"))
         }
+        var previousRestoreHeight: Long? = null
         var rescanQueued = false
         return try {
+            previousRestoreHeight = wallet.getRestoreHeight()
             // Finish all state and wallet reads before requesting native rescan.
             // Once rescan starts, JNI reads such as balance/history can contend with
             // the refresh worker and keep the reset coroutine suspended indefinitely.
@@ -1302,11 +1303,13 @@ class WalletState(private val prefs: SharedPreferences) {
             if (!rescanQueued) {
                 // Nothing was queued natively: restore the old setting and resume the
                 // existing scanner without disturbing its current progress indicators.
-                runCatching {
-                    wallet.setRestoreHeight(previousRestoreHeight)
-                    check(wallet.store()) { "Unable to restore previous restore height" }
-                }.onFailure { rollbackError ->
-                    Timber.tag(TAG).e(rollbackError, "Restore-height rollback failed")
+                previousRestoreHeight?.let { restoreHeight ->
+                    runCatching {
+                        wallet.setRestoreHeight(restoreHeight)
+                        check(wallet.store()) { "Unable to restore previous restore height" }
+                    }.onFailure { rollbackError ->
+                        Timber.tag(TAG).e(rollbackError, "Restore-height rollback failed")
+                    }
                 }
                 runCatching { wallet.startRefresh() }.onFailure { restartError ->
                     Timber.tag(TAG).e(restartError, "Unable to resume refresh after rejected rescan")
