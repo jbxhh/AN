@@ -47,10 +47,18 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
     override fun unconfirmedMoneyReceived(txId: String?, amount: Long) {}
 
     override fun newBlock(height: Long) {
-        Timber.tag(name).i("newBlock processed scan block: %s", height)
+        // Monero's callback carries the zero-based index of the processed block.
+        // The scan tracker compares against daemon blockchain height (block count),
+        // so convert the block index to the one-based processed-block count.
+        val processedHeight = height + 1L
+        Timber.tag(name).i(
+            "newBlock processed block index=%d processedCount=%d",
+            height,
+            processedHeight
+        )
         // Do not switch off the loading phase here. recordScannedBlockHeight publishes
         // the syncing bar first; the progress indicator prioritizes it over loading.
-        walletState.recordScannedBlockHeight(height, wallet)
+        walletState.recordScannedBlockHeight(processedHeight, wallet)
     }
 
     override fun updated() {
