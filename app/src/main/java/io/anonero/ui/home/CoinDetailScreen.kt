@@ -53,6 +53,11 @@ private fun abbreviatedValue(value: String, maxChars: Int): String {
     return value.take(left) + "..." + value.takeLast(right)
 }
 
+private fun breakableIdentifier(value: String, chunkSize: Int = 8): String {
+    if (value.isEmpty()) return value
+    return value.chunked(chunkSize).joinToString(separator = "\u200B")
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CoinDetailScreen(
@@ -150,7 +155,7 @@ fun CoinDetailScreen(
                 ) {
                     Text("公钥", modifier = Modifier.size(width = 40.dp, height = 24.dp), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = coin?.let { if (pubKeyState == 1) it.pub_key else abbreviatedValue(it.pub_key, 32) } ?: "____",
+                        text = coin?.let { breakableIdentifier(if (pubKeyState == 1) it.pub_key else abbreviatedValue(it.pub_key, 48)) } ?: "____",
                         modifier = Modifier.weight(1f),
                         textAlign = TextAlign.Start,
                         style = MaterialTheme.typography.titleMedium
@@ -168,7 +173,7 @@ fun CoinDetailScreen(
                 ) {
                     Text("哈希", modifier = Modifier.size(width = 40.dp, height = 24.dp), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = coin?.let { if (hashState == 1) it.hash else abbreviatedValue(it.hash, 32) } ?: "____",
+                        text = coin?.let { breakableIdentifier(if (hashState == 1) it.hash else abbreviatedValue(it.hash, 48)) } ?: "____",
                         modifier = Modifier.weight(1f),
                         textAlign = TextAlign.Start,
                         style = MaterialTheme.typography.titleMedium
@@ -186,7 +191,7 @@ fun CoinDetailScreen(
                 ) {
                     Text("地址", modifier = Modifier.size(width = 40.dp, height = 24.dp), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = outputAddress?.let { if (addressState == 1) it else abbreviatedValue(it, 32) } ?: "____",
+                        text = outputAddress?.let { breakableIdentifier(if (addressState == 1) it else abbreviatedValue(it, 48)) } ?: "____",
                         modifier = Modifier.weight(1f),
                         textAlign = TextAlign.Start,
                         style = MaterialTheme.typography.titleMedium
