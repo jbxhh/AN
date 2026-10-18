@@ -77,6 +77,7 @@ fun TransactionDetailScreen(
 //    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var transactionInfo: TransactionInfo? by remember { mutableStateOf(null) }
     val walletState = koinInject<WalletState>()
+    val hideAmounts by walletState.hideAmountsFlow.collectAsState(false)
     val transactions by walletState.transactions.collectAsState(listOf())
     val scope = rememberCoroutineScope()
     var notesDialog by remember { mutableStateOf(false) }
@@ -253,6 +254,7 @@ fun TransactionDetailScreen(
                     with(sharedTransitionScope) {
                         TransactionItem(
                             tx = transactionInfo!!,
+                            hideAmounts = hideAmounts,
                             amountCenter = true,
                             showTime = true,
                             timePattern = "HH:mm\nMM/dd",
@@ -302,11 +304,10 @@ fun TransactionDetailScreen(
                 item {
                     DetailItem(
                         title = stringResource(R.string.transaction_fee),
-                        subtitle = if (transactionInfo?.fee != null) {
-                            Formats.getDisplayAmount(transactionInfo?.fee!!)
-                        } else {
-                            "____"
-                        }
+                        subtitle = transactionInfo?.fee?.let { fee ->
+                            if (hideAmounts) Formats.maskAmount(fee)
+                            else Formats.getDisplayAmount(fee)
+                        } ?: "____"
                     )
                 }
                 item {
