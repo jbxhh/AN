@@ -386,7 +386,8 @@ private fun parseNumericRestoreDate(input: String): Date? {
 fun ResyncBlockchainScreen(
     onBackPress: () -> Unit,
     toastState: ToasterState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onResyncStarted: () -> Unit = onBackPress
 ) {
     var restoreHeightInput by remember { mutableStateOf("") }
     var restoreDateInput by remember { mutableStateOf("") }
@@ -624,10 +625,13 @@ fun ResyncBlockchainScreen(
                                                 putLong(RESTORE_HEIGHT, selectedHeight)
                                             }
                                             toastState.show(
-                                                "已从所选区块高度开始重新扫描交易",
+                                                "已提交区块重置，正在从所选高度扫描",
                                                 type = ToastType.Success
                                             )
-                                            onBackPress()
+                                            // The sync progress state was published before native
+                                            // wallet setup was dispatched; return to the transaction
+                                            // screen now so the remaining-block bar is visible.
+                                            onResyncStarted()
                                         }
                                     } catch (e: Exception) {
                                         toastState.show(
