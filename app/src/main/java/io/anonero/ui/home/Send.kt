@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
@@ -57,6 +58,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -277,6 +280,7 @@ fun SendScreen(
     val txComposeError by sendViewModel.txComposeError.observeAsState()
     val view = LocalView.current
     val walletState: WalletState by inject(WalletState::class.java)
+    val hideAmounts by walletState.hideAmountsFlow.collectAsState(false)
 
     val showIndefiniteLoading by walletState.isLoading.asLiveData().observeAsState(false)
 
@@ -284,6 +288,11 @@ fun SendScreen(
     val unLockedAmount = Formats.getDisplayAmount(
         unlockedBalance ?: 0L
     )
+    val displayedUnlockedAmount = if (hideAmounts) {
+        Formats.maskAmount(unlockedBalance ?: 0L)
+    } else {
+        unLockedAmount
+    }
 
     LaunchedEffect(paymentUri) {
         if (paymentUri != null && paymentUri.coins.isNotEmpty()) {
@@ -536,6 +545,11 @@ fun SendScreen(
                                 value = amountField,
                                 shape = MaterialTheme.shapes.medium,
                                 textStyle = MaterialTheme.typography.bodyLarge.copy(letterSpacing = 0.sp),
+                                visualTransformation = if (hideAmounts) {
+                                    PasswordVisualTransformation()
+                                } else {
+                                    VisualTransformation.None
+                                },
                                 placeholder = {
                                     Text(
                                         text = "",
@@ -556,10 +570,10 @@ fun SendScreen(
                         },
                     )
                     Text(
-                        if (sweep)"${stringResource(R.string.sweeping_balance)}$unLockedAmount ${
+                        if (sweep)"${stringResource(R.string.sweeping_balance)}$displayedUnlockedAmount ${
                             stringResource(
                                 R.string.minus_fees
-                            )}" else "${stringResource(R.string.available_balance)}$unLockedAmount",
+                            )}" else "${stringResource(R.string.available_balance)}$displayedUnlockedAmount",
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
