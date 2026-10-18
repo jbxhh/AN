@@ -1490,7 +1490,8 @@ class WalletState(private val prefs: SharedPreferences) {
         selectedRestoreHeight: Long? = null,
         knownDaemonHeight: Long? = null,
         knownDaemonTargetHeight: Long? = null,
-        reservation: ManualResyncReservation? = null
+        reservation: ManualResyncReservation? = null,
+        awaitOtherWalletWork: suspend () -> Unit = {}
     ): Result<Boolean> {
         if (walletWipeInProgress.get()) {
             reservation?.let(::cancelManualResyncRequest)
@@ -1516,7 +1517,8 @@ class WalletState(private val prefs: SharedPreferences) {
                     selectedRestoreHeight = selectedRestoreHeight,
                     knownDaemonHeight = knownDaemonHeight,
                     knownDaemonTargetHeight = knownDaemonTargetHeight,
-                    reservation = request
+                    reservation = request,
+                    awaitOtherWalletWork = awaitOtherWalletWork
                 )
                 handedOffToWorker = result.isSuccess
                 result
@@ -1536,7 +1538,8 @@ class WalletState(private val prefs: SharedPreferences) {
         selectedRestoreHeight: Long?,
         knownDaemonHeight: Long?,
         knownDaemonTargetHeight: Long?,
-        reservation: ManualResyncReservation
+        reservation: ManualResyncReservation,
+        awaitOtherWalletWork: suspend () -> Unit
     ): Result<Boolean> {
         val wallet = getWallet
             ?: return Result.failure(Exception("Wallet is not initialized"))
@@ -1671,7 +1674,13 @@ class WalletState(private val prefs: SharedPreferences) {
             return Result.failure(Exception("钱包安全删除优先，已取消区块重置"))
         }
         scanHeightScope.launch {
-            runManualResyncWorker(wallet, selectedHeight, progressTargetHeight, reservation)
+            runManualResyncWorker(
+                wallet,
+                selectedHeight,
+                progressTargetHeight,
+                reservation,
+                awaitOtherWalletWork
+            )
         }
         return Result.success(true)
     }
@@ -1680,11 +1689,19 @@ class WalletState(private val prefs: SharedPreferences) {
         wallet: Wallet,
         selectedHeight: Long,
         progressTargetHeight: Long,
-        reservation: ManualResyncReservation
+        reservation: ManualResyncReservation,
+        awaitOtherWalletWork: suspend () -> Unit
     ) {
         var previousRestoreHeight: Long? = null
         var rescanQueued = false
         try {
+            check(!walletWipeInProgress.get()) {
+                "钱包安全删除优先，已取消区块重置"
+            }
+            // Give a node connect/disconnect that already holds the shared native
+            // initialization lock time to exit. New ones are rejected by the reset gate.
+            // Progress has already been published, so the UI does not wait on this lock.
+            awaitOtherWalletWork()
             check(!walletWipeInProgress.get()) {
                 "钱包安全删除优先，已取消区块重置"
             }
