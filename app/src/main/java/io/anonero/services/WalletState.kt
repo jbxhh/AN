@@ -68,6 +68,9 @@ class WalletState(private val prefs: SharedPreferences) {
     // Cache the daemon's real target height once per refresh callback so block
     // callbacks can calculate progress without issuing an RPC for every block.
     private val _daemonTargetHeight = AtomicLong(0L)
+    // Cache the latest real daemon block-count so native newBlock callbacks never
+    // issue a blocking daemon-height JNI/RPC call from inside the refresh thread.
+    private val _scanDaemonHeight = AtomicLong(0L)
     private val _connectionStatus = MutableStateFlow<Wallet.ConnectionStatus?>(null)
     private val _previousConnectionStatus = AtomicReference<Wallet.ConnectionStatus?>(null)
     private val _unlockShortcut = Channel<LockScreenShortCut>(capacity = 1)
@@ -560,7 +563,7 @@ class WalletState(private val prefs: SharedPreferences) {
 
     /** Last known daemon tip; reading this never performs a blocking RPC. */
     val currentDaemonHeight: Long
-        get() = _connectedDaemon.value?.daemonHeight?.coerceAtLeast(0L) ?: 0L
+        get() = _scanDaemonHeight.get().coerceAtLeast(0L)
 
     /**
      * Reserve reset priority immediately when the user presses Reset, before the node
@@ -812,6 +815,7 @@ class WalletState(private val prefs: SharedPreferences) {
     private fun prepareManualResyncScanState(
         wallet: Wallet,
         selectedHeight: Long,
+        progressDaemonHeight: Long,
         progressTargetHeight: Long
     ) {
         val height = selectedHeight.coerceAtLeast(0L)
@@ -827,6 +831,14 @@ class WalletState(private val prefs: SharedPreferences) {
             putLong(startKey, height)
             putLong(processedKey, height)
             putBoolean(heightCountSemanticsKey, true)
+        }
+        // The reset screen has already obtained these heights from a direct daemon RPC.
+        // Seed them before reopening native refresh so the first newBlock callback can
+        // update progress without waiting for a second RPC through the wallet JNI.
+        _scanDaemonHeight.set(progressDaemonHeight.coerceAtLeast(0L))
+        _daemonTargetHeight.set(progressTargetHeight.coerceAtLeast(0L))
+        _connectedDaemon.update { current ->
+            current?.copy(daemonHeight = progressDaemonHeight.coerceAtLeast(0L))
         }
         _scanStartHeight.set(height)
         _scanTracking.set(true)
@@ -869,9 +881,11 @@ class WalletState(private val prefs: SharedPreferences) {
             wallet == null || !wallet.isInitialized || processedHeight <= 0L
         ) return
 
-        // Read the live node tip once per callback and use the same value throughout.
-        val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
-        updateBlockHeights(wallet, daemonHeight)
+        // This is a native WalletListener callback. Do not call JNI/RPC height or
+        // wallet-status APIs here: they can wait on the native refresh lock that is
+        // currently invoking this callback, freezing the rescan at its first block.
+        // refreshed() and the async daemon-height poll keep this cache current.
+        val daemonHeight = currentDaemonHeight
         if (_scanTracking.get() && processedHeight <= _scanStartHeight.get()) {
             updateSyncProgressFromWallet(wallet, daemonHeight)
             if (daemonHeight > 0L) setLoading(false)
@@ -903,9 +917,9 @@ class WalletState(private val prefs: SharedPreferences) {
         prefs.edit {
             putLong(scanPreferenceKey(wallet, "processed_height"), processedHeight)
         }
-        // Keep the existing home balance area populated from Monero's live wallet
-        // balance as processed blocks add discovered outputs; this is not a UI change.
-        updateBalanceFromWallet(wallet)
+        // Keep this callback lightweight: wallet balance/history snapshots are already
+        // published by updated() and the regular post-refresh path. Reading balance via
+        // JNI here can contend with the native scan lock and stall subsequent block callbacks.
         updateSyncProgressFromWallet(wallet, daemonHeight)
         // Once the native listener has a valid node tip, switch away from the
         // indefinite refresh loader; WalletProgressIndicator prioritizes sync progress.
@@ -1122,6 +1136,7 @@ class WalletState(private val prefs: SharedPreferences) {
         }
 
         val daemonHeight = (knownDaemonHeight ?: wallet.getDaemonBlockChainHeight()).coerceAtLeast(0L)
+        _scanDaemonHeight.set(daemonHeight)
         if (!_scanTracking.get()) {
             // Never populate the displayed wallet height from blockChainHeight():
             // Monero may append hashes during fast refresh before wallet transactions
@@ -1341,6 +1356,7 @@ class WalletState(private val prefs: SharedPreferences) {
     }
 
     fun updateDaemon(daemonInfo: DaemonInfo) {
+        _scanDaemonHeight.set(daemonInfo.daemonHeight.coerceAtLeast(0L))
         this._connectedDaemon.update { daemonInfo }
         if (daemonInfo.daemonHeight <= 0L ||
             daemonInfo.connectionStatus == Wallet.ConnectionStatus.ConnectionStatus_Disconnected
@@ -1388,6 +1404,7 @@ class WalletState(private val prefs: SharedPreferences) {
         _coins.value = emptyList()
         _connectedDaemon.value = null
         _daemonTargetHeight.set(0L)
+        _scanDaemonHeight.set(0L)
         _connectionStatus.value = null
         _previousConnectionStatus.set(null)
         daemonHeightQueryInFlight.set(false)
@@ -1746,6 +1763,13 @@ class WalletState(private val prefs: SharedPreferences) {
 
         // Direct get_info heights are zero-based block indices; the progress model
         // tracks processed-block counts. Publish progress immediately, before JNI setup.
+        // Direct get_info heights are zero-based tip indices; the scan tracker uses
+        // one-based block counts. Native wallet height APIs already return counts.
+        val progressDaemonHeight = if (knownDaemonHeight != null && knownDaemonHeight >= 0L) {
+            knownDaemonHeight + 1L
+        } else {
+            daemonHeight
+        }
         val progressTargetHeight = if (knownDaemonHeight != null && knownDaemonHeight >= 0L) {
             maxOf(
                 knownDaemonHeight,
@@ -1790,6 +1814,7 @@ class WalletState(private val prefs: SharedPreferences) {
             runManualResyncWorker(
                 wallet,
                 selectedHeight,
+                progressDaemonHeight,
                 progressTargetHeight,
                 reservation,
                 awaitOtherWalletWork
@@ -1801,6 +1826,7 @@ class WalletState(private val prefs: SharedPreferences) {
     private suspend fun runManualResyncWorker(
         wallet: Wallet,
         selectedHeight: Long,
+        progressDaemonHeight: Long,
         progressTargetHeight: Long,
         reservation: ManualResyncReservation,
         awaitOtherWalletWork: suspend () -> Unit
@@ -1843,7 +1869,12 @@ class WalletState(private val prefs: SharedPreferences) {
                 "钱包安全删除优先，已取消区块重置"
             }
 
-            prepareManualResyncScanState(wallet, selectedHeight, progressTargetHeight)
+            prepareManualResyncScanState(
+                wallet,
+                selectedHeight,
+                progressDaemonHeight,
+                progressTargetHeight
+            )
             manualResyncScanPrepared.set(true)
             check(!walletWipeInProgress.get()) {
                 "钱包安全删除优先，已取消区块重置"
