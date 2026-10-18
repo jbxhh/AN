@@ -92,8 +92,21 @@ class AnonWalletHandler(
     }
 
     suspend fun startService() {
+        if (wipeInProgress.get()) return
+        // Do not queue another automatic startup behind a user-initiated connection.
+        // Home and onboarding may both call startService; queued retries used to run
+        // immediately after each other and compete for the same native wallet handle.
+        if (isManualNodeConnectionInProgress()) {
+            Timber.tag(TAG).i("Skipping automatic service start while manual node connection is pending")
+            return
+        }
         serviceStartMutex.lock()
         try {
+            if (wipeInProgress.get()) return
+            if (isManualNodeConnectionInProgress()) {
+                Timber.tag(TAG).i("Skipping queued automatic service start; manual node connection has priority")
+                return
+            }
             startServiceLocked()
         } finally {
             serviceStartMutex.unlock()
