@@ -354,9 +354,10 @@ class NodeSettingsViewModel(
 
                     val scanStartHeightBeforeConnect =
                         if (walletState.isWalletScanActive) walletState.currentScanStartHeight else null
-                    // pauseRefresh() alone only disables future cycles; this method waits for
-                    // the in-flight native refresh cycle before changing daemon or reinitializing.
-                    wallet.pauseRefreshAndWait()
+                    // Match the upstream node-switch path: stop scheduling refresh cycles
+                    // without blocking the connect coroutine indefinitely on a native refresh
+                    // drain. The initialization mutex still serializes daemon mutation and init.
+                    wallet.pauseRefresh()
                     refreshPausedForConnect = true
                     check(canContinueNodeConnect(allowActiveResyncScan)) {
                         "区块重置准备优先执行，节点连接已让路"
