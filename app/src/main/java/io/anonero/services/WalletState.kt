@@ -554,14 +554,15 @@ class WalletState(private val prefs: SharedPreferences) {
             if (daemonHeight > 0L) setLoading(false)
             return
         }
-        if (processedHeight != currentHeight + 1L) {
+        // Native refresh can coalesce callbacks or begin reporting after a batch of
+        // blocks has already been processed. A forward callback still confirms that the
+        // wallet processed that height; rejecting it leaves currentHeight frozen forever,
+        // causing every later callback to be rejected as non-sequential too.
+        if (processedHeight > currentHeight + 1L) {
             Timber.tag(TAG).w(
-                "Ignoring non-sequential scan callback: walletHeight=%d callbackHeight=%d daemonHeight=%d",
+                "Scan callback skipped heights; advancing to confirmed processed height: walletHeight=%d callbackHeight=%d daemonHeight=%d",
                 currentHeight, processedHeight, daemonHeight
             )
-            updateSyncProgressFromWallet(wallet, daemonHeight)
-            if (daemonHeight > 0L) setLoading(false)
-            return
         }
 
         _walletHeight.value = processedHeight
