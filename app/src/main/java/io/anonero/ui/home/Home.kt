@@ -43,6 +43,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import io.anonero.R
 import io.anonero.model.Subaddress
+import io.anonero.model.node.NodeFields
 import io.anonero.ui.components.MainBottomNavigation
 import io.anonero.ui.home.addresses.SubAddressDetailScreen
 import io.anonero.ui.home.addresses.SubAddressesScreen
@@ -97,9 +98,23 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
     val currentRoute = navBackStackEntry?.destination?.route ?: TransactionsRoute
     var showBatteryManagerDialog by remember { mutableStateOf(false) }
     val walletState = koinInject<WalletState>()
+    val appViewModel = koinInject<io.anonero.ui.viewmodels.AppViewModel>()
     val toastState = rememberToasterState()
     val prefs = context.getSharedPreferences("anonero_prefs", android.content.Context.MODE_PRIVATE)
     val startDestination: Any = TransactionsRoute
+
+    // A restored wallet can reach Home while the first background connection attempt
+    // is still bootstrapping Tor. Recheck startup from Home so an initialized wallet
+    // gets the same refresh kick as the manual same-node Connect action.
+    LaunchedEffect(Unit) {
+        val configuredNode = context.getSharedPreferences(
+            AnonConfig.PREFS,
+            android.content.Context.MODE_PRIVATE
+        ).getString(NodeFields.RPC_HOST.value, "")
+        if (!configuredNode.isNullOrBlank()) {
+            appViewModel.startService()
+        }
+    }
 
     LaunchedEffect(Unit) {
         walletState.unlockShortcut.collect { shortcut ->
