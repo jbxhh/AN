@@ -141,6 +141,23 @@ class NodeSettingsViewModel(
     )
 
     init {
+        // A node configured in wallet preferences can be missing from the user-managed
+        // node list (for example after an interrupted DataStore write). Reinsert that
+        // configured endpoint before observing the list so the management screen does
+        // not become blank while the wallet is still connected to it.
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val configuredNode = configuredNodeFromPreferences() ?: return@runCatching
+                val storedNodes = nodesRepository.getAll()
+                val alreadySaved = storedNodes.any {
+                    it.host.equals(configuredNode.host, ignoreCase = true) &&
+                        it.rpcPort == configuredNode.rpcPort
+                }
+                if (!alreadySaved) nodesRepository.addItemToTop(configuredNode)
+            }.onFailure { error ->
+                Timber.tag(TAG).w(error, "Unable to restore the configured node to the management list")
+            }
+        }
         // Observe items from the repository
         viewModelScope.launch {
             nodesRepository.nodesFlow.collect { itemList ->
@@ -149,6 +166,30 @@ class NodeSettingsViewModel(
         }
     }
 
+    private fun configuredNodeFromPreferences(): Node? {
+        val host = prefs.getString(NodeFields.RPC_HOST.value, "").orEmpty().trim()
+        val port = prefs.getInt(NodeFields.RPC_PORT.value, 0)
+        if (host.isBlank() || port !in 1..65535) return null
+        return Node.fromJson(
+            JSONObject()
+                .put(NodeFields.RPC_HOST.value, host)
+                .put(NodeFields.RPC_PORT.value, port)
+                .put(
+                    NodeFields.RPC_SSL.value,
+                    prefs.getBoolean(NodeFields.RPC_SSL.value, Node.defaultUseSsl(host, port))
+                )
+                .put(
+                    NodeFields.RPC_USERNAME.value,
+                    prefs.getString(NodeFields.RPC_USERNAME.value, "").orEmpty()
+                )
+                .put(
+                    NodeFields.RPC_PASSWORD.value,
+                    prefs.getString(NodeFields.RPC_PASSWORD.value, "").orEmpty()
+                )
+                .put(NodeFields.RPC_NETWORK.value, AnonConfig.getNetworkType().toString())
+                .put(NodeFields.NODE_NAME.value, "anon")
+        )
+    }
 
     fun getCurrentDaemonLive() = walletState.daemonInfo.asLiveData()
 
