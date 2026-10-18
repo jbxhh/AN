@@ -16,6 +16,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -110,6 +111,25 @@ class TorService(prefs: SharedPreferences) {
      * On timeout, stop the stuck attempt and clear the replayed socket so a later
      * connection attempt can start Tor afresh instead of waiting forever.
      */
+    /**
+     * Wait for SOCKS a bounded number of times. Wallet startup must not retain an
+     * indefinite loading state if Tor cannot bootstrap; callers can return control
+     * to the user and allow an explicit retry instead of looping forever.
+     */
+    suspend fun awaitSocksWithRetry(
+        maxAttempts: Int,
+        timeoutMillis: Long = 30_000L,
+        retryDelayMillis: Long = 2_000L
+    ): IPSocketAddress? {
+        require(maxAttempts > 0) { "maxAttempts must be positive" }
+        repeat(maxAttempts) { attempt ->
+            val readySocket = awaitSocks(timeoutMillis)
+            if (readySocket != null) return readySocket
+            if (attempt < maxAttempts - 1) delay(retryDelayMillis)
+        }
+        return null
+    }
+
     suspend fun awaitSocks(timeoutMillis: Long = 30_000L): IPSocketAddress? {
         socks?.let { return it }
         start()
