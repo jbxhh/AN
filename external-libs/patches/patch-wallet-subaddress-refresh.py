@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Patch Monero 0.18.5.3 so subaddress creation is atomic with native wallet refresh."""
+"""Patch Monero wallet operations that must be atomic with native refresh."""
 from pathlib import Path
 import re
 
@@ -33,6 +33,16 @@ insert_after_line(
     impl_header_path,
     "void addSubaddress(uint32_t accountIndex, const std::string& label) override;",
     "std::string addSubaddressAndGetAddress(uint32_t accountIndex) override;",
+)
+insert_after_line(
+    api_path,
+    "virtual void setSubaddressLabel(uint32_t accountIndex, uint32_t addressIndex, const std::string &label) = 0;",
+    "virtual bool setOutputFrozen(const std::string &publicKey, bool frozen) = 0;",
+)
+insert_after_line(
+    impl_header_path,
+    "void setSubaddressLabel(uint32_t accountIndex, uint32_t addressIndex, const std::string &label) override;",
+    "bool setOutputFrozen(const std::string &publicKey, bool frozen) override;",
 )
 
 # Keep even legacy native additions from mutating wallet2 while its scan thread reads it.
@@ -95,6 +105,40 @@ method = """std::string WalletImpl::addSubaddressAndGetAddress(uint32_t accountI
 }
 
 """
-wallet_source = wallet_source.replace(anchor, method + anchor, 1)
+output_method = """bool WalletImpl::setOutputFrozen(const std::string &publicKey, bool frozen)
+{
+    if (checkBackgroundSync(frozen ? "cannot freeze output" : "cannot thaw output"))
+        return false;
+
+    crypto::public_key pk;
+    if (!epee::string_tools::hex_to_pod(publicKey, pk))
+    {
+        setStatusError(tr("Invalid output public key"));
+        return false;
+    }
+
+    clearStatus();
+    try
+    {
+        // Serialize freeze/thaw with refresh/rescan. This lock stops at a refresh batch
+        // boundary, so scanning resumes without losing its current height.
+        LOCK_REFRESH();
+        if (frozen)
+            m_wallet->freeze(pk);
+        else
+            m_wallet->thaw(pk);
+        m_wallet->store();
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        LOG_ERROR("Error changing output frozen state: " << e.what());
+        setStatusError(e.what());
+        return false;
+    }
+}
+
+"""
+wallet_source = wallet_source.replace(anchor, output_method + method + anchor, 1)
 wallet_cpp_path.write_text(wallet_source)
-print("Patched Monero: address create + persist + address return is atomic against refresh")
+print("Patched Monero: subaddress and output-freeze operations are atomic against refresh")
