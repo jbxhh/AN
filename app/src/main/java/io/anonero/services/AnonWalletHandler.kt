@@ -184,8 +184,18 @@ class AnonWalletHandler(
                     Timber.tag(TAG).i("Skipping automatic wallet init because manual node connection took priority")
                     return@withLock
                 }
-                if (serviceStartedWallet === wallet && wallet.isInitialized) {
+                if (
+                    serviceStartedWallet === wallet &&
+                    wallet.isInitialized &&
+                    wallet.fullStatus.connectionStatus ==
+                        Wallet.ConnectionStatus.ConnectionStatus_Connected
+                ) {
+                    // The service may have started this wallet previously but its daemon
+                    // can be disconnected now. Only reuse it when the connection is live;
+                    // otherwise we must run the same daemon init path as manual Connect.
+                    wallet.startRefresh()
                     walletState.update()
+                    walletState.setLoading(false)
                 } else {
                     initializeWalletLocked(wallet)
                 }
