@@ -117,36 +117,29 @@ class AnonWalletHandler(
         walletState.setLoading(true)
 
         try {
-            // A single 30-second wait is not a failed wallet startup. Tor may still be
-            // bootstrapping on a first install; keep the daemon alive and continue waiting.
-            while (!wipeInProgress.get()) {
-                val useTor = prefs.getBoolean(WALLET_USE_TOR, true)
-                val proxyHost = prefs.getString(WALLET_PROXY, "")
-                val proxyPort = prefs.getInt(WALLET_PROXY_PORT, -1)
+            // Allow Tor time to bootstrap, including a restart if SOCKS is stalled,
+            // but never leave wallet startup showing "loading" indefinitely.
+            val useTor = prefs.getBoolean(WALLET_USE_TOR, true)
+            val proxyHost = prefs.getString(WALLET_PROXY, "")
+            val proxyPort = prefs.getInt(WALLET_PROXY_PORT, -1)
 
-                if (useTor) {
-                    val readySocket = torService.awaitSocks(30_000L)
-                    if (readySocket == null) {
-                        Timber.tag(TAG).w(
-                            "Tor SOCKS is still starting; wallet initialization will retry"
-                        )
-                        walletState.setLoading(true)
-                        delay(2_000L)
-                        continue
-                    }
-                    val proxyAddress = "${readySocket.address}:${readySocket.port.value}"
-                    WalletManager.instance?.setProxy(proxyAddress)
-                    wallet.setProxy(proxyAddress)
-                } else if (!proxyHost.isNullOrBlank() && proxyPort != -1) {
-                    val proxyAddress = "${proxyHost}:$proxyPort"
-                    WalletManager.instance?.setProxy(proxyAddress)
-                    wallet.setProxy(proxyAddress)
-                } else {
-                    // Tor is disabled and no custom proxy is configured: use a direct node
-                    // connection rather than trying a stale or unavailable SOCKS endpoint.
-                    setProxy(null, null)
-                }
-                break
+            if (useTor) {
+                val readySocket = torService.awaitSocksWithRetry(maxAttempts = 6)
+                    ?: throw IllegalStateException(
+                        "Tor 尚未在约 3 分钟内就绪，请在节点设置中再次点击连接"
+                    )
+                if (wipeInProgress.get()) return
+                val proxyAddress = "${readySocket.address}:${readySocket.port.value}"
+                WalletManager.instance?.setProxy(proxyAddress)
+                wallet.setProxy(proxyAddress)
+            } else if (!proxyHost.isNullOrBlank() && proxyPort != -1) {
+                val proxyAddress = "${proxyHost}:${proxyPort}"
+                WalletManager.instance?.setProxy(proxyAddress)
+                wallet.setProxy(proxyAddress)
+            } else {
+                // Tor is disabled and no custom proxy is configured: use a direct node
+                // connection rather than trying a stale or unavailable SOCKS endpoint.
+                setProxy(null, null)
             }
 
             if (wipeInProgress.get()) return
