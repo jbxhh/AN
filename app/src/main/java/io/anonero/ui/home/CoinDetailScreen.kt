@@ -41,6 +41,7 @@ import io.anonero.services.WalletState
 import io.anonero.util.Formats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
 
 private fun abbreviatedValue(value: String, maxChars: Int): String {
