@@ -9,7 +9,7 @@ import kotlinx.coroutines.withContext
 import io.anonero.model.WalletManager
 import io.anonero.ui.theme.AnonNeroTheme
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -74,6 +74,7 @@ fun CoinsScreen(
     navigateToSpend: (route: SendScreenRoute) -> Unit = {},
     onBackPress: () -> Unit = {},
     selected: Set<String> = setOf(),
+    onCoinClick: (CoinsInfo) -> Unit = {},
 ) {
     val walletState: WalletState by inject(WalletState::class.java)
     val coins by walletState.coins.collectAsState(arrayListOf())
@@ -86,7 +87,6 @@ fun CoinsScreen(
             restore = { it.toSet() }
         )
     ) { mutableStateOf(selected) }
-    var detailCoin by remember { mutableStateOf<CoinsInfo?>(null) }
 
     val connectionStatus by walletState.walletConnectionStatus.asLiveData().observeAsState(
         Wallet.ConnectionStatus.ConnectionStatus_Disconnected
@@ -159,18 +159,11 @@ fun CoinsScreen(
         }
     }
 
-    // 外层包一层不透明背景，确保 detailCoin 切换时不会透出下层
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        if (detailCoin != null) {
-            CoinDetailScreen(
-                coinKey = detailCoin!!.key,
-                onBackPress = { detailCoin = null }
-            )
-        } else {
             Scaffold(
                 modifier = Modifier.fillMaxSize(),
                 floatingActionButtonPosition = FabPosition.Center,
@@ -240,12 +233,7 @@ fun CoinsScreen(
                         ListItem(
                             modifier = Modifier
                                 .padding(horizontal = 4.dp, vertical = 6.dp)
-                                .combinedClickable(
-                                onClick = { selectCoin(coin) },
-                                // Keep freeze/thaw details available without stealing the
-                                // normal tap gesture used by the upstream output selector.
-                                onLongClick = { detailCoin = coin }
-                            ),
+                                .clickable { onCoinClick(coin) },
                             headlineContent = {
                                 Row(
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -337,7 +325,6 @@ fun CoinsScreen(
                     }
                 }
             }
-        }
     }
 }
 
