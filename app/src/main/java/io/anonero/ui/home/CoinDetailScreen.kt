@@ -46,14 +46,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
 
-private fun abbreviatedValue(value: String, maxChars: Int): String {
-    if (value.length <= maxChars) return value
-    val available = (maxChars - 3).coerceAtLeast(2)
-    val left = available / 2
-    val right = available - left
-    return value.take(left) + "..." + value.takeLast(right)
-}
-
 private fun breakableIdentifier(value: String, chunkSize: Int = 8): String {
     if (value.isEmpty()) return value
     return value.chunked(chunkSize).joinToString(separator = "\u200B")
