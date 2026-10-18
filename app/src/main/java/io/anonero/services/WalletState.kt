@@ -1929,9 +1929,10 @@ class WalletState(private val prefs: SharedPreferences) {
             check(!walletWipeInProgress.get()) {
                 "钱包安全删除优先，已取消区块重置"
             }
-            // The reset owns priority now; pause ordinary refresh before changing the
-            // native wallet's restore height and cached transfer state.
-            wallet.pauseRefresh()
+            // The reset owns priority now. pauseRefresh() only disables future cycles;
+            // drain any already-running native refresh before mutating restore height or
+            // cached transfers, then queue the selected-height rescan as a separate step.
+            wallet.pauseRefreshAndWait()
             check(!walletWipeInProgress.get()) {
                 "钱包安全删除优先，已取消区块重置"
             }
