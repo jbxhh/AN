@@ -78,6 +78,7 @@ class WalletState(private val prefs: SharedPreferences) {
     private val daemonHeightQueryInFlight = AtomicBoolean(false)
     private val forcedRestoreScanInFlight = AtomicBoolean(false)
     private val forcedRestoreScanStarted = AtomicBoolean(false)
+    private val manualResyncInProgress = AtomicBoolean(false)
 
     val transactions: Flow<List<TransactionInfo>> = _transactions
 
@@ -106,7 +107,7 @@ class WalletState(private val prefs: SharedPreferences) {
 
     @Synchronized
     fun update() {
-        if (_blockUpdates.get() || walletWipeInProgress.get()) return
+        if (_blockUpdates.get() || walletWipeInProgress.get() || manualResyncInProgress.get()) return
         getWallet?.let { wallet ->
             if (!wallet.isInitialized) {
                 // Wallet files are already open at this point. Publish locally available
@@ -125,6 +126,9 @@ class WalletState(private val prefs: SharedPreferences) {
             if (wallet.status.errorString.isNotEmpty()) {
                 Timber.tag(TAG).i("StatusError %s", wallet.status.errorString)
             }
+            // A refresh callback may already have entered update() before reset began.
+            // Do not let that in-flight callback republish stale transactions after reset.
+            if (manualResyncInProgress.get()) return@let
 
             // Publish wallet data continuously, not only after the full scan completes.
             // Monero's history becomes available incrementally as refresh callbacks arrive.
@@ -375,8 +379,7 @@ class WalletState(private val prefs: SharedPreferences) {
     fun beginWalletScan(
         wallet: Wallet? = getWallet,
         scanStartHeight: Long? = null,
-        forceStartAtSelectedHeight: Boolean = false,
-        requestDaemonHeight: Boolean = true
+        forceStartAtSelectedHeight: Boolean = false
     ): Boolean {
         if (walletWipeInProgress.get()) return false
         if (wallet == null || !wallet.isInitialized) {
@@ -478,10 +481,38 @@ class WalletState(private val prefs: SharedPreferences) {
         // Always fetch a fresh target in parallel with the scan. When it returns,
         // switch from the temporary loading indicator to real remaining-blocks
         // progress using latest daemon height minus actual processed wallet height.
-        if (requestDaemonHeight) {
-            requestLatestDaemonHeightAsync(wallet)
-        }
+        requestLatestDaemonHeightAsync(wallet)
         return requiresRescan
+    }
+
+    /**
+     * Prepare scan markers for a manual reset without taking WalletState's monitor or
+     * calling native height/balance APIs. Listener callbacks are gated until the native
+     * rescan is queued, avoiding a lock cycle with update() during an active refresh.
+     */
+    private fun prepareManualResyncScanState(wallet: Wallet, selectedHeight: Long) {
+        val height = selectedHeight.coerceAtLeast(0L)
+        val inProgressKey = scanPreferenceKey(wallet, "in_progress")
+        val completedKey = scanPreferenceKey(wallet, "completed")
+        val startKey = scanPreferenceKey(wallet, "start_height")
+        val processedKey = scanPreferenceKey(wallet, "processed_height")
+        val heightCountSemanticsKey = scanPreferenceKey(wallet, "height_count_semantics_v1")
+
+        prefs.edit {
+            putBoolean(inProgressKey, true)
+            putBoolean(completedKey, false)
+            putLong(startKey, height)
+            putLong(processedKey, height)
+            putBoolean(heightCountSemanticsKey, true)
+        }
+        _scanStartHeight.set(height)
+        _scanTracking.set(true)
+        wallet.isSynchronized = false
+        _walletHeight.value = height
+        clearSyncProgress()
+        _transactions.value = emptyList()
+        _coins.value = emptyList()
+        setLoading(true)
     }
 
     private fun scanPreferenceKey(wallet: Wallet, suffix: String): String {
@@ -500,7 +531,9 @@ class WalletState(private val prefs: SharedPreferences) {
      */
     @Synchronized
     fun recordScannedBlockHeight(processedHeight: Long, wallet: Wallet? = getWallet) {
-        if (walletWipeInProgress.get() || wallet == null || !wallet.isInitialized || processedHeight <= 0L) return
+        if (walletWipeInProgress.get() || manualResyncInProgress.get() ||
+            wallet == null || !wallet.isInitialized || processedHeight <= 0L
+        ) return
 
         // Read the live node tip once per callback and use the same value throughout.
         val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
@@ -562,6 +595,7 @@ class WalletState(private val prefs: SharedPreferences) {
                     getWallet === wallet &&
                     wallet.isInitialized &&
                     !wallet.isSynchronized &&
+                    !manualResyncInProgress.get() &&
                     (_scanTracking.get() || prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) &&
                     _syncProgress.value == null
                 ) {
@@ -633,6 +667,7 @@ class WalletState(private val prefs: SharedPreferences) {
                     !hasProgress &&
                         scanPending &&
                         !walletWipeInProgress.get() &&
+                        !manualResyncInProgress.get() &&
                         wallet.isInitialized &&
                         !wallet.isSynchronized
                 )
@@ -656,7 +691,7 @@ class WalletState(private val prefs: SharedPreferences) {
         wallet: Wallet? = getWallet,
         knownDaemonHeight: Long? = null
     ): Boolean {
-        if (walletWipeInProgress.get()) return false
+        if (walletWipeInProgress.get() || manualResyncInProgress.get()) return false
         if (wallet != null && wallet.isInitialized) {
             // A callback can report the daemon tip before the fresh restore's native
             // rescan is queued. Never treat that startup race as a completed wallet scan.
@@ -1237,6 +1272,9 @@ class WalletState(private val prefs: SharedPreferences) {
         }
 
         val previousRestoreHeight = wallet.getRestoreHeight()
+        if (!manualResyncInProgress.compareAndSet(false, true)) {
+            return Result.failure(Exception("区块重置正在执行，请勿重复点击"))
+        }
         var rescanQueued = false
         return try {
             // Finish all state and wallet reads before requesting native rescan.
@@ -1248,17 +1286,7 @@ class WalletState(private val prefs: SharedPreferences) {
             }
             check(wallet.store()) { "Unable to persist selected restore height" }
 
-            clearSyncProgress()
-            _transactions.value = emptyList()
-            _coins.value = emptyList()
-            setLoading(true)
-            beginWalletScan(
-                wallet = wallet,
-                scanStartHeight = selectedHeight,
-                forceStartAtSelectedHeight = true,
-                requestDaemonHeight = false
-            )
-            updateBalanceFromWallet(wallet)
+            prepareManualResyncScanState(wallet, selectedHeight)
 
             // This is the last operation that schedules the native scan. Do not make
             // further JNI reads before the new listener callbacks publish scan progress.
@@ -1293,6 +1321,8 @@ class WalletState(private val prefs: SharedPreferences) {
                     Result.failure(restart.exceptionOrNull() ?: e)
                 }
             }
+        } finally {
+            manualResyncInProgress.set(false)
         }
     }
 
