@@ -640,7 +640,16 @@ class WalletState(private val prefs: SharedPreferences) {
         prepareScanPreferenceIdentity(wallet)
 
         try {
-            updateBalanceFromWallet(wallet)
+            if (wallet.isInitialized ||
+                (_balanceInfo.value == null && _unLockedBalance.value == null)
+            ) {
+                // On a brand-new wallet, publish the local balance before Tor/daemon init.
+                // For the same wallet handle, do not let a transient failed init replace a
+                // previously known balance with a zero JNI snapshot.
+                updateBalanceFromWallet(wallet)
+            } else {
+                Timber.tag(TAG).d("Preserving last-known balance while wallet init is unavailable")
+            }
         } catch (e: Exception) {
             Timber.tag(TAG).w(e, "Unable to read local wallet balance during startup")
         }
