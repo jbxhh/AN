@@ -13,6 +13,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import io.anonero.ui.theme.AnonOutlineButton
+import androidx.activity.compose.BackHandler
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -58,6 +59,8 @@ fun CoinDetailScreen(
     coinKey: String,
     onBackPress: () -> Unit = {},
 ) {
+    BackHandler(onBack = onBackPress)
+
     val walletState = koinInject<WalletState>()
     val coins by walletState.coins.collectAsState(arrayListOf())
     val hideAmounts by walletState.hideAmountsFlow.collectAsState(false)
