@@ -125,7 +125,9 @@ private class MoneroBlockTimeLookup(
     }
 
     // The estimate is only a search starting point; it is never used as the result.
-    fun heightNearTimestamp(targetTimestamp: Long): Long {
+    // Date inputs represent local midnight. Select the first block height on/after that
+    // timestamp rather than the nearest timestamp, which can fall on the previous day.
+    fun heightAtOrAfterTimestamp(targetTimestamp: Long): Long {
         val tipHeight = latestHeight()
         val genesis = headerAtHeight(0L)
         if (targetTimestamp < genesis.timestamp) {
@@ -168,9 +170,12 @@ private class MoneroBlockTimeLookup(
                 center = (center + distance).coerceAtMost(tipHeight)
                 return@repeat
             }
-            return headers.minByOrNull {
-                kotlin.math.abs(it.timestamp - targetTimestamp)
-            }!!.height
+            return headers
+                .asSequence()
+                .filter { it.timestamp >= targetTimestamp }
+                .minByOrNull { it.height }
+                ?.height
+                ?: throw IOException("节点未返回所选日期之后的区块头")
         }
         throw IOException("无法根据节点实际区块时间定位该日期，请检查节点是否同步")
     }
@@ -510,7 +515,7 @@ fun ResyncBlockchainScreen(
                                             restoreDateInput.isNotBlank() -> {
                                                 val date = parseNumericRestoreDate(restoreDateInput)
                                                     ?: throw IOException("请输入有效日期，格式为 YYYY-MM-DD（例如 2026-10-18）")
-                                                lookup.heightNearTimestamp(date.time / 1000L)
+                                                lookup.heightAtOrAfterTimestamp(date.time / 1000L)
                                             }
                                             else -> wallet.getRestoreHeight().also {
                                                 if (it < 0L) throw IOException("无法获取恢复区块高度")
@@ -560,7 +565,7 @@ fun ResyncBlockchainScreen(
                                                 restoreDateInput.isNotBlank() -> {
                                                     val date = parseNumericRestoreDate(restoreDateInput)
                                                         ?: throw IOException("请输入有效日期，格式为 YYYY-MM-DD（例如 2026-10-18）")
-                                                    lookup.heightNearTimestamp(date.time / 1000L)
+                                                    lookup.heightAtOrAfterTimestamp(date.time / 1000L)
                                                 }
                                                 else -> wallet.getRestoreHeight()
                                             }
