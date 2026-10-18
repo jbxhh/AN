@@ -375,7 +375,8 @@ class WalletState(private val prefs: SharedPreferences) {
     fun beginWalletScan(
         wallet: Wallet? = getWallet,
         scanStartHeight: Long? = null,
-        forceStartAtSelectedHeight: Boolean = false
+        forceStartAtSelectedHeight: Boolean = false,
+        requestDaemonHeight: Boolean = true
     ): Boolean {
         if (walletWipeInProgress.get()) return false
         if (wallet == null || !wallet.isInitialized) {
@@ -477,7 +478,9 @@ class WalletState(private val prefs: SharedPreferences) {
         // Always fetch a fresh target in parallel with the scan. When it returns,
         // switch from the temporary loading indicator to real remaining-blocks
         // progress using latest daemon height minus actual processed wallet height.
-        requestLatestDaemonHeightAsync(wallet)
+        if (requestDaemonHeight) {
+            requestLatestDaemonHeightAsync(wallet)
+        }
         return requiresRescan
     }
 
@@ -1236,20 +1239,14 @@ class WalletState(private val prefs: SharedPreferences) {
         val previousRestoreHeight = wallet.getRestoreHeight()
         var rescanQueued = false
         return try {
-            // Queue the asynchronous rescan on the wallet's existing refresh worker.
-            // Do not pause native refresh here: pauseRefresh() can block while waiting
-            // for a native refresh batch boundary, leaving the reset UI spinning forever.
-            // The pending-restore path uses this same asynchronous rescan API without pausing.
+            // Finish all state and wallet reads before requesting native rescan.
+            // Once rescan starts, JNI reads such as balance/history can contend with
+            // the refresh worker and keep the reset coroutine suspended indefinitely.
             wallet.setRestoreHeight(selectedHeight)
             check(wallet.getRestoreHeight().coerceAtLeast(0L) == selectedHeight) {
                 "Selected restore height was not applied"
             }
             check(wallet.store()) { "Unable to persist selected restore height" }
-
-            // Queue the native rescan before replacing the current UI scan state. If
-            // queuing fails, the old scan/progress can remain intact after rollback.
-            wallet.rescanBlockchainAsync()
-            rescanQueued = true
 
             clearSyncProgress()
             _transactions.value = emptyList()
@@ -1258,10 +1255,18 @@ class WalletState(private val prefs: SharedPreferences) {
             beginWalletScan(
                 wallet = wallet,
                 scanStartHeight = selectedHeight,
-                forceStartAtSelectedHeight = true
+                forceStartAtSelectedHeight = true,
+                requestDaemonHeight = false
             )
             updateBalanceFromWallet(wallet)
+
+            // This is the last operation that schedules the native scan. Do not make
+            // further JNI reads before the new listener callbacks publish scan progress.
+            Timber.tag(TAG).i("Manual rescan: queuing native scan from height %d", selectedHeight)
+            wallet.rescanBlockchainAsync()
+            rescanQueued = true
             wallet.startRefresh()
+            Timber.tag(TAG).i("Manual rescan: native scan queued and refresh signalled")
             Result.success(true)
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Wallet rescan failed to start")
@@ -1279,23 +1284,8 @@ class WalletState(private val prefs: SharedPreferences) {
                 }
                 Result.failure(e)
             } else {
-                // The native rescan is already queued, so do not roll the restore height
-                // back behind it. Re-establish progress state and make one more attempt
-                // to wake the native refresh worker.
-                runCatching {
-                    clearSyncProgress()
-                    _transactions.value = emptyList()
-                    _coins.value = emptyList()
-                    setLoading(true)
-                    beginWalletScan(
-                        wallet = wallet,
-                        scanStartHeight = selectedHeight,
-                        forceStartAtSelectedHeight = true
-                    )
-                    updateBalanceFromWallet(wallet)
-                }.onFailure { stateError ->
-                    Timber.tag(TAG).e(stateError, "Unable to publish rescan progress state")
-                }
+                // The native rescan is already queued and scan state was prepared before
+                // queueing. Do not issue more JNI reads while the new scan is starting.
                 val restart = runCatching { wallet.startRefresh() }
                 if (restart.isSuccess) {
                     Result.success(true)
