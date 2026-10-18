@@ -61,7 +61,7 @@ wallet_api_source = wallet_api_source.replace(old_unsynced_branch, new_unsynced_
 # WalletImpl::doRefresh() may still be scanning under m_refreshMutex2. Wait for that
 # cycle to finish before publishing the explicit rescan request. Otherwise the old
 # refresh can consume the flag before ANONERO has published the selected-height baseline.
-old_async_rescan = "\\n".join([
+old_async_rescan = "\n".join([
     "void WalletImpl::rescanBlockchainAsync()",
     "{",
     '    if (checkBackgroundSync("cannot rescan blockchain"))',
@@ -72,7 +72,7 @@ old_async_rescan = "\\n".join([
 ])
 if wallet_api_source.count(old_async_rescan) != 1:
     raise SystemExit("Expected exactly one WalletImpl::rescanBlockchainAsync() implementation")
-new_async_rescan = "\\n".join([
+new_async_rescan = "\n".join([
     "void WalletImpl::rescanBlockchainAsync()",
     "{",
     '    if (checkBackgroundSync("cannot rescan blockchain"))',
