@@ -624,7 +624,7 @@ fun ResyncBlockchainScreen(
                                                 putLong(RESTORE_HEIGHT, selectedHeight)
                                             }
                                             toastState.show(
-                                                "已从所选真实区块高度开始重新扫描交易",
+                                                "已从所选区块高度开始重新扫描交易",
                                                 type = ToastType.Success
                                             )
                                             onBackPress()
