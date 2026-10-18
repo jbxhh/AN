@@ -77,8 +77,13 @@ fun SetupNodeComposable(
         rpcUsername = prefs.getString(NodeFields.RPC_USERNAME.value, "") ?: ""
         rpcPassPhrase = prefs.getString(NodeFields.RPC_PASSWORD.value, "") ?: ""
         val rpcPort = prefs.getInt(NodeFields.RPC_PORT.value, Node.defaultRpcPort)
+        val useSsl = prefs.getBoolean(
+            NodeFields.RPC_SSL.value,
+            Node.defaultUseSsl(rpcHost, rpcPort)
+        )
         if (rpcHost.isNotEmpty()) {
-            rpcHost = "${rpcHost}:${rpcPort}"
+            val scheme = if (useSsl) "https://" else ""
+            rpcHost = "$scheme${rpcHost}:${rpcPort}"
         }
     }
 
@@ -251,13 +256,18 @@ fun SetupNodeComposable(
                                 if (validatedUrl.host == null) {
                                     error = "Invalid Url"
                                 }
+                                val rpcPort = if (validatedUrl.port == -1) Node.defaultRpcPort else validatedUrl.port
+                                val explicitScheme = cleanURL.startsWith("http://") || cleanURL.startsWith("https://")
+                                val useSsl = if (explicitScheme) {
+                                    validatedUrl.scheme.equals("https", ignoreCase = true)
+                                } else {
+                                    Node.defaultUseSsl(validatedUrl.host, rpcPort)
+                                }
                                 val nodeJson = JSONObject()
                                     .apply {
                                         put(NodeFields.RPC_HOST.value, validatedUrl.host)
-                                        put(
-                                            NodeFields.RPC_PORT.value,
-                                            if (validatedUrl.port == -1) Node.defaultRpcPort else validatedUrl.port
-                                        )
+                                        put(NodeFields.RPC_PORT.value, rpcPort)
+                                        put(NodeFields.RPC_SSL.value, useSsl)
                                         put(NodeFields.RPC_USERNAME.value, rpcUsername)
                                         put(NodeFields.RPC_PASSWORD.value, rpcPassPhrase)
                                         put(
@@ -268,10 +278,8 @@ fun SetupNodeComposable(
                                     }
 
                                 editor.putString(NodeFields.RPC_HOST.value, validatedUrl.host)
-                                editor.putInt(
-                                    NodeFields.RPC_PORT.value,
-                                    if (validatedUrl.port == -1) Node.defaultRpcPort else validatedUrl.port
-                                )
+                                editor.putInt(NodeFields.RPC_PORT.value, rpcPort)
+                                editor.putBoolean(NodeFields.RPC_SSL.value, useSsl)
                                 editor.putString(NodeFields.RPC_USERNAME.value, rpcUsername)
                                 editor.putString(NodeFields.RPC_PASSWORD.value, rpcPassPhrase)
                                 editor.apply()

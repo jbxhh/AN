@@ -20,6 +20,7 @@ enum class NodeFields(val value: String) {
     RPC_USERNAME("username"),
     RPC_PASSWORD("passphrase"),
     RPC_NETWORK("network"),
+    RPC_SSL("useSsl"),
     NODE_TRUSTED("trusted"),
     NODE_NAME("name");
 
@@ -35,6 +36,7 @@ open class Node {
     var name: String? = null
         private set
     var host: String? = null
+    var useSsl: Boolean = false
     private var levinPort = 0
     var username = ""
     var password = ""
@@ -68,6 +70,16 @@ open class Node {
             else -> {
                 throw IllegalArgumentException("Too many @")
             }
+        }
+
+        // Support legacy host:port/network/name strings as well as explicit HTTP(S) URLs.
+        val schemeSeparator = daemonAddress.indexOf("://")
+        if (schemeSeparator > 0) {
+            val scheme = daemonAddress.substring(0, schemeSeparator)
+            require(scheme.equals("http", ignoreCase = true) ||
+                    scheme.equals("https", ignoreCase = true)) { "Unsupported node URL scheme" }
+            useSsl = scheme.equals("https", ignoreCase = true)
+            daemonAddress = daemonAddress.substring(schemeSeparator + 3)
         }
 
         val daParts =
@@ -116,6 +128,8 @@ open class Node {
             throw IllegalArgumentException("cannot resolve host $host")
         }
         this.rpcPort = port
+        // Migrate old profiles that persisted only host/port for this HTTPS endpoint.
+        if (defaultUseSsl(this.host, this.rpcPort)) useSsl = true
         this.levinPort = this.defaultLevinPort
     }
 
@@ -137,6 +151,9 @@ open class Node {
         }
         if (jsonObject.has(NodeFields.NODE_NAME.value)) {
             this.name = jsonObject.getString(NodeFields.NODE_NAME.value)
+        }
+        if (jsonObject.has(NodeFields.RPC_SSL.value)) {
+            useSsl = jsonObject.getBoolean(NodeFields.RPC_SSL.value)
         }
         if (jsonObject.has(NodeFields.RPC_NETWORK.value)) {
             networkType = when (jsonObject.getString(NodeFields.RPC_NETWORK.value)) {
@@ -181,12 +198,18 @@ open class Node {
     // Nodes are equal if they are the same host address:port & are on the same network
     override fun equals(other: Any?): Boolean {
         if (other !is Node) return false
-        return trusted == other.trusted && host == other.host && address == other.address && rpcPort == other.rpcPort && networkType == other.networkType && username == other.username && password == other.password
+        return trusted == other.trusted && host == other.host && address == other.address &&
+            rpcPort == other.rpcPort && networkType == other.networkType &&
+            username == other.username && password == other.password && usesSsl == other.usesSsl
     }
 
 
+    val usesSsl: Boolean
+        get() = useSsl || defaultUseSsl(host, rpcPort)
+
     fun toNodeString(): String {
-        return "http://${host}:${rpcPort}"
+        val scheme = if (usesSsl) "https" else "http"
+        return "$scheme://${host}:${rpcPort}"
     }
 
     fun toJson(): JSONObject {
@@ -215,6 +238,7 @@ open class Node {
         if (username.isNotEmpty() && password.isNotEmpty()) {
             sb.append(username).append(":").append(password).append("@")
         }
+        sb.append(if (usesSsl) "https://" else "http://")
         sb.append(host).append(":").append(rpcPort)
         sb.append("/")
         when (networkType) {
@@ -243,12 +267,18 @@ open class Node {
         username = anotherNode.username
         password = anotherNode.password
         trusted = anotherNode.trusted
+        useSsl = anotherNode.usesSsl
     }
 
     companion object {
         const val MAINNET = "mainnet"
         const val STAGENET = "stagenet"
         const val TESTNET = "testnet"
+
+        /** Legacy profiles omit schemes; this known endpoint is HTTPS-only on RPC port 18089. */
+        fun defaultUseSsl(host: String?, port: Int): Boolean =
+            host.equals("xmr5.doggett.tech", ignoreCase = true) && port == 18089
+
         private var DEFAULT_LEVIN_PORT = 0
         private var DEFAULT_RPC_PORT = 0
 

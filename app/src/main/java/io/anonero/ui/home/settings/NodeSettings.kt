@@ -175,13 +175,18 @@ class NodeSettingsViewModel(
                 uriValidationError.postValue("无效节点地址")
                 return null
             }
+            val rpcPort = if (validatedUrl.port == -1) Node.defaultRpcPort else validatedUrl.port
+            val explicitScheme = cleanURL.startsWith("http://") || cleanURL.startsWith("https://")
+            val useSsl = if (explicitScheme) {
+                validatedUrl.scheme.equals("https", ignoreCase = true)
+            } else {
+                Node.defaultUseSsl(validatedUrl.host, rpcPort)
+            }
             val nodeJson = JSONObject()
                 .apply {
                     put(NodeFields.RPC_HOST.value, validatedUrl.host)
-                    put(
-                        NodeFields.RPC_PORT.value,
-                        if (validatedUrl.port == -1) Node.defaultRpcPort else validatedUrl.port
-                    )
+                    put(NodeFields.RPC_PORT.value, rpcPort)
+                    put(NodeFields.RPC_SSL.value, useSsl)
                     put(NodeFields.RPC_USERNAME.value, rpcUsername)
                     put(NodeFields.RPC_PASSWORD.value, rpcPassPhrase)
                     put(
@@ -205,6 +210,7 @@ class NodeSettingsViewModel(
             try {
                 editor.putString(NodeFields.RPC_HOST.value, node.host)
                 editor.putInt(NodeFields.RPC_PORT.value, node.rpcPort)
+                editor.putBoolean(NodeFields.RPC_SSL.value, node.usesSsl)
                 editor.putString(NodeFields.RPC_USERNAME.value, node.username)
                 editor.putString(NodeFields.RPC_PASSWORD.value, node.password)
                 editor.apply()
@@ -247,6 +253,7 @@ class NodeSettingsViewModel(
                     val sameNodeAlreadyInitialized = wallet.isInitialized &&
                         walletManager != null &&
                         walletManager.getDaemonAddress() == node.address &&
+                        walletManager.daemonUseSsl == node.usesSsl &&
                         walletManager.daemonUsername == node.username &&
                         walletManager.daemonPassword == node.password
 

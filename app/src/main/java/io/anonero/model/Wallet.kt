@@ -168,6 +168,7 @@ class Wallet {
         var daemonUsername = WalletManager.instance?.daemonUsername
         var daemonPassword = WalletManager.instance?.daemonPassword
         var proxyAddress = WalletManager.instance?.proxy
+        val useSsl = WalletManager.instance?.daemonUseSsl ?: false
         var message = "init("
         if (daemonAddress != null) {
             message = "${message}\n$daemonAddress"
@@ -177,6 +178,7 @@ class Wallet {
             daemonAddress = ""
         }
         message = "${message}\nupper_transaction_size_limit = 0 (probably)"
+        message = "${message}\nuse_ssl = $useSsl"
         if (daemonUsername != null) {
             Timber.tag(TAG).i(daemonUsername)
         } else {
@@ -200,14 +202,14 @@ class Wallet {
         isInitialized = initJ(
             daemonAddress, upperTransactionSizeLimit,
             daemonUsername, daemonPassword,
-            proxyAddress
+            useSsl, proxyAddress
         )
         return isInitialized
     }
 
     private external fun initJ(
         daemonAddress: String, upperTransactionSizeLimit: Long,
-        daemonUsername: String, daemonPassword: String, proxyAddress: String
+        daemonUsername: String, daemonPassword: String, useSsl: Boolean, proxyAddress: String
     ): Boolean
 
     external fun getRestoreHeight(): Long

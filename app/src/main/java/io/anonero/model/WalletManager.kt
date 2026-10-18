@@ -32,6 +32,8 @@ class WalletManager {
         private set
     var daemonPassword = ""
         private set
+    var daemonUseSsl = false
+        private set
     var proxy = ""
         private set
 
@@ -225,6 +227,7 @@ class WalletManager {
     fun setDaemon(node: Node?) {
         if (node != null) {
             daemonAddress = node.address
+            daemonUseSsl = node.usesSsl
             require(networkType === node.networkType) { "network type does not match" }
             daemonUsername = node.username
             daemonPassword = node.password
@@ -232,6 +235,7 @@ class WalletManager {
             Timber.tag(TAG).i("setDaemon:  %s", daemonAddress)
         } else {
             daemonAddress = null
+            daemonUseSsl = false
             daemonUsername = ""
             daemonPassword = ""
             //setDaemonAddressJ(""); // don't disconnect as monero code blocks for many seconds!

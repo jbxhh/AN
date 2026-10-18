@@ -189,6 +189,13 @@ class AnonWalletHandler(
                 .apply {
                     put(NodeFields.RPC_HOST.value, host)
                     put(NodeFields.RPC_PORT.value, rpcPort)
+                    put(
+                        NodeFields.RPC_SSL.value,
+                        prefs.getBoolean(
+                            NodeFields.RPC_SSL.value,
+                            Node.defaultUseSsl(host, rpcPort)
+                        )
+                    )
                     put(NodeFields.RPC_USERNAME.value, rpcUsername)
                     put(NodeFields.RPC_PASSWORD.value, rpcPassphrase)
                     put(NodeFields.RPC_NETWORK.value, AnonConfig.getNetworkType().toString())

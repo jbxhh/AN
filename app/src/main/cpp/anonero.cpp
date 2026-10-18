@@ -970,7 +970,7 @@ Java_io_anonero_model_Wallet_initJ(JNIEnv *env, jobject instance,
                                    jstring daemon_address,
                                    jlong upper_transaction_size_limit,
                                    jstring daemon_username, jstring daemon_password,
-                                   jstring proxy_address) {
+                                   jboolean use_ssl, jstring proxy_address) {
     const char *_daemon_address = env->GetStringUTFChars(daemon_address, nullptr);
     const char *_daemon_username = env->GetStringUTFChars(daemon_username, nullptr);
     const char *_daemon_password = env->GetStringUTFChars(daemon_password, nullptr);
@@ -980,7 +980,7 @@ Java_io_anonero_model_Wallet_initJ(JNIEnv *env, jobject instance,
     bool status = wallet->init(_daemon_address, (uint64_t) upper_transaction_size_limit,
                                _daemon_username,
                                _daemon_password,
-                               false,
+                               use_ssl,
                                false,
                                _proxy_address);
     env->ReleaseStringUTFChars(daemon_address, _daemon_address);
