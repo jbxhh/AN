@@ -74,6 +74,7 @@ import com.dokar.sonner.Toaster
 import com.dokar.sonner.rememberToasterState
 import io.anonero.AnonConfig
 import io.anonero.R
+import io.anonero.model.Wallet
 import io.anonero.model.WalletManager
 import io.anonero.model.node.Node
 import io.anonero.model.node.NodeFields
@@ -529,6 +530,17 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
                         onDisconnect = {
                             nodeSettingsVM.disconnect()
                         },
+                        onConnect = {
+                            nodeSettingsVM.viewModelScope.launch {
+                                try {
+                                    nodeSettingsVM.connect(activeNode!!)
+                                } catch (ex: CancellationException) {
+                                    throw ex
+                                } catch (ex: Exception) {
+                                    Timber.tag(TAG).e(ex, "Failed to reconnect the selected node")
+                                }
+                            }
+                        },
                         onEdit = { editingNode = it },
                         onRemove = { node ->
                             nodeSettingsVM.disconnect()
@@ -610,6 +622,10 @@ fun NodeListItem(
     val connectionError by nodeSettingsVM.connectionError.observeAsState(null)
     val walletState = koinInject<WalletState>()
     val walletHeight by walletState.walletHeight.asLiveData().observeAsState(0L)
+    // A selected node is not necessarily connected: startup may still be waiting for Tor.
+    // Offer Connect until the daemon actually reports a live connection.
+    val isConnected = active &&
+        daemonStatus?.connectionStatus == Wallet.ConnectionStatus.ConnectionStatus_Connected
 
     ListItem(
         modifier = modifier
@@ -680,9 +696,14 @@ fun NodeListItem(
                     onDismissRequest = { menu = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text(if (active) stringResource(R.string.disconnect) else stringResource(R.string.connect)) },
+                        text = {
+                            Text(
+                                if (isConnected) stringResource(R.string.disconnect)
+                                else stringResource(R.string.connect)
+                            )
+                        },
                         onClick = {
-                            if (active) {
+                            if (isConnected) {
                                 onDisconnect(node)
                             } else {
                                 onConnect(node)
