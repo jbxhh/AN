@@ -110,6 +110,12 @@ class WalletState(private val prefs: SharedPreferences) {
         get() = resetPriorityActive.get() && !walletWipeInProgress.get()
     val isWalletWipeInProgress: Boolean
         get() = walletWipeInProgress.get()
+
+    // While the native worker prepares reset state, callback data is suppressed.
+    // Once scan state is published, block/progress callbacks must be allowed through,
+    // even if startRefresh() has not returned yet.
+    private fun isManualResyncPreparing(): Boolean =
+        manualResyncInProgress.get() && !manualResyncScanPrepared.get()
     val backgroundSyncFlow: Flow<Boolean> = _backgroundSync
 
     val walletStatus: Flow<Wallet.Status?> = _walletStatus
@@ -129,7 +135,12 @@ class WalletState(private val prefs: SharedPreferences) {
 
     @Synchronized
     fun update() {
-        if (_blockUpdates.get() || walletWipeInProgress.get() || manualResyncInProgress.get()) return
+        if (
+            _blockUpdates.get() ||
+            walletWipeInProgress.get() ||
+            manualResyncInProgress.get() ||
+            isResyncPriorityActive
+        ) return
         getWallet?.let { wallet ->
             if (!wallet.isInitialized) {
                 // Wallet files are already open at this point. Publish locally available
@@ -877,7 +888,7 @@ class WalletState(private val prefs: SharedPreferences) {
      */
     @Synchronized
     fun recordScannedBlockHeight(processedHeight: Long, wallet: Wallet? = getWallet) {
-        if (walletWipeInProgress.get() || manualResyncInProgress.get() ||
+        if (walletWipeInProgress.get() || isManualResyncPreparing() ||
             wallet == null || !wallet.isInitialized || processedHeight <= 0L
         ) return
 
@@ -1041,7 +1052,7 @@ class WalletState(private val prefs: SharedPreferences) {
         wallet: Wallet? = getWallet,
         knownDaemonHeight: Long? = null
     ): Boolean {
-        if (walletWipeInProgress.get() || manualResyncInProgress.get()) return false
+        if (walletWipeInProgress.get() || isManualResyncPreparing()) return false
         if (wallet != null && wallet.isInitialized) {
             // A callback can report the daemon tip before the fresh restore's native
             // rescan is queued. Never treat that startup race as a completed wallet scan.
@@ -1128,7 +1139,7 @@ class WalletState(private val prefs: SharedPreferences) {
         wallet: Wallet? = getWallet,
         knownDaemonHeight: Long? = null
     ) {
-        if (walletWipeInProgress.get() || manualResyncInProgress.get()) return
+        if (walletWipeInProgress.get() || isManualResyncPreparing()) return
         if (wallet == null || !wallet.isInitialized) {
             _walletHeight.value = 0L
             _connectedDaemon.update { current -> current?.copy(daemonHeight = 0L) }
@@ -1188,7 +1199,7 @@ class WalletState(private val prefs: SharedPreferences) {
         wallet: Wallet? = getWallet,
         knownDaemonHeight: Long? = null
     ) {
-        if (walletWipeInProgress.get() || manualResyncInProgress.get()) return
+        if (walletWipeInProgress.get() || isManualResyncPreparing()) return
         if (wallet == null || !wallet.isInitialized) {
             clearSyncProgress()
             return
@@ -1761,10 +1772,9 @@ class WalletState(private val prefs: SharedPreferences) {
             return Result.failure(Exception("钱包正在安全删除，已取消区块重置"))
         }
 
-        // Direct get_info heights are zero-based block indices; the progress model
-        // tracks processed-block counts. Publish progress immediately, before JNI setup.
         // Direct get_info heights are zero-based tip indices; the scan tracker uses
-        // one-based block counts. Native wallet height APIs already return counts.
+        // one-based block counts. Publish the real remaining-block estimate before
+        // native setup; native wallet height APIs already return counts.
         val progressDaemonHeight = if (knownDaemonHeight != null && knownDaemonHeight >= 0L) {
             knownDaemonHeight + 1L
         } else {
