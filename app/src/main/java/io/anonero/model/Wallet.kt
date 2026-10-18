@@ -397,8 +397,11 @@ class Wallet {
 
     external fun startBackgroundSync(): Boolean
 
-    fun refreshCoins() {
-        if (isSynchronized) {
+    fun refreshCoins(allowUnsynchronized: Boolean = false) {
+        // Output inventory can be explicitly refreshed from the Outputs screen once
+        // the wallet is connected and idle, even if the app's synchronized flag was
+        // not restored correctly. Normal callers still require isSynchronized.
+        if (isSynchronized || allowUnsynchronized) {
             Timber.tag("Wallet").d("Coin Refreshed: %s", coins?.getCount())
             coins?.refresh()
         }
