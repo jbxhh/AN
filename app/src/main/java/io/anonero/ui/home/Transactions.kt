@@ -803,6 +803,46 @@ fun TransactionScreen(
 
 
 @Composable
+private fun TransactionDirectionIndicator(
+    tx: TransactionInfo,
+    iconSize: androidx.compose.ui.unit.Dp,
+) {
+    val isIncoming = tx.direction == TransactionInfo.Direction.Direction_In
+    val tint = if (isIncoming) MaterialTheme.colorScheme.primary else LocalContentColor.current
+    val directionIcon = if (isIncoming) AnonIcons.ArrowDownLeft else AnonIcons.ArrowUpRight
+
+    // Incoming and outgoing transactions stay in the confirming state until the
+    // model's existing confirmation threshold is reached. Keep the direction arrow
+    // visible inside the spinner so users can still tell the transaction direction.
+    val confirming = !tx.isConfirmed && !tx.isFailed
+    Box(
+        modifier = Modifier.size(iconSize),
+        contentAlignment = Alignment.Center
+    ) {
+        if (confirming) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(iconSize),
+                color = tint,
+                strokeWidth = 1.5.dp
+            )
+            Icon(
+                imageVector = directionIcon,
+                modifier = Modifier.size((iconSize - 8.dp).coerceAtLeast(10.dp)),
+                tint = tint,
+                contentDescription = null
+            )
+        } else {
+            Icon(
+                imageVector = directionIcon,
+                modifier = Modifier.size(iconSize),
+                tint = tint,
+                contentDescription = null
+            )
+        }
+    }
+}
+
+@Composable
 fun TransactionItem(tx: TransactionInfo, hideAmounts: Boolean = false, amountCenter: Boolean = false, modifier: Modifier = Modifier, showTime: Boolean = false, timePattern: String = "HH:mm\ndd/MM") {
     val isIncoming = tx.direction == TransactionInfo.Direction.Direction_In
     val amount = tx.amount
@@ -821,12 +861,7 @@ fun TransactionItem(tx: TransactionInfo, hideAmounts: Boolean = false, amountCen
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(
-                    if (isIncoming) AnonIcons.ArrowDownLeft else AnonIcons.ArrowUpRight,
-                    modifier = Modifier.size(28.dp),
-                    tint = if (isIncoming) MaterialTheme.colorScheme.primary else LocalContentColor.current,
-                    contentDescription = null
-                )
+                TransactionDirectionIndicator(tx = tx, iconSize = 28.dp)
                 Text(
                     Formats.formatTransactionTime(tx.timestamp, timePattern),
                     style = MaterialTheme.typography.labelSmall,
@@ -854,11 +889,9 @@ fun TransactionItem(tx: TransactionInfo, hideAmounts: Boolean = false, amountCen
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    if (isIncoming) AnonIcons.ArrowDownLeft else AnonIcons.ArrowUpRight,
-                    modifier = Modifier.size(if (amountCenter) 28.dp else 18.dp),
-                    tint = if (isIncoming) MaterialTheme.colorScheme.primary else LocalContentColor.current,
-                    contentDescription = null
+                TransactionDirectionIndicator(
+                    tx = tx,
+                    iconSize = if (amountCenter) 28.dp else 18.dp
                 )
                 Text(
                     amountText,
