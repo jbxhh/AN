@@ -54,7 +54,7 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
     }
 
     override fun updated() {
-        refresh(false)
+        refresh()
         Timber.tag(name).i("updated()")
         walletState.update()
     }
@@ -128,7 +128,7 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
             if (scanCompleted) {
                 wallet.setSynchronized()
                 wallet.store()
-                refresh(true)
+                refresh()
                 walletState.setLoading(false)
                 // History refresh inside the native callback can run before the native
                 // scan has published its final transaction list. Re-read it after the
@@ -254,20 +254,15 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
         walletState.update()
     }
 
-    private fun refresh(walletSynced: Boolean) {
-        // A transient history refresh failure must not prevent live balance/state
-        // publication during restore or rescan.
+    private fun refresh() {
+        // WalletListener callbacks run from native wallet code. Do not enumerate native
+        // outputs here: Coins.refresh() can contend with the active scanner/native locks.
+        // Output refresh is scheduled on Dispatchers.IO after the completion callback
+        // unwinds, so a blocked output query cannot prevent that deferred work from starting.
         try {
             wallet.refreshHistory()
         } catch (e: Exception) {
             Timber.tag(name).w(e, "Wallet history refresh failed; publishing current wallet state")
-        }
-        if (walletSynced) {
-            try {
-                wallet.refreshCoins()
-            } catch (e: Exception) {
-                Timber.tag(name).w(e, "Coin refresh failed")
-            }
         }
         walletState.update()
     }
