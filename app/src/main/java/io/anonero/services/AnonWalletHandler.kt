@@ -149,6 +149,7 @@ class AnonWalletHandler(
         if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
         val wallet = WalletManager.instance?.wallet ?: return
         if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
+        walletState.prepareScanPreferenceIdentity(wallet)
         if (
             serviceStartedWallet === wallet &&
             wallet.isInitialized &&

@@ -28,6 +28,10 @@ class MoneroHandlerThread(
     private val postCompletionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val postCompletionRefreshInFlight = AtomicBoolean(false)
     private val lastPostCompletionRefreshHeight = AtomicLong(-1L)
+    private val walletUpdateCallbackPending = AtomicBoolean(false)
+    private val walletUpdateCallbackWorkerActive = AtomicBoolean(false)
+    private val refreshedCallbackPending = AtomicBoolean(false)
+    private val refreshedCallbackWorkerActive = AtomicBoolean(false)
     private val connectionRecoveryInFlight = AtomicBoolean(false)
     private val lastConnectionRecoveryAtMillis = AtomicLong(0L)
 
@@ -46,7 +50,11 @@ class MoneroHandlerThread(
 
     override fun moneyReceived(txId: String?, amount: Long) {
         Timber.tag(name).i("moneyReceived: %s", amount)
-        WalletManager.instance?.wallet?.store()
+        postCompletionScope.launch {
+            if (WalletManager.instance?.wallet !== wallet || !wallet.isInitialized) return@launch
+            runCatching { wallet.store() }
+                .onFailure { Timber.tag(name).w(it, "Wallet store after received transaction failed") }
+        }
     }
 
     override fun unconfirmedMoneyReceived(txId: String?, amount: Long) {}
@@ -64,19 +72,67 @@ class MoneroHandlerThread(
     }
 
     override fun updated() {
-        // During a manual rescan, keep native listener callbacks lightweight. Refreshing
-        // transaction history from this callback can contend with the active scan lock
-        // and prevent later newBlock callbacks from advancing the progress state.
-        if (walletState.isResyncPriorityActive) {
-            Timber.tag(name).d("Skipping history refresh while manual rescan owns wallet")
+        // Listener callbacks run from native wallet code. Defer JNI history/status reads
+        // so they cannot stall later newBlock callbacks during an ordinary initial scan.
+        if (walletState.isResyncPriorityActive || walletState.isWalletWipeInProgress) {
+            Timber.tag(name).d("Skipping wallet update while a priority operation owns wallet")
             return
         }
-        refresh()
-        Timber.tag(name).i("updated()")
-        walletState.update()
+        walletUpdateCallbackPending.set(true)
+        scheduleWalletUpdateOutsideNativeCallback()
+    }
+
+    private fun scheduleWalletUpdateOutsideNativeCallback() {
+        if (!walletUpdateCallbackWorkerActive.compareAndSet(false, true)) return
+        postCompletionScope.launch {
+            try {
+                while (walletUpdateCallbackPending.getAndSet(false)) {
+                    if (WalletManager.instance?.wallet !== wallet || !wallet.isInitialized) break
+                    if (walletState.isResyncPriorityActive || walletState.isWalletWipeInProgress) continue
+                    refresh()
+                    Timber.tag(name).i("updated() processed outside native wallet callback")
+                }
+            } catch (e: Exception) {
+                Timber.tag(name).w(e, "Deferred wallet update failed")
+            } finally {
+                walletUpdateCallbackWorkerActive.set(false)
+                if (walletUpdateCallbackPending.get() &&
+                    WalletManager.instance?.wallet === wallet &&
+                    wallet.isInitialized &&
+                    !walletState.isResyncPriorityActive &&
+                    !walletState.isWalletWipeInProgress
+                ) scheduleWalletUpdateOutsideNativeCallback()
+            }
+        }
     }
 
     override fun refreshed() {
+        // Return immediately from native callback; perform JNI/status work after locks unwind.
+        refreshedCallbackPending.set(true)
+        scheduleRefreshedProcessingOutsideNativeCallback()
+    }
+
+    private fun scheduleRefreshedProcessingOutsideNativeCallback() {
+        if (!refreshedCallbackWorkerActive.compareAndSet(false, true)) return
+        postCompletionScope.launch {
+            try {
+                while (refreshedCallbackPending.getAndSet(false)) {
+                    if (WalletManager.instance?.wallet !== wallet || !wallet.isInitialized) break
+                    processRefreshedCallback()
+                }
+            } catch (e: Exception) {
+                Timber.tag(name).w(e, "Deferred refreshed callback processing failed")
+            } finally {
+                refreshedCallbackWorkerActive.set(false)
+                if (refreshedCallbackPending.get() &&
+                    WalletManager.instance?.wallet === wallet &&
+                    wallet.isInitialized
+                ) scheduleRefreshedProcessingOutsideNativeCallback()
+            }
+        }
+    }
+
+    private fun processRefreshedCallback() {
         val status = wallet.fullStatus.connectionStatus
         // Use one live daemon snapshot plus its target. Reaching the current node tip
         // is not wallet sync completion while that node still has blocks to download.
@@ -170,6 +226,7 @@ class MoneroHandlerThread(
 
         walletState.update()
     }
+
 
     /**
      * Refresh transaction history outside the native refreshed() callback. The first

@@ -226,17 +226,26 @@ class MainActivity : ComponentActivity() {
                                 mode = LockScreenMode.LOCK_SCREEN,
                                 modifier = androidx.compose.ui.Modifier.fillMaxSize(),
                                 onUnLocked = { pin, shortCut ->
+                                    // Keep the PIN overlay visible until native background sync
+                                    // has stopped and normal refresh has restarted successfully.
                                     if (shortCut != LockScreenShortCut.HOME) {
                                         walletState.emitUnlockShortcut(shortCut)
-                                        scope.launch {
-                                            kotlinx.coroutines.delay(250)
-                                            walletState.setBackGroundSync(false)
-                                        }
-                                    } else {
-                                        walletState.setBackGroundSync(false)
                                     }
                                     scope.launch(Dispatchers.IO) {
-                                        walletState.exitBackgroundSync(pin)
+                                        val resumed = runCatching {
+                                            walletState.exitBackgroundSync(pin)
+                                        }.onFailure {
+                                            Timber.tag(TAG).e(it, "Unable to restore wallet refresh after PIN unlock")
+                                        }.getOrDefault(false)
+                                        if (!resumed) {
+                                            kotlinx.coroutines.withContext(Dispatchers.Main) {
+                                                android.widget.Toast.makeText(
+                                                    this@MainActivity,
+                                                    "PIN 已验证，但钱包刷新未恢复；请重试或手动连接节点。",
+                                                    android.widget.Toast.LENGTH_LONG
+                                                ).show()
+                                            }
+                                        }
                                     }
                                 }
                             )

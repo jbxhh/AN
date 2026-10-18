@@ -44,7 +44,10 @@ const val PREF_FORCE_FRESH_WALLET_SCAN = "anonero_force_fresh_wallet_scan"
 
 class WalletState(private val prefs: SharedPreferences) {
     class ManualResyncReservation internal constructor(internal val id: Long)
+    private data class ScanPreferenceIdentity(val wallet: Wallet, val value: String)
 
+    // Resolve JNI-backed wallet identity once before refresh begins.
+    private val scanPreferenceIdentity = AtomicReference<ScanPreferenceIdentity?>(null)
     private var _blockUpdates = AtomicBoolean(false)
     val hideAmountsFlow = MutableStateFlow(false)
     private val _isLoading = MutableStateFlow(false)
@@ -397,7 +400,13 @@ class WalletState(private val prefs: SharedPreferences) {
     fun pendingSelectedRestoreHeight(wallet: Wallet? = getWallet): Long? {
         val currentWallet = wallet ?: return null
         if (!prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) return null
-        return prefs.getLong(RESTORE_HEIGHT, currentWallet.getRestoreHeight()).coerceAtLeast(0L)
+        // SharedPreferences evaluates default arguments eagerly; avoid an unnecessary JNI call.
+        val selectedHeight = if (prefs.contains(RESTORE_HEIGHT)) {
+            prefs.getLong(RESTORE_HEIGHT, 0L)
+        } else {
+            currentWallet.getRestoreHeight()
+        }
+        return selectedHeight.coerceAtLeast(0L)
     }
 
     /**
@@ -521,6 +530,7 @@ class WalletState(private val prefs: SharedPreferences) {
     @Synchronized
     fun publishWalletSnapshot(wallet: Wallet? = getWallet) {
         if (walletWipeInProgress.get() || wallet == null) return
+        prepareScanPreferenceIdentity(wallet)
 
         try {
             updateBalanceFromWallet(wallet)
@@ -877,12 +887,21 @@ class WalletState(private val prefs: SharedPreferences) {
         // refresh, so determinate progress cannot precede scan startup.
     }
 
-    private fun scanPreferenceKey(wallet: Wallet, suffix: String): String {
+    fun prepareScanPreferenceIdentity(wallet: Wallet) {
+        val current = scanPreferenceIdentity.get()
+        if (current?.wallet === wallet) return
+        // Read JNI-backed fields before refresh starts, never from the newBlock callback.
         val path = wallet.getPath()?.takeIf { it.isNotBlank() } ?: wallet.name
-        val identity = path + "|" + wallet.address
+        scanPreferenceIdentity.set(ScanPreferenceIdentity(wallet, path + "|" + wallet.address))
+    }
+
+    private fun scanPreferenceKey(wallet: Wallet, suffix: String): String {
+        val identity = scanPreferenceIdentity.get()
+            ?.takeIf { it.wallet === wallet }
+            ?.value
+            ?: throw IllegalStateException("Scan preference identity was not prepared before native refresh started")
         val hash = identity.fold(0) { acc, char -> 31 * acc + char.code }
-        // Keep the v4 key namespace; heightCountSemanticsKey migrates v4's stored
-        // zero-based callback heights to the one-based processed-block count model.
+        // Keep the v4 key namespace; migrate stored callback heights as before.
         return "anonero_scan_v4_" + hash + "_" + suffix
     }
 
@@ -891,7 +910,6 @@ class WalletState(private val prefs: SharedPreferences) {
      * Fast-refresh hash-cache callbacks are suppressed in the Monero C++ build patch,
      * so this value advances only after native wallet block processing.
      */
-    @Synchronized
     fun recordScannedBlockHeight(processedHeight: Long, wallet: Wallet? = getWallet) {
         if (walletWipeInProgress.get() || isManualResyncPreparing() ||
             wallet == null || !wallet.isInitialized || processedHeight <= 0L
@@ -1202,7 +1220,6 @@ class WalletState(private val prefs: SharedPreferences) {
     /**
      * Computes backlog from the actual processed scan height, not the local hash-chain size.
      */
-    @Synchronized
     fun updateSyncProgressFromWallet(
         wallet: Wallet? = getWallet,
         knownDaemonHeight: Long? = null
@@ -1241,7 +1258,7 @@ class WalletState(private val prefs: SharedPreferences) {
         // it starts automatically once daemon height reaches its target. Without
         // this retry, the UI can show a backlog while no newBlock callbacks arrive.
         if (chainHeight < daemonHeight &&
-            pendingSelectedRestoreHeight(wallet) != null &&
+            prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false) &&
             !forcedRestoreScanStarted.get()
         ) {
             maybeStartForcedRestoreScan(wallet)
@@ -1314,10 +1331,11 @@ class WalletState(private val prefs: SharedPreferences) {
         _blockUpdates.set(true)
         try {
             if (wallet.stopBackgroundSync(pin)) {
+                // Start the normal native refresh before dismissing the PIN overlay.
+                wallet.startRefresh()
                 _backgroundSync.value = false
                 update()
-                wallet.startRefresh()
-                Timber.tag(TAG).i("Exited background sync")
+                Timber.tag(TAG).i("Exited background sync; normal refresh restarted")
                 return true
             }
             Timber.tag(TAG).e("stopBackgroundSync returned false")
@@ -1409,6 +1427,7 @@ class WalletState(private val prefs: SharedPreferences) {
 
     /** Clear process-wide UI state once the wallet file has been safely deleted. */
     fun resetAfterWalletWipe() {
+        scanPreferenceIdentity.set(null)
         _blockUpdates.set(false)
         _isLoading.value = false
         _backgroundSync.value = false
