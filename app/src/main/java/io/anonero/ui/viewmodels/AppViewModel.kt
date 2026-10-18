@@ -36,8 +36,7 @@ class AppViewModel(private val walletState: WalletState, private val torService:
         }
     }
 
-    @Synchronized
-    fun openWallet(pin: String): Boolean {
+    suspend fun openWallet(pin: String): Boolean {
         return try {
             walletHandler.openWallet(pin)
         } catch (e: InvalidPin) {
