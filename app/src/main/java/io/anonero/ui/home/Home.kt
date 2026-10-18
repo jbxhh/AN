@@ -293,6 +293,12 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                             navigateToReview = { bottomNavController.navigate(it) },
                             modifier = Modifier.padding(bottom = paddingValues.calculateBottomPadding()),
                             onBackPress = {
+                                // Returning from a spend flow opened by the output list should
+                                // restore that list directly, without showing the main bottom bar.
+                                val previousRoute = bottomNavController.previousBackStackEntry
+                                    ?.destination?.route
+                                showBottomNavigation =
+                                    previousRoute != CoinsScreenRoute::class.qualifiedName
                                 bottomNavController.popBackStack()
                             },
                             paymentUri = params,
