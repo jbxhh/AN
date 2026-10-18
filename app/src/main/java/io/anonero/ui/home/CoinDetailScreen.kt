@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.anonero.services.WalletState
@@ -155,10 +156,15 @@ fun CoinDetailScreen(
                 ) {
                     Text("公钥", modifier = Modifier.size(width = 40.dp, height = 24.dp), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = coin?.let { breakableIdentifier(if (pubKeyState == 1) it.pub_key else abbreviatedValue(it.pub_key, 48)) } ?: "____",
+                        text = coin?.let {
+                            if (pubKeyState == 1) breakableIdentifier(it.pub_key) else it.pub_key
+                        } ?: "____",
                         modifier = Modifier.weight(1f),
                         textAlign = TextAlign.Start,
-                        style = MaterialTheme.typography.titleMedium
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = if (pubKeyState == 1) Int.MAX_VALUE else 1,
+                        softWrap = pubKeyState == 1,
+                        overflow = if (pubKeyState == 1) TextOverflow.Clip else TextOverflow.Ellipsis
                     )
                 }
                 androidx.compose.foundation.layout.Row(
@@ -173,10 +179,15 @@ fun CoinDetailScreen(
                 ) {
                     Text("哈希", modifier = Modifier.size(width = 40.dp, height = 24.dp), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = coin?.let { breakableIdentifier(if (hashState == 1) it.hash else abbreviatedValue(it.hash, 48)) } ?: "____",
+                        text = coin?.let {
+                            if (hashState == 1) breakableIdentifier(it.hash) else it.hash
+                        } ?: "____",
                         modifier = Modifier.weight(1f),
                         textAlign = TextAlign.Start,
-                        style = MaterialTheme.typography.titleMedium
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = if (hashState == 1) Int.MAX_VALUE else 1,
+                        softWrap = hashState == 1,
+                        overflow = if (hashState == 1) TextOverflow.Clip else TextOverflow.Ellipsis
                     )
                 }
                 androidx.compose.foundation.layout.Row(
@@ -191,10 +202,15 @@ fun CoinDetailScreen(
                 ) {
                     Text("地址", modifier = Modifier.size(width = 40.dp, height = 24.dp), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = outputAddress?.let { breakableIdentifier(if (addressState == 1) it else abbreviatedValue(it, 48)) } ?: "____",
+                        text = outputAddress?.let {
+                            if (addressState == 1) breakableIdentifier(it) else it
+                        } ?: "____",
                         modifier = Modifier.weight(1f),
                         textAlign = TextAlign.Start,
-                        style = MaterialTheme.typography.titleMedium
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = if (addressState == 1) Int.MAX_VALUE else 1,
+                        softWrap = addressState == 1,
+                        overflow = if (addressState == 1) TextOverflow.Clip else TextOverflow.Ellipsis
                     )
                 }
             }
