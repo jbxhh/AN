@@ -513,11 +513,6 @@ fun ResyncBlockchainScreen(
                                     restoreHeightInput = restoreInfo.first.toString()
                                     restoreDateInput = restoreInfo.second
                                     queryCompleted = true
-                                    toastState.show(
-                                        "查询完成：已定位真实区块高度 " + restoreInfo.first,
-                                        type = ToastType.Success,
-                                        duration = 4.seconds
-                                    )
                                 } catch (e: Exception) {
                                     queryCompleted = false
                                     toastState.show(
