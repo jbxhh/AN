@@ -780,6 +780,7 @@ fun TransactionScreen(
                     with(sharedTransitionScope) {
                         TransactionItem(
                             visibleTransactions[it], hideAmounts = hideAmounts, modifier = Modifier
+                                .padding(start = 8.dp)
                                 .clickable {
                                     onItemClick(visibleTransactions[it])
                                 }
