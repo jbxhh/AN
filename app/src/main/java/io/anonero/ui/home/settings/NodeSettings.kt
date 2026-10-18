@@ -368,6 +368,7 @@ class NodeSettingsViewModel(
                 walletState.setLoading(false)
                 uriValidationError.postValue(e.message)
             }
+            }
         } finally {
             walletHandler.endManualNodeConnection()
         }
