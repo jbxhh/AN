@@ -42,14 +42,6 @@ data class SyncProgress(val progress: Float, val left: Long)
 private const val TAG = "WalletState"
 const val PREF_FORCE_FRESH_WALLET_SCAN = "anonero_force_fresh_wallet_scan"
 
-/**
- * Native daemon APIs expose the zero-based height of the current tip in this build.
- * Scan progress is a processed-block count, so convert tip index H to count H + 1.
- * Preserve zero as "height unavailable" because the JNI API also returns zero on error.
- */
-internal fun nativeTipHeightToProcessedBlockCount(tipHeight: Long): Long =
-    if (tipHeight > 0L) tipHeight + 1L else 0L
-
 class WalletState(private val prefs: SharedPreferences) {
     class ManualResyncReservation internal constructor(internal val id: Long)
 
@@ -986,12 +978,10 @@ class WalletState(private val prefs: SharedPreferences) {
                                 return@withLock
                             }
 
-                            val latestDaemonHeight = nativeTipHeightToProcessedBlockCount(
+                            val latestDaemonHeight =
                                 wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
-                            )
-                            val latestTargetHeight = nativeTipHeightToProcessedBlockCount(
+                            val latestTargetHeight =
                                 wallet.getDaemonBlockChainTargetHeight().coerceAtLeast(0L)
-                            )
                             if (walletWipeInProgress.get() ||
                                 getWallet !== wallet ||
                                 !wallet.isInitialized
@@ -1072,16 +1062,16 @@ class WalletState(private val prefs: SharedPreferences) {
                 _scanStartHeight.set(selectedHeight)
                 _walletHeight.value = selectedHeight
                 _scanTracking.set(true)
-                val daemonHeight = (knownDaemonHeight
-                    ?: nativeTipHeightToProcessedBlockCount(wallet.getDaemonBlockChainHeight())).coerceAtLeast(0L)
+                val daemonHeight =
+                    (knownDaemonHeight ?: wallet.getDaemonBlockChainHeight()).coerceAtLeast(0L)
                 updateSyncProgressFromWallet(wallet, daemonHeight)
                 maybeStartForcedRestoreScan(wallet)
                 return false
             }
             // Keep listener-based height tracking enabled after sync, and do not issue
             // another node-height RPC that might observe a different tip mid-callback.
-            val daemonHeight = (knownDaemonHeight
-                ?: nativeTipHeightToProcessedBlockCount(wallet.getDaemonBlockChainHeight())).coerceAtLeast(0L)
+            val daemonHeight =
+                (knownDaemonHeight ?: wallet.getDaemonBlockChainHeight()).coerceAtLeast(0L)
             val targetHeight = maxOf(daemonHeight, _daemonTargetHeight.get())
             if (daemonHeight > 0L && targetHeight > daemonHeight) {
                 // The wallet has caught up to the node's present tip, but the node
@@ -1158,8 +1148,8 @@ class WalletState(private val prefs: SharedPreferences) {
             return
         }
 
-        val daemonHeight = (knownDaemonHeight
-            ?: nativeTipHeightToProcessedBlockCount(wallet.getDaemonBlockChainHeight())).coerceAtLeast(0L)
+        val daemonHeight =
+            (knownDaemonHeight ?: wallet.getDaemonBlockChainHeight()).coerceAtLeast(0L)
         _scanDaemonHeight.set(daemonHeight)
         if (!_scanTracking.get()) {
             // Never populate the displayed wallet height from blockChainHeight():
@@ -1220,8 +1210,8 @@ class WalletState(private val prefs: SharedPreferences) {
         // Only listener-confirmed processed height is valid scan progress.
         // Never substitute the native hash-chain cache height here.
         val chainHeight = _walletHeight.value.coerceAtLeast(0L)
-        val daemonHeight = (knownDaemonHeight
-            ?: nativeTipHeightToProcessedBlockCount(wallet.getDaemonBlockChainHeight())).coerceAtLeast(0L)
+        val daemonHeight =
+            (knownDaemonHeight ?: wallet.getDaemonBlockChainHeight()).coerceAtLeast(0L)
         if (daemonHeight <= 0L) {
             // A transient zero from the RPC is not proof that the scan finished.
             // Preserve any active scan/progress until a valid node height arrives.
@@ -1616,16 +1606,12 @@ class WalletState(private val prefs: SharedPreferences) {
                     Wallet.ConnectionStatus.ConnectionStatus_Connected
                 if (!connected) return@withContext
 
-                val daemonHeight = nativeTipHeightToProcessedBlockCount(
-                    wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
-                )
+                val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
                 if (daemonHeight > 0L) updateBlockHeights(wallet, daemonHeight)
                 wallet.refreshHistory()
                 update()
 
-                val latestDaemonHeight = nativeTipHeightToProcessedBlockCount(
-                    wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
-                )
+                val latestDaemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
                 if (latestDaemonHeight > 0L) updateBlockHeights(wallet, latestDaemonHeight)
             }
         } catch (e: Exception) {
@@ -1796,7 +1782,7 @@ class WalletState(private val prefs: SharedPreferences) {
         val progressDaemonHeight = if (knownDaemonHeight != null && knownDaemonHeight >= 0L) {
             knownDaemonHeight + 1L
         } else {
-            nativeTipHeightToProcessedBlockCount(daemonHeight)
+            daemonHeight
         }
         val progressTargetHeight = if (knownDaemonHeight != null && knownDaemonHeight >= 0L) {
             maxOf(
@@ -1804,10 +1790,7 @@ class WalletState(private val prefs: SharedPreferences) {
                 knownDaemonTargetHeight ?: knownDaemonHeight
             ) + 1L
         } else {
-            maxOf(
-                nativeTipHeightToProcessedBlockCount(daemonHeight),
-                nativeTipHeightToProcessedBlockCount(daemonTargetHeight)
-            )
+            maxOf(daemonHeight, daemonTargetHeight)
         }
         val remainingBlocks = (progressTargetHeight - selectedHeight).coerceAtLeast(0L)
         if (remainingBlocks > 0L) {
