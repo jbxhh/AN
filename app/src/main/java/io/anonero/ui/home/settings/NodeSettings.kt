@@ -259,33 +259,26 @@ class NodeSettingsViewModel(
 
                 walletState.setLoading(true)
 
-                // Do not fail the whole connection after one Tor timeout. TorService keeps
-                // a slow bootstrap running, and this operation retries until SOCKS is ready
-                // or the caller explicitly leaves/cancels the connection attempt.
-                while (true) {
-                    val useTor = prefs.getBoolean(WALLET_USE_TOR, true)
-                    val proxyHost = prefs.getString(WALLET_PROXY, "")
-                    val proxyPort = prefs.getInt(WALLET_PROXY_PORT, -1)
+                val useTor = prefs.getBoolean(WALLET_USE_TOR, true)
+                val proxyHost = prefs.getString(WALLET_PROXY, "")
+                val proxyPort = prefs.getInt(WALLET_PROXY_PORT, -1)
 
-                    if (useTor) {
-                        val readySocket = torService.awaitSocks(30_000L)
-                        if (readySocket == null) {
-                            Timber.tag(TAG).w("Tor SOCKS is not ready yet; retrying node connection")
-                            walletState.setLoading(true)
-                            delay(2_000L)
-                            continue
-                        }
-                        val proxyAddress = "${readySocket.address}:${readySocket.port.value}"
-                        WalletManager.instance?.setProxy(proxyAddress)
-                        WalletManager.instance?.wallet?.setProxy(proxyAddress)
-                    } else if (!proxyHost.isNullOrBlank() && proxyPort != -1) {
-                        val proxyAddress = "${proxyHost}:$proxyPort"
-                        WalletManager.instance?.setProxy(proxyAddress)
-                        WalletManager.instance?.wallet?.setProxy(proxyAddress)
-                    } else {
-                        walletHandler.setProxy(null, null)
-                    }
-                    break
+                if (useTor) {
+                    // A manual Connect action must return after bounded retries, so the user
+                    // can retry rather than waiting forever on a stalled Tor bootstrap.
+                    val readySocket = torService.awaitSocksWithRetry(maxAttempts = 2)
+                        ?: throw IllegalStateException(
+                            "Tor 尚未就绪，请稍后再次点击连接"
+                        )
+                    val proxyAddress = "${readySocket.address}:${readySocket.port.value}"
+                    WalletManager.instance?.setProxy(proxyAddress)
+                    WalletManager.instance?.wallet?.setProxy(proxyAddress)
+                } else if (!proxyHost.isNullOrBlank() && proxyPort != -1) {
+                    val proxyAddress = "${proxyHost}:${proxyPort}"
+                    WalletManager.instance?.setProxy(proxyAddress)
+                    WalletManager.instance?.wallet?.setProxy(proxyAddress)
+                } else {
+                    walletHandler.setProxy(null, null)
                 }
 
                 walletHandler.withWalletInitializationLock {
