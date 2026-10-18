@@ -52,15 +52,12 @@ class MoneroHandlerThread(
     override fun unconfirmedMoneyReceived(txId: String?, amount: Long) {}
 
     override fun newBlock(height: Long) {
-        // Monero's callback carries the zero-based index of the processed block.
-        // The scan tracker compares against daemon blockchain height (block count),
-        // so convert the block index to the one-based processed-block count.
-        val processedHeight = height + 1L
-        Timber.tag(name).i(
-            "newBlock processed block index=%d processedCount=%d",
-            height,
-            processedHeight
-        )
+        // anonero.cpp already converts Monero's zero-based block index to the
+        // one-based processed-block count before calling this Java listener.
+        // Do not increment here a second time; scan and daemon heights must use the
+        // same block-count semantics or completion will be rejected by exactly one.
+        val processedHeight = height
+        Timber.tag(name).i("newBlock processed block count=%d", processedHeight)
         // Do not switch off the loading phase here. recordScannedBlockHeight publishes
         // the syncing bar first; the progress indicator prioritizes it over loading.
         walletState.recordScannedBlockHeight(processedHeight, wallet)
@@ -83,8 +80,10 @@ class MoneroHandlerThread(
         val status = wallet.fullStatus.connectionStatus
         // Use one live daemon snapshot plus its target. Reaching the current node tip
         // is not wallet sync completion while that node still has blocks to download.
-        val daemonTipIndex = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
-        val daemonTargetTipIndex = if (
+        // Wallet API height methods return chain heights as counts in this build.
+        // Only WalletListener.newBlock needs conversion, and anonero.cpp already applies it.
+        val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+        val daemonTargetHeight = if (
             status == Wallet.ConnectionStatus.ConnectionStatus_Connected
         ) {
             runCatching { wallet.getDaemonBlockChainTargetHeight() }
@@ -92,8 +91,6 @@ class MoneroHandlerThread(
         } else {
             0L
         }
-        val daemonHeight = nativeTipHeightToProcessedBlockCount(daemonTipIndex)
-        val daemonTargetHeight = nativeTipHeightToProcessedBlockCount(daemonTargetTipIndex)
         walletState.updateDaemonTargetHeight(daemonTargetHeight)
         walletState.updateBlockHeights(wallet, daemonHeight)
         // Do not wait for completeWalletScan(): a restored wallet starts below the daemon
@@ -102,7 +99,7 @@ class MoneroHandlerThread(
         walletState.maybeStartForcedRestoreScan(wallet)
         val scanHeight = walletState.currentWalletHeight
         Timber.tag(name).i(
-            "refreshed() status:%s daemonCount:%d targetCount:%d scanCount:%d nativeTipIndex:%d",
+            "refreshed() status:%s daemonHeight:%d daemonTargetHeight:%d scanHeight:%d nativeHeight:%d",
             status, daemonHeight, daemonTargetHeight, scanHeight, wallet.getBlockChainHeight()
         )
 
@@ -216,16 +213,12 @@ class MoneroHandlerThread(
                     if (wallet.fullStatus.connectionStatus ==
                         Wallet.ConnectionStatus.ConnectionStatus_Connected
                     ) {
-                        val daemonHeight = nativeTipHeightToProcessedBlockCount(
-                            runCatching {
-                                wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
-                            }.getOrDefault(0L)
-                        )
-                        val daemonTargetHeight = nativeTipHeightToProcessedBlockCount(
-                            runCatching {
-                                wallet.getDaemonBlockChainTargetHeight().coerceAtLeast(0L)
-                            }.getOrDefault(0L)
-                        )
+                        val daemonHeight = runCatching {
+                            wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
+                        }.getOrDefault(0L)
+                        val daemonTargetHeight = runCatching {
+                            wallet.getDaemonBlockChainTargetHeight().coerceAtLeast(0L)
+                        }.getOrDefault(0L)
                         walletState.updateDaemonTargetHeight(daemonTargetHeight)
                         if (daemonHeight > 0L) {
                             walletState.updateBlockHeights(wallet, daemonHeight)
