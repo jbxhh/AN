@@ -803,39 +803,77 @@ fun TransactionScreen(
 
 
 @Composable
-fun TransactionItem(tx: TransactionInfo, hideAmounts: Boolean = false, amountCenter: Boolean = false, modifier: Modifier = Modifier, showTime: Boolean = false, timePattern: String = "HH:mm\ndd/MM") {
+fun TransactionItem(tx: TransactionInfo, hideAmounts: Boolean = false, amountCenter: Boolean = false, modifier: Modifier = Modifier, showTime: Boolean = false, timePattern: String = "HH:mm\\ndd/MM") {
     val isIncoming = tx.direction == TransactionInfo.Direction.Direction_In
     val amount = tx.amount
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(start = 24.dp, end = 28.dp, top = 6.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.End
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically
+    val amountText = if (hideAmounts) Formats.maskAmount(amount)
+    else Formats.getDisplayAmount(amount)
+
+    if (amountCenter && showTime) {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 28.dp, top = 6.dp, bottom = 6.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Icon(
-                if (isIncoming) AnonIcons.ArrowDownLeft else AnonIcons.ArrowUpRight,
-                modifier = Modifier.size(if (amountCenter) 28.dp else 18.dp),
-                tint = if (isIncoming) MaterialTheme.colorScheme.primary else LocalContentColor.current,
-                contentDescription = null
-            )
-            Text(
-                if (hideAmounts) Formats.maskAmount(amount)
-                else Formats.getDisplayAmount(amount),
-                textAlign = if (amountCenter) TextAlign.Center else TextAlign.End,
-                modifier = Modifier
-                    .padding(start = 10.dp)
-                    .then(if (amountCenter) Modifier.weight(1f) else Modifier),
-                style = MaterialTheme.typography.titleLarge
-            )
-            if (showTime) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Icon(
+                    if (isIncoming) AnonIcons.ArrowDownLeft else AnonIcons.ArrowUpRight,
+                    modifier = Modifier.size(28.dp),
+                    tint = if (isIncoming) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                    contentDescription = null
+                )
                 Text(
                     Formats.formatTransactionTime(tx.timestamp, timePattern),
-                    style = MaterialTheme.typography.labelSmall
+                    style = MaterialTheme.typography.labelSmall,
+                    textAlign = TextAlign.End
                 )
+            }
+            Text(
+                amountText,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .padding(horizontal = 48.dp),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.titleLarge
+            )
+        }
+    } else {
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 28.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.End
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    if (isIncoming) AnonIcons.ArrowDownLeft else AnonIcons.ArrowUpRight,
+                    modifier = Modifier.size(if (amountCenter) 28.dp else 18.dp),
+                    tint = if (isIncoming) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                    contentDescription = null
+                )
+                Text(
+                    amountText,
+                    textAlign = if (amountCenter) TextAlign.Center else TextAlign.End,
+                    modifier = Modifier
+                        .padding(start = 10.dp)
+                        .then(if (amountCenter) Modifier.weight(1f) else Modifier),
+                    style = MaterialTheme.typography.titleLarge
+                )
+                if (showTime) {
+                    Text(
+                        Formats.formatTransactionTime(tx.timestamp, timePattern),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
             }
         }
     }
