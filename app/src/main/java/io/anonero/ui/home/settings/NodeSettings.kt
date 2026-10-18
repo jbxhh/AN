@@ -121,8 +121,10 @@ class NodeSettingsViewModel(
     private val walletHandler: AnonWalletHandler by inject(AnonWalletHandler::class.java)
     private val uriValidationError = MutableLiveData<String?>()
     private val _nodes = MutableStateFlow<List<Node>>(emptyList())
+    private val _nodesLoaded = MutableStateFlow(false)
     private val daemonInfo = walletState.daemonInfo
     val nodes: StateFlow<List<Node>> = _nodes
+    val nodesLoaded: StateFlow<Boolean> = _nodesLoaded
 
 
     val activeNode: StateFlow<Node?> = combine(nodes, daemonInfo) { nodeList, daemonInfo ->
@@ -142,9 +144,9 @@ class NodeSettingsViewModel(
 
     init {
         // A node configured in wallet preferences can be missing from the user-managed
-        // node list (for example after an interrupted DataStore write). Reinsert that
-        // configured endpoint before observing the list so the management screen does
-        // not become blank while the wallet is still connected to it.
+        // node list (for example after an interrupted DataStore write). Restore it before
+        // publishing the first loaded snapshot, otherwise the initial empty StateFlow
+        // can briefly display the misleading "no available nodes" message.
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
                 val configuredNode = configuredNodeFromPreferences() ?: return@runCatching
@@ -157,11 +159,12 @@ class NodeSettingsViewModel(
             }.onFailure { error ->
                 Timber.tag(TAG).w(error, "Unable to restore the configured node to the management list")
             }
-        }
-        // Observe items from the repository
-        viewModelScope.launch {
+
+            // Do not show an empty-state prompt until DataStore has supplied its first
+            // snapshot. A selected daemon may be known before this flow has hydrated.
             nodesRepository.nodesFlow.collect { itemList ->
                 _nodes.value = itemList
+                _nodesLoaded.value = true
             }
         }
     }
@@ -474,6 +477,7 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
     var editingNode by remember { mutableStateOf<Node?>(null) }
     var showMenu by remember { mutableStateOf(false) }
     val availableNodes by nodeSettingsVM.nodes.collectAsState(arrayListOf())
+    val nodesLoaded by nodeSettingsVM.nodesLoaded.collectAsState(false)
     val activeNode by nodeSettingsVM.activeNode.collectAsState(null)
     val scope = rememberCoroutineScope()
     val toastState = rememberToasterState()
@@ -629,7 +633,7 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
                         }
                     )
                 }
-            if (activeNode == null && availableNodes.isEmpty()) {
+            if (nodesLoaded && activeNode == null && availableNodes.isEmpty()) {
                 item(key = "empty-node-list") {
                     ListItem(
                         headlineContent = {
