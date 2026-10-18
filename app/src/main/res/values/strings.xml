@@ -51,6 +51,8 @@
      <string name="battery_optimization_message">To allow ANONERO to work properly in the background, it is recommended to disable battery optimization.\nYou can change this setting anytime in Android app settings.\n\nWould you like to continue?</string>
      <string name="enable">Enable</string>
      <string name="cancel">Cancel</string>
+     <string name="exit_wallet_prompt">Do you want to exit %1$s?</string>
+     <string name="exit_wallet">Exit</string>
      <string name="enter_current_pin">ENTER CURRENT PIN</string>
      <string name="unlock_wallet">UNLOCK WALLET</string>
      <string name="wallet_not_connected_to_node_please_check_network">Wallet not connected to node. please check network</string>
