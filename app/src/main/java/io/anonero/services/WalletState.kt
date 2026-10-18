@@ -1480,6 +1480,7 @@ class WalletState(private val prefs: SharedPreferences) {
             ) {
                 return@withContext 0
             }
+
             val transactionCount = wallet.history?.all?.size ?: 0
             update()
             Timber.tag(TAG).i(
@@ -1523,6 +1524,7 @@ class WalletState(private val prefs: SharedPreferences) {
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Wallet data refresh failed")
         } finally {
+            // Never let a delayed refresh completion overwrite reset's determinate progress.
             if (!isResyncPriorityActive && !walletWipeInProgress.get()) {
                 val waitingForScanProgress = runCatching {
                     wallet.isInitialized &&
