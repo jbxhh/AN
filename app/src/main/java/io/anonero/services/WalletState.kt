@@ -869,9 +869,6 @@ class WalletState(private val prefs: SharedPreferences) {
         _transactions.value = emptyList()
         _coins.value = emptyList()
 
-        // Publish the known remaining-block count immediately. The progress indicator
-        // must not depend on the first native callback to switch away from the endless
-        // refresh spinner after a manual reset.
         // Keep the indeterminate loader during preparation. The remaining-block bar is
         // published only after runManualResyncWorker queues the native rescan and restarts
         // refresh, so determinate progress cannot precede scan startup.
@@ -1803,9 +1800,9 @@ class WalletState(private val prefs: SharedPreferences) {
         clearSyncProgress()
         setLoading(true)
 
-        // Once the UI has a real target and remaining-block estimate, return immediately.
-        // The worker does native persistence / rescan asynchronously; real block callbacks
-        // are the only source that advances this estimate.
+        // Hand the native setup to the independent worker so navigation does not block.
+        // Determinate progress is published only after the chosen height is applied and
+        // the native refresh worker has been restarted.
         if (walletWipeInProgress.get() ||
             activeManualResyncReservation.get() !== reservation
         ) {
