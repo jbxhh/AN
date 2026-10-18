@@ -1222,10 +1222,10 @@ class WalletState(private val prefs: SharedPreferences) {
         val previousRestoreHeight = wallet.getRestoreHeight()
         var rescanQueued = false
         return try {
-            // Pause native refresh before changing the restore point. The native rescan
-            // is queued while paused, then consumed by the native refresh worker after
-            // it resumes; this avoids asking a second scanner to run alongside it.
-            wallet.pauseRefresh()
+            // Queue the asynchronous rescan on the wallet's existing refresh worker.
+            // Do not pause native refresh here: pauseRefresh() can block while waiting
+            // for a native refresh batch boundary, leaving the reset UI spinning forever.
+            // The pending-restore path uses this same asynchronous rescan API without pausing.
             wallet.setRestoreHeight(selectedHeight)
             check(wallet.getRestoreHeight().coerceAtLeast(0L) == selectedHeight) {
                 "Selected restore height was not applied"
