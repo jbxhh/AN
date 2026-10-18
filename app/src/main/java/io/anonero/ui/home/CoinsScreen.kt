@@ -138,12 +138,16 @@ fun CoinsScreen(
         }
     }
 
+    // Hide spent outputs from the output list and spend-selection list.
+    // Keep the full native inventory in WalletState for wallet operations and diagnostics.
+    val visibleCoins = coins.filter { !it.spent }
+
     var message: String? = null
     if (loading) {
         message = stringResource(R.string.wallet_loading)
     } else if (!nodeConnected) {
         message = stringResource(R.string.node_disconnected)
-    } else if (coins.isEmpty()) {
+    } else if (visibleCoins.isEmpty()) {
         message = stringResource(R.string.no_coins_available)
     }
 
@@ -226,8 +230,8 @@ fun CoinsScreen(
                         WalletProgressIndicator()
                     }
 
-                    items(coins.size) { index ->
-                        val coin = coins[index]
+                    items(visibleCoins.size) { index ->
+                        val coin = visibleCoins[index]
                         val isFrozen = coin.frozen
 
                         ListItem(
@@ -279,14 +283,7 @@ fun CoinsScreen(
                                 }
                             },
                             trailingContent = {
-                                if (coin.spent) {
-                                    Text(
-                                        "已花费",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontWeight = FontWeight.Medium,
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                } else if (isFrozen) {
+                                if (isFrozen) {
                                     Text(
                                         "已冻结",
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
