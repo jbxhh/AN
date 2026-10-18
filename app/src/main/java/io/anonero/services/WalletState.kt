@@ -43,6 +43,8 @@ private const val TAG = "WalletState"
 const val PREF_FORCE_FRESH_WALLET_SCAN = "anonero_force_fresh_wallet_scan"
 
 class WalletState(private val prefs: SharedPreferences) {
+    class ManualResyncReservation internal constructor(internal val id: Long)
+
     private var _blockUpdates = AtomicBoolean(false)
     val hideAmountsFlow = MutableStateFlow(false)
     private val _isLoading = MutableStateFlow(false)
@@ -81,6 +83,11 @@ class WalletState(private val prefs: SharedPreferences) {
     private val forcedRestoreScanInFlight = AtomicBoolean(false)
     private val forcedRestoreScanStarted = AtomicBoolean(false)
     private val manualResyncInProgress = AtomicBoolean(false)
+    private val manualResyncReservationSequence = AtomicLong(0L)
+    private val activeManualResyncReservation =
+        AtomicReference<ManualResyncReservation?>(null)
+    private val manualResyncNativeWorkerStarted = AtomicBoolean(false)
+    private val resetPriorityActive = AtomicBoolean(false)
     // Distinguishes a reset request that is still preparing native wallet state
     // from one that has actually published scan progress.
     private val manualResyncScanPrepared = AtomicBoolean(false)
@@ -93,6 +100,9 @@ class WalletState(private val prefs: SharedPreferences) {
     val isLoading: Flow<Boolean> = _isLoading
     val isSyncing get():Boolean = _isSyncing.get()
     val backgroundSync get():Boolean = _backgroundSync.value
+    /** True from the user's reset click until scan completion; secure wipe overrides it. */
+    val isResyncPriorityActive: Boolean
+        get() = resetPriorityActive.get() && !walletWipeInProgress.get()
     val backgroundSyncFlow: Flow<Boolean> = _backgroundSync
 
     val walletStatus: Flow<Wallet.Status?> = _walletStatus
@@ -228,6 +238,7 @@ class WalletState(private val prefs: SharedPreferences) {
             _blockUpdates.get() ||
             walletWipeInProgress.get() ||
             manualResyncInProgress.get() ||
+            isResyncPriorityActive ||
             _isLoading.value ||
             _isSyncing.get() ||
             _syncProgress.value != null ||
@@ -495,9 +506,51 @@ class WalletState(private val prefs: SharedPreferences) {
     val currentDaemonHeight: Long
         get() = _connectedDaemon.value?.daemonHeight?.coerceAtLeast(0L) ?: 0L
 
-    /** Close the gate before stopping native refresh so callbacks cannot start new work. */
+    /**
+     * Reserve reset priority immediately when the user presses Reset, before the node
+     * height query. This makes normal refresh, history reads, and reconnects yield.
+     */
+    fun reserveManualResyncRequest(): ManualResyncReservation? {
+        if (walletWipeInProgress.get() || resetPriorityActive.get()) return null
+        if (!manualResyncInProgress.compareAndSet(false, true)) return null
+
+        val reservation = ManualResyncReservation(manualResyncReservationSequence.incrementAndGet())
+        if (!activeManualResyncReservation.compareAndSet(null, reservation)) {
+            manualResyncInProgress.set(false)
+            return null
+        }
+        resetPriorityActive.set(true)
+        if (walletWipeInProgress.get()) {
+            cancelManualResyncRequest(reservation)
+            return null
+        }
+        return reservation
+    }
+
+    /** Release a preflight reservation when the node query or validation fails. */
+    fun cancelManualResyncRequest(reservation: ManualResyncReservation) {
+        if (manualResyncNativeWorkerStarted.get()) return
+        if (activeManualResyncReservation.compareAndSet(reservation, null)) {
+            resetPriorityActive.set(false)
+            manualResyncScanPrepared.set(false)
+            manualResyncInProgress.set(false)
+        }
+    }
+
+    /** Secure deletion is the only operation above reset and can cancel its preflight. */
     @Synchronized
-    fun beginWalletWipe(): Boolean = walletWipeInProgress.compareAndSet(false, true)
+    fun beginWalletWipe(): Boolean {
+        if (!walletWipeInProgress.compareAndSet(false, true)) return false
+        if (!manualResyncNativeWorkerStarted.get()) {
+            activeManualResyncReservation.set(null)
+            resetPriorityActive.set(false)
+            manualResyncScanPrepared.set(false)
+            manualResyncInProgress.set(false)
+            clearSyncProgress()
+            setLoading(false)
+        }
+        return true
+    }
 
     @Synchronized
     fun endWalletWipe() {
@@ -923,6 +976,10 @@ class WalletState(private val prefs: SharedPreferences) {
             forcedRestoreScanStarted.set(false)
         }
         clearSyncProgress()
+        if (resetPriorityActive.get()) {
+            activeManualResyncReservation.set(null)
+            resetPriorityActive.set(false)
+        }
         return true
     }
     /**
@@ -1064,6 +1121,7 @@ class WalletState(private val prefs: SharedPreferences) {
     }
     
     suspend fun enterBackgroundSync(): Boolean = bgSyncMutex.withLock {
+        if (walletWipeInProgress.get() || isResyncPriorityActive) return false
         val wallet = getWallet ?: return false
         if (!wallet.isInitialized || backgroundSync) return false
         emitUnlockShortcut(LockScreenShortCut.HOME)
@@ -1088,6 +1146,7 @@ class WalletState(private val prefs: SharedPreferences) {
     }
 
     suspend fun exitBackgroundSync(pin: String): Boolean = bgSyncMutex.withLock {
+        if (walletWipeInProgress.get() || isResyncPriorityActive) return false
         val wallet = getWallet ?: return false
         if (AnonConfig.viewOnly) {
             _backgroundSync.value = false
@@ -1211,6 +1270,11 @@ class WalletState(private val prefs: SharedPreferences) {
         daemonHeightQueryInFlight.set(false)
         forcedRestoreScanInFlight.set(false)
         forcedRestoreScanStarted.set(false)
+        manualResyncNativeWorkerStarted.set(false)
+        manualResyncInProgress.set(false)
+        manualResyncScanPrepared.set(false)
+        activeManualResyncReservation.set(null)
+        resetPriorityActive.set(false)
         clearSyncProgress()
         walletWipeInProgress.set(false)
     }
@@ -1234,6 +1298,7 @@ class WalletState(private val prefs: SharedPreferences) {
     suspend fun ensureNextReceiveAddress(): Subaddress = withContext(Dispatchers.IO) {
         subaddressMutex.withLock {
         if (walletWipeInProgress.get()) throw IllegalStateException("钱包正在安全删除")
+        if (isResyncPriorityActive) throw IllegalStateException("区块重置优先执行，请稍后再生成收款地址")
         val wallet = getWallet ?: throw IllegalStateException("钱包未打开")
         val accountIndex = wallet.getAccountIndex()
 
@@ -1336,7 +1401,7 @@ class WalletState(private val prefs: SharedPreferences) {
      */
     suspend fun refreshTransactionHistory(): Int = withContext(Dispatchers.IO) {
         val wallet = getWallet ?: return@withContext 0
-        if (walletWipeInProgress.get() || !wallet.isInitialized) return@withContext 0
+        if (walletWipeInProgress.get() || isResyncPriorityActive || !wallet.isInitialized) return@withContext 0
 
         try {
             wallet.refreshHistory()
@@ -1359,6 +1424,8 @@ class WalletState(private val prefs: SharedPreferences) {
     }
 
     suspend fun refresh() {
+        // A manual refresh must yield to the reset and may not replace its progress UI.
+        if (walletWipeInProgress.get() || isResyncPriorityActive) return
         val wallet = getWallet
         if (wallet == null || !wallet.isInitialized) {
             return
@@ -1416,39 +1483,40 @@ class WalletState(private val prefs: SharedPreferences) {
     fun resyncBlockchain(
         selectedRestoreHeight: Long? = null,
         knownDaemonHeight: Long? = null,
-        knownDaemonTargetHeight: Long? = null
+        knownDaemonTargetHeight: Long? = null,
+        reservation: ManualResyncReservation? = null
     ): Result<Boolean> {
         if (walletWipeInProgress.get()) {
+            reservation?.let(::cancelManualResyncRequest)
             return Result.failure(Exception("钱包正在安全删除，已取消区块重置"))
         }
-        if (!manualResyncInProgress.compareAndSet(false, true)) {
-            val scanAlreadyPrepared = manualResyncScanPrepared.get() ||
-                _syncProgress.value != null || _isSyncing.get()
-            val message = if (scanAlreadyPrepared) {
-                "区块重置请求已提交，请勿重复点击"
-            } else {
-                "上一次重置请求仍占用钱包接口，但尚未进入区块扫描；这不代表正在同步。"
-            }
-            return Result.failure(Exception(message))
+        val request = reservation ?: reserveManualResyncRequest()
+            ?: return Result.failure(
+                Exception(
+                    if (walletWipeInProgress.get()) "钱包正在安全删除，已取消区块重置"
+                    else "已有更高优先级的钱包操作正在执行，请稍后再试"
+                )
+            )
+        if (activeManualResyncReservation.get() !== request) {
+            return Result.failure(Exception("区块重置请求已失效"))
         }
 
-        manualResyncScanPrepared.set(false)
         var handedOffToWorker = false
         return try {
-            val result = validateAndScheduleManualResync(
-                selectedRestoreHeight = selectedRestoreHeight,
-                knownDaemonHeight = knownDaemonHeight,
-                knownDaemonTargetHeight = knownDaemonTargetHeight
-            )
-            handedOffToWorker = result.isSuccess
-            result
-        } finally {
-            // The background task owns the reset guard after accepting the request.
-            // Failed validation is synchronous and must release the guard here.
-            if (!handedOffToWorker) {
-                manualResyncInProgress.set(false)
-                manualResyncScanPrepared.set(false)
+            if (walletWipeInProgress.get()) {
+                Result.failure(Exception("钱包正在安全删除，已取消区块重置"))
+            } else {
+                val result = validateAndScheduleManualResync(
+                    selectedRestoreHeight = selectedRestoreHeight,
+                    knownDaemonHeight = knownDaemonHeight,
+                    knownDaemonTargetHeight = knownDaemonTargetHeight,
+                    reservation = request
+                )
+                handedOffToWorker = result.isSuccess
+                result
             }
+        } finally {
+            if (!handedOffToWorker) cancelManualResyncRequest(request)
         }
     }
 
@@ -1461,7 +1529,8 @@ class WalletState(private val prefs: SharedPreferences) {
     private fun validateAndScheduleManualResync(
         selectedRestoreHeight: Long?,
         knownDaemonHeight: Long?,
-        knownDaemonTargetHeight: Long?
+        knownDaemonTargetHeight: Long?,
+        reservation: ManualResyncReservation
     ): Result<Boolean> {
         val wallet = getWallet
             ?: return Result.failure(Exception("Wallet is not initialized"))
@@ -1575,8 +1644,28 @@ class WalletState(private val prefs: SharedPreferences) {
         // Once the UI has a real target and remaining-block estimate, return immediately.
         // The worker does native persistence / rescan asynchronously; real block callbacks
         // are the only source that advances this estimate.
+        if (walletWipeInProgress.get() ||
+            activeManualResyncReservation.get() !== reservation
+        ) {
+            clearSyncProgress()
+            setLoading(false)
+            return Result.failure(Exception("钱包安全删除优先，已取消区块重置"))
+        }
+        if (!manualResyncNativeWorkerStarted.compareAndSet(false, true)) {
+            clearSyncProgress()
+            setLoading(false)
+            return Result.failure(Exception("已有原生钱包任务正在执行，请稍后重试重置"))
+        }
+        if (walletWipeInProgress.get() ||
+            activeManualResyncReservation.get() !== reservation
+        ) {
+            manualResyncNativeWorkerStarted.set(false)
+            clearSyncProgress()
+            setLoading(false)
+            return Result.failure(Exception("钱包安全删除优先，已取消区块重置"))
+        }
         scanHeightScope.launch {
-            runManualResyncWorker(wallet, selectedHeight, progressTargetHeight)
+            runManualResyncWorker(wallet, selectedHeight, progressTargetHeight, reservation)
         }
         return Result.success(true)
     }
@@ -1584,11 +1673,18 @@ class WalletState(private val prefs: SharedPreferences) {
     private suspend fun runManualResyncWorker(
         wallet: Wallet,
         selectedHeight: Long,
-        progressTargetHeight: Long
+        progressTargetHeight: Long,
+        reservation: ManualResyncReservation
     ) {
         var previousRestoreHeight: Long? = null
         var rescanQueued = false
         try {
+            check(!walletWipeInProgress.get()) {
+                "钱包安全删除优先，已取消区块重置"
+            }
+            // The reset owns priority now; pause ordinary refresh before changing the
+            // native wallet's restore height and cached transfer state.
+            wallet.pauseRefresh()
             check(!walletWipeInProgress.get()) {
                 "钱包安全删除优先，已取消区块重置"
             }
@@ -1661,8 +1757,17 @@ class WalletState(private val prefs: SharedPreferences) {
                 }
             }
         } finally {
+            manualResyncNativeWorkerStarted.set(false)
             manualResyncInProgress.set(false)
             manualResyncScanPrepared.set(false)
+            // Reset remains the top-priority wallet operation while native block
+            // processing continues. Release the priority only on failure, wipe takeover,
+            // or a real completed-scan callback.
+            if (!rescanQueued || walletWipeInProgress.get()) {
+                if (activeManualResyncReservation.compareAndSet(reservation, null)) {
+                    resetPriorityActive.set(false)
+                }
+            }
         }
     }
 
