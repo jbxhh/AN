@@ -54,15 +54,31 @@ class AnonWalletHandler(
 
     init {
         scope.launch {
-            torService.socksFlow.collect {
-                val wallet = WalletManager.instance?.wallet
-                if (!wipeInProgress.get() && !walletState.isResyncPriorityActive &&
-                    prefs.getBoolean(WALLET_USE_TOR, false) && wallet?.isInitialized == true
+            torService.socksFlow.collect { socket ->
+                val candidateWallet = WalletManager.instance?.wallet
+                if (
+                    !wipeInProgress.get() &&
+                    !walletState.isResyncPriorityActive &&
+                    prefs.getBoolean(WALLET_USE_TOR, false) &&
+                    candidateWallet?.isInitialized == true
                 ) {
-                    val proxyAddress = "${it.address}:${it.port.value}"
-                    WalletManager.instance?.setProxy(proxyAddress)
-                    wallet.setProxy(proxyAddress)
-                    Timber.tag(TAG).d("Applied Tor SOCKS proxy %s", proxyAddress)
+                    // Tor updates must share the same mutex as node init and reset;
+                    // otherwise a late SOCKS event could call setProxy during rescan.
+                    walletInitializationMutex.withLock {
+                        val currentWallet = WalletManager.instance?.wallet
+                        if (
+                            !wipeInProgress.get() &&
+                            !walletState.isResyncPriorityActive &&
+                            prefs.getBoolean(WALLET_USE_TOR, false) &&
+                            currentWallet === candidateWallet &&
+                            currentWallet?.isInitialized == true
+                        ) {
+                            val proxyAddress = "${socket.address}:${socket.port.value}"
+                            WalletManager.instance?.setProxy(proxyAddress)
+                            currentWallet.setProxy(proxyAddress)
+                            Timber.tag(TAG).d("Applied Tor SOCKS proxy %s", proxyAddress)
+                        }
+                    }
                 }
             }
         }
@@ -474,9 +490,10 @@ class AnonWalletHandler(
         var walletClosed = false
 
         try {
-            // The wipe gate is already raised. Drain reset/height-query operations before
-            // invoking any more native wallet methods, so secure deletion has priority.
+            // The wipe gate is already raised. Drain reset/height-query operations and
+            // node initialization/connect work before invoking native wallet methods.
             walletState.awaitPendingNativeQueries()
+            walletInitializationMutex.withLock { Unit }
 
             // Stop background sync only if the app actually entered that mode.
             // Calling the native stop routine unconditionally can stall normal wipes.
