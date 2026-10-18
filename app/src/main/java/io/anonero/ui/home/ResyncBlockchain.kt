@@ -44,6 +44,7 @@ import com.dokar.sonner.ToasterState
 import io.anonero.model.WalletManager
 import io.anonero.model.node.NodeFields
 import io.anonero.services.WalletState
+import io.anonero.services.AnonWalletHandler
 import io.anonero.services.TorService
 import io.anonero.util.RESTORE_HEIGHT
 import io.anonero.util.WALLET_PREFERENCES
@@ -394,6 +395,7 @@ fun ResyncBlockchainScreen(
     var isQuerying by remember { mutableStateOf(false) }
     var queryCompleted by remember { mutableStateOf(false) }
     val walletState = koinInject<WalletState>()
+    val walletHandler = koinInject<AnonWalletHandler>()
     val walletPrefs = koinInject<SharedPreferences>(named(WALLET_PREFERENCES))
     val torService = koinInject<TorService>()
     val scope = rememberCoroutineScope()
@@ -629,7 +631,12 @@ fun ResyncBlockchainScreen(
                                                 selectedRestoreHeight = selectedHeight,
                                                 knownDaemonHeight = daemonHeights.height,
                                                 knownDaemonTargetHeight = daemonHeights.targetHeight,
-                                                reservation = reservation
+                                                reservation = reservation,
+                                                awaitOtherWalletWork = {
+                                                    // Wait behind an already-running node init,
+                                                    // but all new connections yield to the reset gate.
+                                                    walletHandler.withWalletInitializationLock { Unit }
+                                                }
                                             )
                                         }
                                         if (result.isFailure) {
