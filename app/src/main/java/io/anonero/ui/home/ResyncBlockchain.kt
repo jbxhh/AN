@@ -80,6 +80,7 @@ private const val MONERO_BLOCK_TIME_V2_SECONDS = 120L
 private const val BLOCK_SEARCH_RADIUS = 250L
 
 private data class ActualBlockHeader(val height: Long, val timestamp: Long)
+private data class ActualDaemonHeights(val height: Long, val targetHeight: Long)
 private data class RpcHttpResponse(
     val code: Int,
     val body: String,
@@ -108,6 +109,19 @@ private class MoneroBlockTimeLookup(
         val count = rpcCall("get_block_count").optLong("count", 0L)
         if (count <= 0L) throw IOException("节点没有返回有效区块高度")
         return count - 1L
+    }
+
+    // Query the daemon directly rather than relying on wallet refresh callbacks.
+    // This lets reset work even when the wallet's background refresh is idle.
+    fun latestDaemonHeights(): ActualDaemonHeights {
+        val info = rpcCall("get_info")
+        val heightCount = info.optLong("height", 0L)
+        if (heightCount <= 0L) throw IOException("节点没有返回有效区块高度")
+        val targetCount = info.optLong("target_height", heightCount).coerceAtLeast(heightCount)
+        return ActualDaemonHeights(
+            height = heightCount - 1L,
+            targetHeight = targetCount - 1L
+        )
     }
 
     // The estimate is only a search starting point; it is never used as the result.
@@ -559,15 +573,23 @@ fun ResyncBlockchainScreen(
                                             return@launch
                                         }
 
-                                        val knownDaemonHeight = walletState.currentDaemonHeight
-                                        val daemonTipHeight = if (knownDaemonHeight > 0L) {
-                                            knownDaemonHeight
-                                        } else {
-                                            withContext(Dispatchers.IO) { lookup.latestHeight() }
+                                        // Do not depend on WalletState's cached daemon height or
+                                        // synchronous native height RPCs: either may be stale or
+                                        // blocked when the wallet refresh worker is idle.
+                                        val daemonHeights = withContext(Dispatchers.IO) {
+                                            lookup.latestDaemonHeights()
                                         }
-                                        if (daemonTipHeight > 0L && selectedHeight > daemonTipHeight) {
+                                        if (selectedHeight > daemonHeights.height) {
                                             toastState.show(
-                                                "恢复高度不能高于当前节点高度（" + daemonTipHeight + "）",
+                                                "恢复高度不能高于当前节点高度（" + daemonHeights.height + "）",
+                                                type = ToastType.Warning,
+                                                duration = 6.seconds
+                                            )
+                                            return@launch
+                                        }
+                                        if (daemonHeights.targetHeight > daemonHeights.height) {
+                                            toastState.show(
+                                                "节点尚未同步完成，请等待节点同步完成后再重置同步",
                                                 type = ToastType.Warning,
                                                 duration = 6.seconds
                                             )
@@ -575,7 +597,11 @@ fun ResyncBlockchainScreen(
                                         }
 
                                         val result = withContext(Dispatchers.IO) {
-                                            walletState.resyncBlockchain(selectedHeight)
+                                            walletState.resyncBlockchain(
+                                                selectedRestoreHeight = selectedHeight,
+                                                knownDaemonHeight = daemonHeights.height,
+                                                knownDaemonTargetHeight = daemonHeights.targetHeight
+                                            )
                                         }
                                         if (result.isFailure) {
                                             toastState.show(
