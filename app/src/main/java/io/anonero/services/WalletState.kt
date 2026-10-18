@@ -872,15 +872,9 @@ class WalletState(private val prefs: SharedPreferences) {
         // Publish the known remaining-block count immediately. The progress indicator
         // must not depend on the first native callback to switch away from the endless
         // refresh spinner after a manual reset.
-        val remainingBlocks = (progressTargetHeight - height).coerceAtLeast(0L)
-        if (remainingBlocks > 0L) {
-            syncUpdate(SyncProgress(progress = 0f, left = remainingBlocks))
-            setLoading(false)
-        } else {
-            // No remaining blocks can be shown as a determinate bar.
-            clearSyncProgress()
-            setLoading(true)
-        }
+        // Keep the indeterminate loader during preparation. The remaining-block bar is
+        // published only after runManualResyncWorker queues the native rescan and restarts
+        // refresh, so determinate progress cannot precede scan startup.
     }
 
     private fun scanPreferenceKey(wallet: Wallet, suffix: String): String {
@@ -1803,14 +1797,11 @@ class WalletState(private val prefs: SharedPreferences) {
         } else {
             maxOf(daemonHeight, daemonTargetHeight)
         }
-        val remainingBlocks = (progressTargetHeight - selectedHeight).coerceAtLeast(0L)
-        if (remainingBlocks > 0L) {
-            syncUpdate(SyncProgress(progress = 0f, left = remainingBlocks))
-            setLoading(false)
-        } else {
-            clearSyncProgress()
-            setLoading(true)
-        }
+        // Do not show determinate remaining-block progress during reset preflight.
+        // The native scan has not started yet; keep the existing loading indicator until
+        // the selected height is committed and the native refresh worker is restarted.
+        clearSyncProgress()
+        setLoading(true)
 
         // Once the UI has a real target and remaining-block estimate, return immediately.
         // The worker does native persistence / rescan asynchronously; real block callbacks
@@ -1914,7 +1905,20 @@ class WalletState(private val prefs: SharedPreferences) {
             rescanQueued = true
             if (!walletWipeInProgress.get()) {
                 wallet.startRefresh()
-                Timber.tag(TAG).i("Manual rescan: native scan queued and refresh signalled")
+                // Publish remaining-block progress only after the native refresh worker starts.
+                // updateSyncProgressFromWallet uses the selected-height baseline and the latest
+                // processed-block callback, not the node's cached hash-chain tip.
+                updateSyncProgressFromWallet(wallet, progressDaemonHeight)
+                val hasRemainingBlocks = _syncProgress.value?.left?.let { it > 0L } == true
+                setLoading(!hasRemainingBlocks && !wallet.isSynchronized)
+                Timber.tag(TAG).i(
+                    "Manual rescan started: selectedHeight=%d walletHeight=%d daemonHeight=%d targetHeight=%d remaining=%d",
+                    selectedHeight,
+                    _walletHeight.value,
+                    progressDaemonHeight,
+                    progressTargetHeight,
+                    _syncProgress.value?.left ?: 0L
+                )
             } else {
                 Timber.tag(TAG).i("Secure wipe requested after rescan queue; skipping refresh restart")
             }
@@ -1947,7 +1951,13 @@ class WalletState(private val prefs: SharedPreferences) {
                 // Scan is already queued. Keep its real progress state and report only
                 // if the refresh trigger could not be recovered.
                 val restart = runCatching { wallet.startRefresh() }
-                restart.exceptionOrNull()?.let {
+                restart.onSuccess {
+                    updateSyncProgressFromWallet(wallet, progressDaemonHeight)
+                    val hasRemainingBlocks = _syncProgress.value?.left?.let { it > 0L } == true
+                    setLoading(!hasRemainingBlocks && !wallet.isSynchronized)
+                }.onFailure {
+                    clearSyncProgress()
+                    setLoading(false)
                     _resyncErrors.tryEmit(it.message ?: "扫描已提交，但钱包刷新未能启动")
                 }
             }
