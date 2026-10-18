@@ -16,6 +16,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -55,6 +58,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -81,6 +86,7 @@ fun CoinsScreen(
 ) {
     val walletState: WalletState by inject(WalletState::class.java)
     val coins by walletState.coins.collectAsState(arrayListOf())
+    val hideAmounts by walletState.hideAmountsFlow.collectAsState(false)
 
     var selectedCoins by remember { mutableStateOf(selected) }
     var detailCoin by remember { mutableStateOf<CoinsInfo?>(null) }
@@ -181,8 +187,11 @@ fun CoinsScreen(
     ) {
         if (detailCoin != null) {
             val coin = detailCoin!!
+            val outputNumber = (coins.indexOfFirst { it.key == coin.key } + 1).coerceAtLeast(1)
             OutputDetailScreen(
                 coin = coin,
+                outputNumber = outputNumber,
+                hideAmounts = hideAmounts,
                 isFrozen = coin.frozen,
                 onBackPress = { detailCoin = null },
                 onFreeze = {
@@ -360,10 +369,20 @@ private fun ReceiveScreenPreview() {
     }
 }
 
+private fun abbreviatedValue(value: String, maxChars: Int = 32): String {
+    if (value.length <= maxChars) return value
+    val available = (maxChars - 3).coerceAtLeast(2)
+    val left = available / 2
+    val right = available - left
+    return value.take(left) + "..." + value.takeLast(right)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun OutputDetailScreen(
     coin: CoinsInfo,
+    outputNumber: Int,
+    hideAmounts: Boolean,
     isFrozen: Boolean,
     onBackPress: () -> Unit,
     onFreeze: () -> Unit,
@@ -371,139 +390,206 @@ private fun OutputDetailScreen(
 ) {
     BackHandler(onBack = onBackPress)
 
-    var selectedAction by remember { mutableStateOf<String?>(if (isFrozen) "unfreeze" else null) }
-    val selectionScale by animateFloatAsState(
-        targetValue = 1f,
-        animationSpec = tween(durationMillis = 140),
-        label = "freezeSelectionScale"
-    )
+    val walletState: WalletState by inject(WalletState::class.java)
+    val transactions by walletState.transactions.collectAsState(emptyList())
+    val clipboardManager = LocalClipboardManager.current
+    var publicKeyExpanded by remember(coin.key) { mutableStateOf(false) }
+    var hashExpanded by remember(coin.key) { mutableStateOf(false) }
 
-    val orange = MaterialTheme.colorScheme.primary
+    val outputAddress = remember(coin.hash, transactions) {
+        transactions.firstOrNull { it.hash == coin.hash }?.let { transaction ->
+            try {
+                WalletManager.instance?.wallet?.getSubaddress(
+                    transaction.accountIndex,
+                    transaction.addressIndex
+                )
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+    val outputColor = if (isFrozen) {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        TopAppBar(
-            title = { Text("冻结") },
-            navigationIcon = {
-                IconButton(onClick = onBackPress) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = null
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("冻结") },
+                navigationIcon = {
+                    IconButton(onClick = onBackPress) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = null
+                        )
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "输出 $outputNumber",
+                        modifier = Modifier.width(76.dp),
+                        color = outputColor,
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Start
+                    )
+                    Text(
+                        if (hideAmounts) Formats.maskAmount(coin.amount)
+                        else Formats.getDisplayAmount(coin.amount),
+                        modifier = Modifier.weight(1f),
+                        color = outputColor,
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.size(28.dp))
+                }
+
+                Text(
+                    text = "状态  " + when {
+                        isFrozen -> "已冻结"
+                        coin.spent -> "已花费"
+                        else -> "未冻结"
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    style = MaterialTheme.typography.titleMedium
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                        .combinedClickable(
+                            onClick = { publicKeyExpanded = !publicKeyExpanded },
+                            onLongClick = {
+                                clipboardManager.setText(AnnotatedString(coin.pub_key))
+                            }
+                        ),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Text(
+                        "公钥",
+                        modifier = Modifier.width(48.dp),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        if (publicKeyExpanded) coin.pub_key
+                        else abbreviatedValue(coin.pub_key),
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.End,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                        .combinedClickable(
+                            onClick = { hashExpanded = !hashExpanded },
+                            onLongClick = {
+                                clipboardManager.setText(AnnotatedString(coin.hash))
+                            }
+                        ),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Text(
+                        "哈希",
+                        modifier = Modifier.width(48.dp),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        if (hashExpanded) coin.hash else abbreviatedValue(coin.hash),
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.End,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                        .combinedClickable(
+                            onClick = { },
+                            onLongClick = {
+                                outputAddress?.let {
+                                    clipboardManager.setText(AnnotatedString(it))
+                                }
+                            }
+                        ),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Text(
+                        "地址",
+                        modifier = Modifier.width(48.dp),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        outputAddress?.let { abbreviatedValue(it) } ?: "____",
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.End,
+                        style = MaterialTheme.typography.titleMedium
                     )
                 }
             }
+
+            OutlinedButton(
+                onClick = {
+                    // Keep the existing wallet capability check; the UI does not fake a
+                    // successful freeze/thaw when the upstream native API cannot perform it.
+                    if (isFrozen) onUnfreeze() else onFreeze()
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                shape = MaterialTheme.shapes.medium,
+                contentPadding = PaddingValues(12.dp)
+            ) {
+                Text(if (isFrozen) "解冻" else "冻结")
+            }
+        }
+    }
+}
+
+@Preview(device = "id:pixel")
+@Composable
+private fun OutputDetailScreenPreview() {
+    AnonNeroTheme {
+        // The preview shows a static, unfrozen output layout.
+        OutputDetailScreen(
+            coin = CoinsInfo(
+                unlockTime = 0L,
+                spent = false,
+                key = "",
+                amount = 0L,
+                hash = "",
+                pub_key = "",
+                frozen = false,
+                creationTime = 0L
+            ),
+            outputNumber = 1,
+            hideAmounts = false,
+            isFrozen = false,
+            onBackPress = {},
+            onFreeze = {},
+            onUnfreeze = {}
         )
-
-        LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-        ) {
-            item {
-                val selectedScale = selectionScale
-
-                ListItem(
-                    modifier = Modifier
-                        .padding(
-                            horizontal = 4.dp,
-                            vertical = 6.dp
-                        )
-                        .clickable {
-                            selectedAction = if (selectedAction == "freeze") null else "freeze"
-                        },
-                    headlineContent = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                "输出",
-                                color = if (isFrozen) {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                } else {
-                                    MaterialTheme.colorScheme.primary
-                                }
-                            )
-
-                            Text(
-                                Formats.getDisplayAmount(coin.amount),
-                                color = if (isFrozen) {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                } else {
-                                    MaterialTheme.colorScheme.primary
-                                },
-                                fontWeight = FontWeight.SemiBold,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.weight(1f)
-                            )
-
-                            Checkbox(
-                                checked = selectedAction != null,
-                                onCheckedChange = {
-                                    selectedAction = if (it) {
-                                        if (isFrozen) "unfreeze" else "freeze"
-                                    } else {
-                                        null
-                                    }
-                                },
-                                modifier = Modifier.scale(selectedScale)
-                            )
-                        }
-                    }
-                )
-            }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            val freezeSelected = selectedAction == "freeze"
-            OutlinedButton(
-                onClick = {
-                    if (freezeSelected) {
-                        onFreeze()
-                        selectedAction = "unfreeze"
-                    }
-                },
-                border = BorderStroke(
-                    1.dp,
-                    if (freezeSelected) orange else MaterialTheme.colorScheme.outline
-                ),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = if (freezeSelected) orange
-                    else MaterialTheme.colorScheme.onSurface
-                ),
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("冻结")
-            }
-
-            val unfreezeSelected = selectedAction == "unfreeze"
-            OutlinedButton(
-                onClick = {
-                    if (unfreezeSelected) {
-                        onUnfreeze()
-                        selectedAction = "freeze"
-                    }
-                },
-                border = BorderStroke(
-                    1.dp,
-                    if (unfreezeSelected) orange else MaterialTheme.colorScheme.outline
-                ),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = if (unfreezeSelected) orange
-                    else MaterialTheme.colorScheme.onSurface
-                ),
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("解冻")
-            }
-        }
     }
 }
