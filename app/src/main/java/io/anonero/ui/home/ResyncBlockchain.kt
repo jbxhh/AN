@@ -356,12 +356,17 @@ private fun guessRestoreHeight(timestamp: Long): Long {
 
 private fun formatNumericRestoreDate(input: String): String {
     val digits = input.filter(Char::isDigit).take(8)
-    return buildString {
+    val formatted = buildString {
         digits.forEachIndexed { index, digit ->
             if (index == 4 || index == 6) append('-')
             append(digit)
         }
     }
+    // Keep a just-entered separator visible so typing YYYY-MM-DD manually works
+    // naturally instead of making the '-' key appear unresponsive.
+    val trailingSeparator = input.endsWith('-') &&
+        (digits.length == 4 || digits.length == 6)
+    return if (trailingSeparator && !formatted.endsWith('-')) "$formatted-" else formatted
 }
 
 private fun parseNumericRestoreDate(input: String): Date? {
@@ -473,7 +478,7 @@ fun ResyncBlockchainScreen(
                                 textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp),
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(
-                                    keyboardType = KeyboardType.Number,
+                                    keyboardType = KeyboardType.Text,
                                     imeAction = ImeAction.Done
                                 ),
                                 placeholder = {
