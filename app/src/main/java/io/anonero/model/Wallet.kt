@@ -453,6 +453,16 @@ class Wallet {
     }
 
     private external fun setSubaddressLabel(accountIndex: Int, addressIndex: Int, label: String?)
+
+    /**
+     * Freeze or thaw an output by its public key. The native implementation serializes
+     * the change with refresh/rescan and persists it before returning.
+     */
+    private external fun setOutputFrozenJ(publicKey: String, frozen: Boolean): Boolean
+
+    fun setOutputFrozen(publicKey: String, frozen: Boolean): Boolean =
+        setOutputFrozenJ(publicKey, frozen)
+
     external fun getNumAccounts(): Int
     val numSubAddresses: Int
         get() = getNumSubaddresses(accountIndex)
