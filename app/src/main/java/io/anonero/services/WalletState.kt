@@ -1329,12 +1329,13 @@ class WalletState(private val prefs: SharedPreferences) {
             return true
         }
         _blockUpdates.set(true)
+        var refreshRestarted = false
         try {
             if (wallet.stopBackgroundSync(pin)) {
-                // Start the normal native refresh before dismissing the PIN overlay.
+                // Start normal native refresh before dismissing the PIN overlay.
                 wallet.startRefresh()
                 _backgroundSync.value = false
-                update()
+                refreshRestarted = true
                 Timber.tag(TAG).i("Exited background sync; normal refresh restarted")
                 return true
             }
@@ -1344,7 +1345,13 @@ class WalletState(private val prefs: SharedPreferences) {
             Timber.tag(TAG).e(e, "stopBackgroundSync error")
             return false
         } finally {
+            // update() intentionally ignores calls while _blockUpdates is set. Publish the
+            // wallet snapshot only after releasing the guard rather than silently doing no work.
             _blockUpdates.set(false)
+            if (refreshRestarted) {
+                runCatching { update() }
+                    .onFailure { Timber.tag(TAG).w(it, "Unable to publish state after background sync exit") }
+            }
         }
     }
 
