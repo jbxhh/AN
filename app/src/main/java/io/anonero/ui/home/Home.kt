@@ -46,7 +46,6 @@ import io.anonero.ui.components.MainBottomNavigation
 import io.anonero.ui.home.addresses.SubAddressDetailScreen
 import io.anonero.ui.home.addresses.SubAddressesScreen
 import io.anonero.ui.home.graph.routes.CoinsScreenRoute
-import io.anonero.ui.home.graph.routes.CoinDetailRoute
 import io.anonero.ui.home.graph.routes.ProxySettingsRoute
 import io.anonero.ui.home.graph.routes.ReceiveRoute
 import io.anonero.ui.home.graph.routes.ReviewTransactionRoute
@@ -370,17 +369,6 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                                 showBottomNavigation = true
                                 bottomNavController.navigate(it)
                             },
-                            onCoinClick = { coin ->
-                                showBottomNavigation = false
-                                bottomNavController.navigate(CoinDetailRoute(coin.key))
-                            }
-                        )
-                    }
-                    composable<CoinDetailRoute> { backStackEntry ->
-                        val route = backStackEntry.toRoute<CoinDetailRoute>()
-                        CoinDetailScreen(
-                            coinKey = route.coinKey,
-                            onBackPress = { bottomNavController.popBackStack() }
                         )
                     }
                     composable<ProxySettingsRoute> {
