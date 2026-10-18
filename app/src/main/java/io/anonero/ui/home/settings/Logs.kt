@@ -67,9 +67,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.androidx.compose.koinViewModel
 import timber.log.Timber
 import java.time.Instant
@@ -81,17 +85,93 @@ import java.time.format.DateTimeFormatter
 private const val TAG = "Logs"
 
 class LogViewModel(private val logRepository: LogRepository) : ViewModel() {
-    val logLines: StateFlow<List<AnonLog>> = logRepository
-        .logFlow
-        .map {
-            it.reversed()
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.Lazily,
-            initialValue = emptyList()
-        )
+    private val fallbackFileLogs = MutableStateFlow<List<AnonLog>>(emptyList())
+    private val logsCleared = MutableStateFlow(false)
 
+    init {
+        // The rolling file is written synchronously by AnonLogTree. Use it as a
+        // fallback when DataStore is empty/corrupt so the diagnostics screen remains
+        // useful even if persisted log updates failed.
+        viewModelScope.launch(Dispatchers.IO) {
+            if (!logsCleared.value) {
+                fallbackFileLogs.value = readFallbackFileLogs()
+            }
+        }
+    }
+
+    val logLines: StateFlow<List<AnonLog>> = combine(
+        logRepository.logFlow,
+        fallbackFileLogs,
+        logsCleared
+    ) { stored, fallback, cleared ->
+        (when {
+            stored.isNotEmpty() -> stored
+            cleared -> emptyList()
+            else -> fallback
+        }).reversed()
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Lazily,
+        initialValue = emptyList()
+    )
+
+    private suspend fun readFallbackFileLogs(): List<AnonLog> = withContext(Dispatchers.IO) {
+        val context = AnonConfig.context ?: return@withContext emptyList()
+        val file = runCatching { AnonConfig.getLogFile(context) }.getOrNull()
+            ?: return@withContext emptyList()
+        if (!file.isFile) return@withContext emptyList()
+
+        val recordPattern = Regex(
+            """^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3}) \\| (-?\\d+) \\| ([^|]+) \\| ?(.*)$"""
+        )
+        val parsed = mutableListOf<AnonLog>()
+        var recordDate = 0L
+        var recordPriority = Log.INFO
+        var recordTag = ""
+        var recordMessage = StringBuilder()
+
+        fun flushRecord() {
+            if (recordDate != 0L) {
+                parsed += AnonLog(
+                    date = recordDate,
+                    tag = recordTag,
+                    message = recordMessage.toString(),
+                    priority = recordPriority
+                )
+            }
+        }
+
+        runCatching {
+            file.forEachLine(Charsets.UTF_8) { line ->
+                val match = recordPattern.matchEntire(line)
+                if (match != null) {
+                    flushRecord()
+                    recordDate = runCatching {
+                        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
+                            .withZone(ZoneId.systemDefault())
+                            .parse(match.groupValues[1])
+                            .let { java.time.Instant.from(it).toEpochMilli() }
+                    }.getOrDefault(0L)
+                    // SimpleDateFormat is more tolerant of Android's local log timestamps.
+                    if (recordDate == 0L) {
+                        recordDate = runCatching {
+                            java.text.SimpleDateFormat(
+                                "yyyy-MM-dd HH:mm:ss.SSS",
+                                java.util.Locale.US
+                            ).parse(match.groupValues[1])?.time ?: 0L
+                        }.getOrDefault(0L)
+                    }
+                    recordPriority = match.groupValues[2].toIntOrNull() ?: Log.INFO
+                    recordTag = match.groupValues[3].trim()
+                    recordMessage = StringBuilder(match.groupValues[4])
+                } else if (recordDate != 0L) {
+                    recordMessage.append('\\n').append(line)
+                }
+            }
+            flushRecord()
+        }
+        parsed
+    }
 
     fun getLogsText(): String {
         val logs = logLines.value
@@ -114,6 +194,8 @@ class LogViewModel(private val logRepository: LogRepository) : ViewModel() {
         return "${'-'.toString().repeat(100)}\n\n$deviceInfo\n\n${'-'.toString().repeat(100)}\n$lines"
     }
     fun clearLogs() {
+        logsCleared.value = true
+        fallbackFileLogs.value = emptyList()
         viewModelScope.launch(Dispatchers.IO) {
             logRepository.clear()
         }
@@ -349,24 +431,38 @@ fun LogViewer(
                     (longestMessageWidth + (70f * textScale).dp.toPx() + 16.dp.toPx()).toDp()
                 )
             }
-            SelectionContainer {
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .horizontalScroll(horizontalScrollState)
+            if (logLines.isEmpty()) {
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.TopStart
                 ) {
-                    LazyColumn(
-                        state = listState,
-                        reverseLayout = true,
+                    Text(
+                        text = "暂无日志记录",
+                        color = Color.Gray,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            } else {
+                SelectionContainer(modifier = Modifier.fillMaxSize()) {
+                    Row(
                         modifier = Modifier
-                            .width(logContentWidth)
-                            .fillMaxHeight()
-                            .padding(horizontal = 8.dp),
-                        contentPadding = PaddingValues(0.dp),
-                        verticalArrangement = Arrangement.Top
+                            .fillMaxSize()
+                            .horizontalScroll(horizontalScrollState)
                     ) {
-                        items(logLines.size) { index ->
-                            LogLine(logLines[index], textScale)
+                        LazyColumn(
+                            state = listState,
+                            reverseLayout = true,
+                            modifier = Modifier
+                                .width(logContentWidth)
+                                .fillMaxHeight()
+                                .padding(horizontal = 8.dp),
+                            contentPadding = PaddingValues(0.dp),
+                            verticalArrangement = Arrangement.Top
+                        ) {
+                            items(logLines.size) { index ->
+                                LogLine(logLines[index], textScale)
+                            }
                         }
                     }
                 }
