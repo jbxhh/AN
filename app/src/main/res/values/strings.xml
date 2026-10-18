@@ -160,10 +160,10 @@
     <string name="notification_channel_transactions_name">Wallet transaction notifications</string>
     <string name="notification_channel_transactions_description">Notifications about incoming wallet transactions.</string>
     <string name="notification_loading_wallet">Loading wallet…</string>
-    <string name="notification_wallet_locked_synced">Wallet locked | synced through block %1$s</string>
+    <string name="notification_wallet_locked_synced">Wallet locked | block height: %1$s</string>
     <string name="notification_network_unavailable">Network unavailable</string>
     <string name="notification_node_disconnected">Node disconnected</string>
-    <string name="notification_synced_height">Synced through block %1$s</string>
+    <string name="notification_synced_height">Block height: %1$s</string>
     <string name="notification_syncing">Synchronizing…</string>
     <string name="notification_sync_progress">Syncing; %1$s blocks remaining%2$s</string>
     <string name="notification_sync_complete">Block synchronization complete%1$s</string>
