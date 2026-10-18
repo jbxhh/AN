@@ -1539,6 +1539,24 @@ jobject coins_cpp2java(JNIEnv *env, const std::vector<Monero::CoinsInfo *> &vect
     return arrayList;
 }
 
+JNIEXPORT void JNICALL
+Java_io_anonero_model_Coins_setFrozen(JNIEnv *env, jobject instance,
+                                      jstring publicKey) {
+    const char *_publicKey = env->GetStringUTFChars(publicKey, nullptr);
+    Monero::Coins *coins = getHandle<Monero::Coins>(env, instance);
+    coins->setFrozen(std::string(_publicKey));
+    env->ReleaseStringUTFChars(publicKey, _publicKey);
+}
+
+JNIEXPORT void JNICALL
+Java_io_anonero_model_Coins_thaw(JNIEnv *env, jobject instance,
+                                 jstring publicKey) {
+    const char *_publicKey = env->GetStringUTFChars(publicKey, nullptr);
+    Monero::Coins *coins = getHandle<Monero::Coins>(env, instance);
+    coins->thaw(std::string(_publicKey));
+    env->ReleaseStringUTFChars(publicKey, _publicKey);
+}
+
 JNIEXPORT jint JNICALL
 Java_io_anonero_model_Coins_getCount(JNIEnv *env, jobject instance) {
     Monero::Coins *coins = getHandle<Monero::Coins>(env, instance);
