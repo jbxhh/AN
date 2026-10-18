@@ -1477,9 +1477,7 @@ class WalletState(private val prefs: SharedPreferences) {
             wallet.refreshHistory()
             if (walletWipeInProgress.get() || isResyncPriorityActive ||
                 getWallet !== wallet || !wallet.isInitialized
-            ) {
-                return@withContext 0
-            }
+            ) return@withContext 0
 
             val transactionCount = wallet.history?.all?.size ?: 0
             update()
@@ -1498,11 +1496,9 @@ class WalletState(private val prefs: SharedPreferences) {
     }
 
     suspend fun refresh() {
-        // A manual refresh must yield to the reset and may not replace its progress UI.
         if (walletWipeInProgress.get() || isResyncPriorityActive) return
         val wallet = getWallet
-        if (wallet == null || !wallet.isInitialized) return
-        if (!beginOrdinaryWalletOperation()) return
+        if (wallet == null || !wallet.isInitialized || !beginOrdinaryWalletOperation()) return
 
         setLoading(true)
         try {
@@ -1514,7 +1510,6 @@ class WalletState(private val prefs: SharedPreferences) {
 
                 val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
                 if (daemonHeight > 0L) updateBlockHeights(wallet, daemonHeight)
-
                 wallet.refreshHistory()
                 update()
 
@@ -1524,7 +1519,6 @@ class WalletState(private val prefs: SharedPreferences) {
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Wallet data refresh failed")
         } finally {
-            // Never let a delayed refresh completion overwrite reset's determinate progress.
             if (!isResyncPriorityActive && !walletWipeInProgress.get()) {
                 val waitingForScanProgress = runCatching {
                     wallet.isInitialized &&
