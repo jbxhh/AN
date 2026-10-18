@@ -216,8 +216,15 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
         ) { paddingValues ->
             Box(modifier = modifier.padding(0.dp)) {
                 NavHost(
-                    bottomNavController,
-                    startDestination = startDestination
+                    navController = bottomNavController,
+                    startDestination = startDestination,
+                    // Disable NavHost route crossfades explicitly. Falling back to the
+                    // navigation library defaults can keep the outgoing screen composited
+                    // over the incoming page and make every page switch feel delayed.
+                    enterTransition = { EnterTransition.None },
+                    exitTransition = { ExitTransition.None },
+                    popEnterTransition = { EnterTransition.None },
+                    popExitTransition = { ExitTransition.None }
                 ) {
                     composable<TransactionsRoute> {
                         TransactionScreen(
