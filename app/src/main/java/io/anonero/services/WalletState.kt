@@ -1362,7 +1362,6 @@ class WalletState(private val prefs: SharedPreferences) {
             try {
                 val wallet = getWallet ?: throw IllegalStateException("钱包未打开")
                 val accountIndex = wallet.getAccountIndex()
-
                 val lastUsedIndex = wallet.getLastUnusedIndex()
                 val existingAddress = (
                     _subAddresses.value.asSequence() + listOfNotNull(_nextAddress.value).asSequence()
@@ -1378,7 +1377,6 @@ class WalletState(private val prefs: SharedPreferences) {
                     _nextAddress.value = existingAddress
                     return@withLock existingAddress
                 }
-
                 if (walletWipeInProgress.get() || getWallet !== wallet) {
                     throw IllegalStateException("钱包状态已改变")
                 }
@@ -1453,8 +1451,8 @@ class WalletState(private val prefs: SharedPreferences) {
             wallet.getAllUsedSubAddresses().let { allItems ->
                 _subAddresses.update { allItems.reversed() }
             }
-            wallet.getLatestSubAddress().let { subAddresses ->
-                _nextAddress.update { subAddresses }
+            wallet.getLatestSubAddress().let { latest ->
+                _nextAddress.update { latest }
             }
         } catch (e: Exception) {
             Timber.tag(TAG).w(e, "Unable to update address label")
