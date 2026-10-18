@@ -125,13 +125,30 @@ class AnonWalletHandler(
             wallet.fullStatus.connectionStatus ==
                 Wallet.ConnectionStatus.ConnectionStatus_Connected
         ) {
+            // Even the connected-wallet fast path must share the init mutex with reset.
+            // Otherwise this startRefresh() could race a reset that has already published
+            // progress and is about to pause the normal refresh worker.
+            val reused = walletInitializationMutex.withLock {
+                if (wipeInProgress.get() || walletState.isResyncPriorityActive) {
+                    false
+                } else if (
+                    serviceStartedWallet === wallet &&
+                    wallet.isInitialized &&
+                    wallet.fullStatus.connectionStatus ==
+                        Wallet.ConnectionStatus.ConnectionStatus_Connected
+                ) {
+                    wallet.startRefresh()
+                    if (!wipeInProgress.get() && !walletState.isResyncPriorityActive) {
+                        walletState.update()
+                        walletState.setLoading(false)
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
+            if (reused) return
             if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
-            // Reuse the already-running wallet only if its daemon is actually connected.
-            // An initialized wallet can be disconnected after a network/Tor interruption;
-            // in that case continue below and run the normal daemon initialization again.
-            wallet.startRefresh()
-            walletState.update()
-            return
         }
 
         handler = MoneroHandlerThread(wallet, walletState, this)
