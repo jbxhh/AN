@@ -152,7 +152,18 @@ class WalletState(private val prefs: SharedPreferences) {
             // Balance can change during restore and must remain visible while scanning.
             updateBalanceFromWallet(wallet)
             if (wallet.isSynchronized && !backgroundSync) {
-                _coins.update { (wallet.coins?.all ?: emptyList()).fastFilter { !it.spent } }
+                // The output list is an inventory, not just a spendable-input picker.
+                // Keep spent and frozen outputs in state so the UI can display their
+                // status; selection logic already prevents spending them.
+                val outputSnapshot = wallet.coins?.all ?: emptyList()
+                _coins.value = outputSnapshot
+                Timber.tag(TAG).i(
+                    "Output snapshot: total=%d unspent=%d spent=%d frozen=%d",
+                    outputSnapshot.size,
+                    outputSnapshot.count { !it.spent },
+                    outputSnapshot.count { it.spent },
+                    outputSnapshot.count { it.frozen }
+                )
             } else {
                 _coins.value = emptyList()
             }
