@@ -107,10 +107,12 @@ fun ReceiveScreen(
                 }
             )
         }) {
-        // Always show a valid wallet address. During startup or while a new
-        // subaddress is being prepared, nextAddress may still be the primary address
-        // (index 0); hiding it leaves the entire receive screen blank.
-        if (!nextAddress?.address.isNullOrBlank()) {
+        // The receive QR must use a generated subaddress, never the primary address.
+        // The wallet state may temporarily publish index 0 while startup prepares index 1.
+        if (nextAddress != null &&
+            nextAddress!!.addressIndex > 0 &&
+            nextAddress!!.address.isNotBlank()
+        ) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize(),
