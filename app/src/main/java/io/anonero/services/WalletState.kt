@@ -1172,14 +1172,21 @@ class WalletState(private val prefs: SharedPreferences) {
         }
     }
 
-    fun resyncBlockchain(selectedRestoreHeight: Long? = null): Result<Boolean> {
+    fun resyncBlockchain(
+        selectedRestoreHeight: Long? = null,
+        knownDaemonHeight: Long? = null,
+        knownDaemonTargetHeight: Long? = null
+    ): Result<Boolean> {
         val wallet = getWallet
             ?: return Result.failure(Exception("Wallet is not initialized"))
         if (!wallet.isInitialized) {
             return Result.failure(Exception("Wallet is not initialized"))
         }
-        if (wallet.fullStatus.connectionStatus !=
-            Wallet.ConnectionStatus.ConnectionStatus_Connected
+        val hasFreshDaemonHeights =
+            knownDaemonHeight != null && knownDaemonHeight > 0L &&
+                knownDaemonTargetHeight != null && knownDaemonTargetHeight > 0L
+        if (!hasFreshDaemonHeights &&
+            wallet.fullStatus.connectionStatus != Wallet.ConnectionStatus.ConnectionStatus_Connected
         ) {
             // A rejected reset must not erase progress from the scan already in progress.
             return Result.failure(Exception("Please connect to daemon for resync"))
@@ -1189,12 +1196,13 @@ class WalletState(private val prefs: SharedPreferences) {
         }
 
         // Validate the daemon before changing the active scan or its visible progress.
-        val daemonHeight = runCatching { wallet.getDaemonBlockChainHeight() }
-            .getOrDefault(0L)
-            .coerceAtLeast(0L)
-        val daemonTargetHeight = runCatching { wallet.getDaemonBlockChainTargetHeight() }
-            .getOrDefault(0L)
-            .coerceAtLeast(0L)
+        // The reset screen can supply a fresh direct-RPC snapshot. Prefer it over
+        // native daemon-height calls, which may stall when the wallet refresh worker
+        // is idle even though the node itself is reachable.
+        val daemonHeight = knownDaemonHeight?.takeIf { it > 0L }
+            ?: runCatching { wallet.getDaemonBlockChainHeight() }.getOrDefault(0L).coerceAtLeast(0L)
+        val daemonTargetHeight = knownDaemonTargetHeight?.takeIf { it > 0L }
+            ?: runCatching { wallet.getDaemonBlockChainTargetHeight() }.getOrDefault(0L).coerceAtLeast(0L)
         if (daemonHeight <= 1L || daemonTargetHeight <= 0L || daemonHeight < daemonTargetHeight) {
             return Result.failure(
                 Exception("节点尚未同步完成，请等待节点同步完成后再重置同步")
