@@ -441,31 +441,24 @@ class NodeSettingsViewModel(
         if (walletState.isResyncPriorityActive) return
         viewModelScope.launch(Dispatchers.IO) {
             if (walletState.isResyncPriorityActive) return@launch
-            WalletManager.instance?.wallet?.pauseRefresh()
-            if (walletState.isResyncPriorityActive) return@launch
-            prefs.edit {
-                putString(
-                    NodeFields.RPC_HOST.value,
-                    null
-                )
-                putInt(
-                    NodeFields.RPC_PORT.value, 0
-
-                )
-                putString(
-                    NodeFields.RPC_USERNAME.value,
-                    null
-
-                )
-                putString(
-                    NodeFields.RPC_PASSWORD.value,
-                    null
-                )
-            }
-            walletHandler.updateDaemon(null)
-            if (!walletState.isResyncPriorityActive) {
-                walletState.update()
-                walletState.setLoading(false)
+            // Share the native initialization lock with connect/startup. If disconnect
+            // already owns it, a later reset waits for this finite operation to finish;
+            // if reset owns priority first, disconnect never touches the wallet.
+            walletHandler.withWalletInitializationLock {
+                if (walletState.isResyncPriorityActive) return@withWalletInitializationLock
+                WalletManager.instance?.wallet?.pauseRefresh()
+                if (walletState.isResyncPriorityActive) return@withWalletInitializationLock
+                prefs.edit {
+                    putString(NodeFields.RPC_HOST.value, null)
+                    putInt(NodeFields.RPC_PORT.value, 0)
+                    putString(NodeFields.RPC_USERNAME.value, null)
+                    putString(NodeFields.RPC_PASSWORD.value, null)
+                }
+                walletHandler.updateDaemon(null)
+                if (!walletState.isResyncPriorityActive) {
+                    walletState.update()
+                    walletState.setLoading(false)
+                }
             }
         }
     }
