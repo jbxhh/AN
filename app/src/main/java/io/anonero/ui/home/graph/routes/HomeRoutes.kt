@@ -50,6 +50,9 @@ data object SettingsLogs
 data object CoinsScreenRoute
 
 @Serializable
+data class CoinDetailRoute(val coinKey: String)
+
+@Serializable
 data class OutputDetailRoute(val pubKey: String)
 
 @Serializable
