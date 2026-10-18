@@ -65,11 +65,11 @@ fun ReceiveScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
-    // Apply the upstream receive-address rule when this screen opens: reuse the
-    // lowest generated address above the highest index seen in transaction history,
-    // or atomically create the next address if none is available in the cached state.
-    LaunchedEffect(walletState, walletReady) {
-        if (!walletReady) return@LaunchedEffect
+    // A child receive address can be generated from local wallet keys without a
+    // daemon connection. Run this as soon as the screen opens, even while Tor/RPC starts.
+    // Re-run if startup publishes only the primary address, so the QR never falls back
+    // to index 0 after a temporary disconnected-wallet state update.
+    LaunchedEffect(walletState, walletReady, nextAddress?.addressIndex) {
         try {
             walletState.ensureNextReceiveAddress()
         } catch (e: CancellationException) {
@@ -107,10 +107,13 @@ fun ReceiveScreen(
                 }
             )
         }) {
-        // Prefer the generated subaddress, but keep receiving usable while startup or
-        // a stalled native refresh delays its creation. The primary address is valid;
-        // once ensureNextReceiveAddress succeeds, state updates to the unused subaddress.
-        if (nextAddress != null && nextAddress!!.address.isNotBlank()) {
+        // A primary address (index 0) must never appear on the Receive screen.
+        // Wait for the local wallet to return a real child subaddress; this is independent
+        // of daemon connection state and prevents the QR from encoding the primary address.
+        if (nextAddress != null &&
+            nextAddress!!.addressIndex > 0 &&
+            nextAddress!!.address.isNotBlank()
+        ) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize(),

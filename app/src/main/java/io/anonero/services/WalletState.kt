@@ -306,18 +306,26 @@ class WalletState(private val prefs: SharedPreferences) {
         }
 
         var address = try {
-            if (wallet.isInitialized) {
-                wallet.getLatestSubAddress().takeIf { it.address.isNotBlank() }
-            } else {
-                null
+            // Subaddresses are derived locally from the wallet keys; a daemon connection
+            // is not required to read an already-generated receive subaddress.
+            wallet.getLatestSubAddress().takeIf {
+                it.addressIndex > 0 && it.address.isNotBlank()
             }
         } catch (e: Exception) {
             Timber.tag(TAG).w(e, "Unable to read the next receive subaddress during startup")
             null
         }
 
-        // The primary address is derived directly from the opened wallet keys and is
-        // a safe fallback when history/next-subaddress lookup isn't ready yet.
+        // Keep a known subaddress if the wallet is temporarily not initialized. Never
+        // replace it with the primary address during a disconnected-wallet state update.
+        if (address == null) {
+            address = _nextAddress.value?.takeIf {
+                it.addressIndex > 0 && it.address.isNotBlank()
+            }
+        }
+
+        // The primary address remains a local snapshot fallback for other wallet UI,
+        // but the receive screen deliberately refuses to display index 0.
         if (address == null) {
             address = try {
                 val accountIndex = wallet.getAccountIndex()
@@ -333,7 +341,9 @@ class WalletState(private val prefs: SharedPreferences) {
         if (address != null) {
             _nextAddress.value = address
             if (!wallet.isInitialized) {
-                _subAddresses.value = listOf(address)
+                _subAddresses.value = (_subAddresses.value + address)
+                    .distinctBy { it.address }
+                    .sortedByDescending { it.addressIndex }
             }
         }
 
@@ -1051,16 +1061,10 @@ class WalletState(private val prefs: SharedPreferences) {
         val wallet = getWallet ?: throw IllegalStateException("钱包未打开")
         val accountIndex = wallet.getAccountIndex()
 
-        if (!wallet.isInitialized) {
-            val primaryAddress = wallet.getAddress(accountIndex)
-            check(primaryAddress.isNotBlank()) { "主收款地址为空" }
-            val primary = Subaddress(accountIndex, 0, primaryAddress, "")
-            _nextAddress.value = primary
-            _subAddresses.update { current ->
-                (current + primary).distinctBy { it.address }.sortedByDescending { it.addressIndex }
-            }
-            return@withLock primary
-        }
+        // A receive subaddress is derived from local wallet keys and does not require
+        // a connected daemon. Keep this path enabled before wallet.init() so restore
+        // can display a child address while Tor/RPC is still starting.
+        // Never return the primary address from this receive-address operation.
 
         // Reuse the lowest already-generated address above the highest used index.
         // This relies on cached app state/history rather than querying native address
@@ -1069,7 +1073,11 @@ class WalletState(private val prefs: SharedPreferences) {
         val existingAddress = (
             _subAddresses.value.asSequence() + listOfNotNull(_nextAddress.value).asSequence()
         )
-            .filter { it.addressIndex > lastUsedIndex }
+            .filter {
+                it.addressIndex > 0 &&
+                    it.addressIndex > lastUsedIndex &&
+                    it.address.isNotBlank()
+            }
             .minByOrNull { it.addressIndex }
 
         if (existingAddress != null) {
@@ -1085,6 +1093,9 @@ class WalletState(private val prefs: SharedPreferences) {
         // persists, and returns the newly generated index/address. Do not hold
         // synchronized(wallet) while it waits for the callback to unwind.
         val created = wallet.addSubaddressAndGetSubaddress(accountIndex)
+        check(created.addressIndex > 0 && created.address.isNotBlank()) {
+            "原生钱包未能生成有效子地址"
+        }
         _nextAddress.value = created
         _subAddresses.update { current ->
             (current + created)
