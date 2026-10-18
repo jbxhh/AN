@@ -252,25 +252,34 @@ class WalletState(private val prefs: SharedPreferences) {
      */
     @Synchronized
     fun refreshOutputInventoryIfIdle(): List<CoinsInfo>? {
+        val wallet = getWallet ?: return null
+        if (!wallet.isInitialized) return null
+
+        // Hard-priority operations always block output enumeration. The wallet's
+        // synchronized flag is the authoritative scan-completion signal: beginWalletScan
+        // clears it before scanning and completeWalletScan sets it only after the final
+        // height checks pass. UI loading/progress flows can lag behind that transition,
+        // so they must not keep the Outputs screen empty after a successful sync.
         if (
             _blockUpdates.get() ||
             walletWipeInProgress.get() ||
             manualResyncInProgress.get() ||
             isResyncPriorityActive ||
-            _isLoading.value ||
-            _isSyncing.get() ||
-            _syncProgress.value != null ||
             backgroundSync
         ) return null
 
-        val wallet = getWallet ?: return null
-        if (!wallet.isInitialized || !beginOrdinaryWalletOperation()) return null
+        val scanStillActive = !wallet.isSynchronized && (
+            _isLoading.value ||
+                _isSyncing.get() ||
+                _syncProgress.value != null
+            )
+        if (scanStillActive || !beginOrdinaryWalletOperation()) return null
 
         return try {
             if (wallet.fullStatus.connectionStatus != Wallet.ConnectionStatus.ConnectionStatus_Connected) {
                 return null
             }
-            wallet.refreshCoins(allowUnsynchronized = true)
+            wallet.refreshCoins(allowUnsynchronized = !wallet.isSynchronized)
             val outputs = wallet.coins?.all ?: emptyList()
             _coins.value = outputs
             Timber.tag(TAG).i(
