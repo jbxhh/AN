@@ -505,6 +505,11 @@ class WalletState(private val prefs: SharedPreferences) {
     /** Wait until any daemon-height JNI/RPC query started by scan progress has left its critical section. */
     suspend fun awaitPendingNativeQueries() {
         daemonHeightQueryMutex.withLock { }
+        // Secure wipe has priority over manual resync. It closes the native wallet,
+        // so wait until an already-running reset has observed the wipe gate and exited.
+        while (manualResyncInProgress.get()) {
+            delay(25L)
+        }
     }
 
     /** Cached state only; reading this never calls through JNI or performs an RPC. */
@@ -1411,6 +1416,43 @@ class WalletState(private val prefs: SharedPreferences) {
         knownDaemonHeight: Long? = null,
         knownDaemonTargetHeight: Long? = null
     ): Result<Boolean> {
+        if (walletWipeInProgress.get()) {
+            return Result.failure(Exception("钱包正在安全删除，已取消区块重置"))
+        }
+        if (!manualResyncInProgress.compareAndSet(false, true)) {
+            val scanAlreadyPrepared = manualResyncScanPrepared.get() ||
+                _syncProgress.value != null || _isSyncing.get()
+            val message = if (scanAlreadyPrepared) {
+                "区块重置请求已提交，请勿重复点击"
+            } else {
+                "上一次重置请求仍占用钱包接口，但尚未进入区块扫描；这不代表正在同步。"
+            }
+            return Result.failure(Exception(message))
+        }
+        manualResyncScanPrepared.set(false)
+        return try {
+            // Covers the race where secure wipe begins immediately after the
+            // first flag check but before this reset request reserves the operation.
+            if (walletWipeInProgress.get()) {
+                Result.failure(Exception("钱包正在安全删除，已取消区块重置"))
+            } else {
+                resyncBlockchainLocked(
+                    selectedRestoreHeight = selectedRestoreHeight,
+                    knownDaemonHeight = knownDaemonHeight,
+                    knownDaemonTargetHeight = knownDaemonTargetHeight
+                )
+            }
+        } finally {
+            manualResyncInProgress.set(false)
+            manualResyncScanPrepared.set(false)
+        }
+    }
+
+    private fun resyncBlockchainLocked(
+        selectedRestoreHeight: Long? = null,
+        knownDaemonHeight: Long? = null,
+        knownDaemonTargetHeight: Long? = null
+    ): Result<Boolean> {
         val wallet = getWallet
             ?: return Result.failure(Exception("Wallet is not initialized"))
         if (!wallet.isInitialized) {
@@ -1491,20 +1533,12 @@ class WalletState(private val prefs: SharedPreferences) {
             )
         }
 
-        if (!manualResyncInProgress.compareAndSet(false, true)) {
-            val scanAlreadyPrepared = manualResyncScanPrepared.get() ||
-                _syncProgress.value != null || _isSyncing.get()
-            val message = if (scanAlreadyPrepared) {
-                "区块重置请求已提交，请勿重复点击"
-            } else {
-                "上一次重置请求仍占用钱包接口，但尚未进入区块扫描；这不代表正在同步。请关闭并重新打开钱包后再试。"
-            }
-            return Result.failure(Exception(message))
+        // Wipe can arrive while the preceding validation calls are running.
+        // Abort before mutating the restore height or scheduling native scanning.
+        if (walletWipeInProgress.get()) {
+            return Result.failure(Exception("钱包正在安全删除，已取消区块重置"))
         }
-        manualResyncScanPrepared.set(false)
-        // Expose the native reset's preparation phase too. Previously the guard
-        // could stay held while native wallet calls were blocked before scan progress
-        // was published, leaving the UI looking idle.
+        // Expose the reset preparation phase before native state mutation.
         setLoading(true)
         var previousRestoreHeight: Long? = null
         var rescanQueued = false
@@ -1544,6 +1578,9 @@ class WalletState(private val prefs: SharedPreferences) {
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Wallet rescan failed to start")
             if (!rescanQueued) {
+                // The reset yielded to secure wipe before the native scan was queued.
+                // Release its preparation marker so the wipe can continue.
+                manualResyncScanPrepared.set(false)
                 // Nothing was queued natively: restore the old setting and resume the
                 // existing scanner without disturbing its current progress indicators.
                 previousRestoreHeight?.let { restoreHeight ->
@@ -1554,8 +1591,10 @@ class WalletState(private val prefs: SharedPreferences) {
                         Timber.tag(TAG).e(rollbackError, "Restore-height rollback failed")
                     }
                 }
-                runCatching { wallet.startRefresh() }.onFailure { restartError ->
-                    Timber.tag(TAG).e(restartError, "Unable to resume refresh after rejected rescan")
+                if (!walletWipeInProgress.get()) {
+                    runCatching { wallet.startRefresh() }.onFailure { restartError ->
+                        Timber.tag(TAG).e(restartError, "Unable to resume refresh after rejected rescan")
+                    }
                 }
                 Result.failure(e)
             } else {
@@ -1581,8 +1620,6 @@ class WalletState(private val prefs: SharedPreferences) {
                     }.getOrDefault(false)
                 )
             }
-            manualResyncInProgress.set(false)
-            manualResyncScanPrepared.set(false)
         }
     }
 
