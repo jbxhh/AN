@@ -48,6 +48,9 @@ class WalletState(private val prefs: SharedPreferences) {
 
     // Resolve JNI-backed wallet identity once before refresh begins.
     private val scanPreferenceIdentity = AtomicReference<ScanPreferenceIdentity?>(null)
+    // StateFlow snapshots belong to one open wallet handle. A failed/transient daemon
+    // init must not make a still-open wallet look like a brand-new empty wallet.
+    private val publishedWalletIdentity = AtomicReference<Wallet?>(null)
     private var _blockUpdates = AtomicBoolean(false)
     val hideAmountsFlow = MutableStateFlow(false)
     private val _isLoading = MutableStateFlow(false)
@@ -151,6 +154,37 @@ class WalletState(private val prefs: SharedPreferences) {
     val connectionStatus: Flow<Wallet.ConnectionStatus?> = _connectionStatus
     val incomingTx = _incomingTx.asSharedFlow()
 
+    /**
+     * Drop cached UI data only when the actual open wallet object changes. A daemon
+     * reconnect can temporarily flip isInitialized to false even though the same
+     * local wallet file and its last-known balance/history are still valid to display.
+     */
+    @Synchronized
+    private fun resetSnapshotForWalletChange(wallet: Wallet) {
+        if (publishedWalletIdentity.get() === wallet) return
+        publishedWalletIdentity.set(wallet)
+        _transactions.value = emptyList()
+        _subAddresses.value = emptyList()
+        _balanceInfo.value = null
+        _walletHeight.value = 0L
+        _scanTracking.set(false)
+        _scanStartHeight.set(0L)
+        _unLockedBalance.value = null
+        _walletStatus.value = null
+        _nextAddress.value = null
+        _coins.value = emptyList()
+        _syncProgress.value = null
+        _connectedDaemon.value = null
+        _daemonTargetHeight.set(0L)
+        _scanDaemonHeight.set(0L)
+        _connectionStatus.value = null
+        _previousConnectionStatus.set(null)
+        _isLoading.value = false
+        _isSyncing.set(false)
+        _backgroundSync.value = false
+        scanPreferenceIdentity.set(null)
+    }
+
     @Synchronized
     fun update() {
         if (
@@ -160,15 +194,24 @@ class WalletState(private val prefs: SharedPreferences) {
             isResyncPriorityActive
         ) return
         getWallet?.let { wallet ->
+            resetSnapshotForWalletChange(wallet)
             if (!wallet.isInitialized) {
-                // Wallet files are already open at this point. Publish locally available
-                // balance/address data without waiting for Tor, daemon connection, or scan.
-                publishWalletSnapshot(wallet)
-                _walletHeight.value = 0L
+                // An unsuccessful daemon init is not evidence that the local wallet lost
+                // its history, balance, or last processed height. Publish local data only
+                // if no snapshot exists yet; never replace known values with transient
+                // zero/empty JNI results during a reconnect.
+                if (_balanceInfo.value == null || _nextAddress.value == null) {
+                    publishWalletSnapshot(wallet)
+                }
                 _walletStatus.value = null
-                _transactions.value = emptyList()
                 _coins.value = emptyList()
-                _connectedDaemon.update { current -> current?.copy(daemonHeight = 0L) }
+                _connectionStatus.value =
+                    Wallet.ConnectionStatus.ConnectionStatus_Disconnected
+                _connectedDaemon.update { current ->
+                    current?.copy(
+                        connectionStatus = Wallet.ConnectionStatus.ConnectionStatus_Disconnected
+                    )
+                }
                 return@let
             }
 
@@ -187,12 +230,27 @@ class WalletState(private val prefs: SharedPreferences) {
             val updatedTransactions = (wallet.history?.all?.sortedWith(comparator = { o1, o2 ->
                 o2.timestamp.compareTo(o1.timestamp)
             }) ?: emptyList()).fastDistinctBy { it.getListKey() }
-            _transactions.value = updatedTransactions
+            // Native history can briefly report an empty list while the final refresh
+            // batch is unwinding. Reset/wipe and wallet-switch paths clear state explicitly,
+            // so an empty snapshot for the same open wallet is not enough to erase data
+            // that was just shown to the user.
+            val preservePreviousSnapshot =
+                updatedTransactions.isEmpty() && previousTransactions.isNotEmpty()
+            val publishedTransactions =
+                if (preservePreviousSnapshot) previousTransactions else updatedTransactions
+            if (preservePreviousSnapshot) {
+                Timber.tag(TAG).w(
+                    "Ignoring transient empty history snapshot; preserving %d known transactions",
+                    previousTransactions.size
+                )
+            } else {
+                _transactions.value = updatedTransactions
+            }
 
             // Remember the earliest confirmed transaction we've ever seen for this wallet.
             // A rescan clears Monero's cached transfers; this durable marker lets us reject
             // future restore heights that would skip known historical transactions.
-            val earliestTransactionHeight = updatedTransactions.asSequence()
+            val earliestTransactionHeight = publishedTransactions.asSequence()
                 .filter { !it.isPending && it.blockheight > 0L }
                 .minOfOrNull { it.blockheight }
             if (earliestTransactionHeight != null) {
@@ -213,15 +271,19 @@ class WalletState(private val prefs: SharedPreferences) {
             // discovered during initial restore/rescan. Notifications resume once synced.
             if (wallet.isSynchronized && previousTransactions.isNotEmpty()) {
                 val previousKeys = previousTransactions.map { it.getListKey() }.toSet()
-                val hasNewIncoming = updatedTransactions.any { transaction ->
+                val hasNewIncoming = publishedTransactions.any { transaction ->
                     transaction.getListKey() !in previousKeys &&
                         transaction.direction == TransactionInfo.Direction.Direction_In
                 }
                 if (hasNewIncoming) _incomingTx.tryEmit(Unit)
             }
 
-            // Balance can change during restore and must remain visible while scanning.
-            updateBalanceFromWallet(wallet)
+            // An empty history snapshot can coincide with a transient zero balance at
+            // scan completion. Keep the last-known balance alongside the retained history;
+            // explicit reset/wipe and wallet replacement clear the snapshot separately.
+            if (!preservePreviousSnapshot) {
+                updateBalanceFromWallet(wallet)
+            }
             val outputInventoryAvailable = wallet.isSynchronized ||
                 (
                     currentConnectionStatus == Wallet.ConnectionStatus.ConnectionStatus_Connected &&
@@ -574,6 +636,7 @@ class WalletState(private val prefs: SharedPreferences) {
     @Synchronized
     fun publishWalletSnapshot(wallet: Wallet? = getWallet) {
         if (walletWipeInProgress.get() || wallet == null) return
+        resetSnapshotForWalletChange(wallet)
         prepareScanPreferenceIdentity(wallet)
 
         try {
@@ -790,6 +853,7 @@ class WalletState(private val prefs: SharedPreferences) {
             clearSyncProgress()
             return false
         }
+        resetSnapshotForWalletChange(wallet)
 
         val restoreHeight = (scanStartHeight ?: wallet.getRestoreHeight()).coerceAtLeast(0L)
         // A forced scan from a user-selected restore height must not wait for
@@ -933,6 +997,7 @@ class WalletState(private val prefs: SharedPreferences) {
     }
 
     fun prepareScanPreferenceIdentity(wallet: Wallet) {
+        resetSnapshotForWalletChange(wallet)
         val current = scanPreferenceIdentity.get()
         if (current?.wallet === wallet) return
         // Read JNI-backed fields before refresh starts, never from the newBlock callback.
@@ -1121,6 +1186,8 @@ class WalletState(private val prefs: SharedPreferences) {
         knownDaemonHeight: Long? = null
     ): Boolean {
         if (walletWipeInProgress.get() || isManualResyncPreparing()) return false
+        // A transient failed init/reconnect cannot complete a scan or clear progress.
+        if (wallet != null && !wallet.isInitialized) return false
         if (wallet != null && wallet.isInitialized) {
             // A callback can report the daemon tip before the fresh restore's native
             // rescan is queued. Never treat that startup race as a completed wallet scan.
@@ -1211,11 +1278,15 @@ class WalletState(private val prefs: SharedPreferences) {
         knownDaemonHeight: Long? = null
     ) {
         if (walletWipeInProgress.get() || isManualResyncPreparing()) return
-        if (wallet == null || !wallet.isInitialized) {
+        if (wallet == null) {
             _walletHeight.value = 0L
             _connectedDaemon.update { current -> current?.copy(daemonHeight = 0L) }
             return
         }
+        // Keep the last listener-confirmed height if daemon initialization temporarily
+        // fails for the same wallet handle. A newly opened wallet was cleared by
+        // resetSnapshotForWalletChange() before any height callback can reach here.
+        if (!wallet.isInitialized) return
 
         val daemonHeight =
             (knownDaemonHeight ?: wallet.getDaemonBlockChainHeight()).coerceAtLeast(0L)
@@ -1271,10 +1342,13 @@ class WalletState(private val prefs: SharedPreferences) {
         knownDaemonHeight: Long? = null
     ) {
         if (walletWipeInProgress.get() || isManualResyncPreparing()) return
-        if (wallet == null || !wallet.isInitialized) {
+        if (wallet == null) {
             clearSyncProgress()
             return
         }
+        // A failed native daemon init is transient; only a wallet replacement or an
+        // explicit reset/wipe should clear the existing progress snapshot.
+        if (!wallet.isInitialized) return
         // Only listener-confirmed processed height is valid scan progress.
         // Never substitute the native hash-chain cache height here.
         val chainHeight = _walletHeight.value.coerceAtLeast(0L)
@@ -1481,6 +1555,7 @@ class WalletState(private val prefs: SharedPreferences) {
     /** Clear process-wide UI state once the wallet file has been safely deleted. */
     fun resetAfterWalletWipe() {
         scanPreferenceIdentity.set(null)
+        publishedWalletIdentity.set(null)
         refreshDeferredDuringResync.set(false)
         _blockUpdates.set(false)
         _isLoading.value = false
