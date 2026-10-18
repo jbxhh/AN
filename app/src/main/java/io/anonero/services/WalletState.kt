@@ -559,6 +559,23 @@ class WalletState(private val prefs: SharedPreferences) {
         return true
     }
 
+    /**
+     * Receive-address creation is lower priority than preparing a reset, but it need
+     * not wait for the entire rescan to finish. Reject it while reset setup owns the
+     * native wallet; once the async rescan has been queued, permit this short native
+     * call during scanning. It still participates in the in-flight counter so secure
+     * wallet deletion waits before closing the native handle.
+     */
+    private fun beginReceiveAddressOperation(): Boolean {
+        if (walletWipeInProgress.get() || manualResyncInProgress.get()) return false
+        ordinaryWalletOperationsInFlight.incrementAndGet()
+        if (walletWipeInProgress.get() || manualResyncInProgress.get()) {
+            endOrdinaryWalletOperation()
+            return false
+        }
+        return true
+    }
+
     private fun endOrdinaryWalletOperation() {
         ordinaryWalletOperationsInFlight.updateAndGet { current -> (current - 1L).coerceAtLeast(0L) }
     }
@@ -1348,16 +1365,17 @@ class WalletState(private val prefs: SharedPreferences) {
     /**
      * Ensure a correct unused receive address when the user opens the receive screen.
      *
-     * WalletState.update() is also called from the native refresh callback. That callback
-     * must only read already-generated addresses: creating an address there can deadlock
-     * against the native refresh lock. This explicit UI-driven operation may safely wait
-     * for a refresh batch boundary because it does not hold synchronized(wallet).
+     * The UI-driven operation never runs while reset setup is changing native wallet
+     * state. After the asynchronous scan is queued, address creation is allowed as a
+     * short, low-priority native operation so the QR can appear during synchronization.
+     * It is counted so secure deletion cannot close the wallet underneath this call.
      */
     suspend fun ensureNextReceiveAddress(): Subaddress = withContext(Dispatchers.IO) {
         subaddressMutex.withLock {
             if (walletWipeInProgress.get()) throw IllegalStateException("钱包正在安全删除")
-            check(beginOrdinaryWalletOperation()) {
-                "区块重置或安全删除优先执行，请稍后再生成收款地址"
+            check(beginReceiveAddressOperation()) {
+                if (walletWipeInProgress.get()) "钱包正在安全删除"
+                else "区块重置正在准备，请稍后生成收款地址"
             }
             try {
                 val wallet = getWallet ?: throw IllegalStateException("钱包未打开")
