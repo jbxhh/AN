@@ -7,8 +7,6 @@ import android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -191,17 +189,7 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
         Scaffold(
             contentWindowInsets = WindowInsets(top = 0.dp, bottom = 0.dp),
             bottomBar = {
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = showBottomNavigation,
-                    enter = androidx.compose.animation.slideInVertically(
-                        initialOffsetY = { it },
-                        animationSpec = tween(durationMillis = 150)
-                    ),
-                    exit = androidx.compose.animation.slideOutVertically(
-                        targetOffsetY = { it },
-                        animationSpec = tween(durationMillis = 150)
-                    )
-                ) {
+                if (showBottomNavigation) {
                     MainBottomNavigation(
                         currentRoute = currentRoute,
                         onTabSelected = {
