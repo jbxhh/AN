@@ -79,6 +79,9 @@ class WalletState(private val prefs: SharedPreferences) {
     private val forcedRestoreScanInFlight = AtomicBoolean(false)
     private val forcedRestoreScanStarted = AtomicBoolean(false)
     private val manualResyncInProgress = AtomicBoolean(false)
+    // Distinguishes a reset request that is still preparing native wallet state
+    // from one that has actually published scan progress.
+    private val manualResyncScanPrepared = AtomicBoolean(false)
 
     val transactions: Flow<List<TransactionInfo>> = _transactions
 
@@ -1489,8 +1492,20 @@ class WalletState(private val prefs: SharedPreferences) {
         }
 
         if (!manualResyncInProgress.compareAndSet(false, true)) {
-            return Result.failure(Exception("区块重置正在执行，请勿重复点击"))
+            val scanAlreadyPrepared = manualResyncScanPrepared.get() ||
+                _syncProgress.value != null || _isSyncing.get()
+            val message = if (scanAlreadyPrepared) {
+                "区块重置请求已提交，请勿重复点击"
+            } else {
+                "上一次重置请求仍占用钱包接口，但尚未进入区块扫描；这不代表正在同步。请关闭并重新打开钱包后再试。"
+            }
+            return Result.failure(Exception(message))
         }
+        manualResyncScanPrepared.set(false)
+        // Expose the native reset's preparation phase too. Previously the guard
+        // could stay held while native wallet calls were blocked before scan progress
+        // was published, leaving the UI looking idle.
+        setLoading(true)
         var previousRestoreHeight: Long? = null
         var rescanQueued = false
         return try {
@@ -1516,6 +1531,7 @@ class WalletState(private val prefs: SharedPreferences) {
                 maxOf(daemonHeight, daemonTargetHeight) // native wallet heights are already counts
             }
             prepareManualResyncScanState(wallet, selectedHeight, progressTargetHeight)
+            manualResyncScanPrepared.set(true)
 
             // This is the last operation that schedules the native scan. Do not make
             // further JNI reads before the new listener callbacks publish scan progress.
@@ -1553,7 +1569,20 @@ class WalletState(private val prefs: SharedPreferences) {
                 }
             }
         } finally {
+            if (!manualResyncScanPrepared.get()) {
+                // If native setup failed before scan state was published, remove only
+                // the temporary loader. Preserve a pre-existing/recovery scan indicator.
+                val scanPending = _scanTracking.get() ||
+                    _syncProgress.value != null ||
+                    prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+                setLoading(
+                    scanPending && runCatching {
+                        getWallet?.isInitialized == true && getWallet?.isSynchronized != true
+                    }.getOrDefault(false)
+                )
+            }
             manualResyncInProgress.set(false)
+            manualResyncScanPrepared.set(false)
         }
     }
 
