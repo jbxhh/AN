@@ -47,6 +47,7 @@ import io.anonero.ui.components.qr.QrCodeColors
 import io.anonero.ui.components.qr.QrCodeView
 import org.koin.java.KoinJavaComponent.inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import timber.log.Timber
 
 
@@ -65,17 +66,38 @@ fun ReceiveScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
-    // A child receive address can be generated from local wallet keys without a
-    // daemon connection. Run this as soon as the screen opens, even while Tor/RPC starts.
-    // Re-run if startup publishes only the primary address, so the QR never falls back
-    // to index 0 after a temporary disconnected-wallet state update.
+    // The local read-only wallet snapshot can temporarily publish only address index 0
+    // while a new wallet is initializing or prioritized reset work is active.
+    // Never encode the primary address: retry until a real child address is available.
     LaunchedEffect(walletState, walletReady, nextAddress?.addressIndex) {
-        try {
-            walletState.ensureNextReceiveAddress()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Timber.tag("ReceiveScreen").w(e, "Unable to ensure the next receive address")
+        var retryCount = 0
+        while (true) {
+            if (walletState.isWalletWipeInProgress) return@LaunchedEffect
+            if (nextAddress?.let { it.addressIndex > 0 && it.address.isNotBlank() } == true) {
+                return@LaunchedEffect
+            }
+
+            if (!walletState.isResyncPriorityActive) {
+                try {
+                    val address = walletState.ensureNextReceiveAddress()
+                    if (address.addressIndex > 0 && address.address.isNotBlank()) {
+                        return@LaunchedEffect
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Keep retrying while startup settles, but avoid flooding the log.
+                    if (retryCount == 0 || retryCount % 10 == 0) {
+                        Timber.tag("ReceiveScreen").w(
+                            e,
+                            "Waiting for a usable receive subaddress"
+                        )
+                    }
+                }
+            }
+
+            retryCount++
+            delay(1_000L)
         }
     }
     if (labelDialog)
