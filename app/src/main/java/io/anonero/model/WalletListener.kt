@@ -41,9 +41,9 @@ interface WalletListener {
     fun unconfirmedMoneyReceived(txId: String?, amount: Long)
 
     /**
-     * newBlock      - called when new block received
+     * newBlock      - called when a block is processed by the native wallet
      *
-     * @param height - one-based count of blocks actually processed by the native wallet
+     * @param height - zero-based native block-height index (not the processed-block count)
      */
     fun newBlock(height: Long)
 
