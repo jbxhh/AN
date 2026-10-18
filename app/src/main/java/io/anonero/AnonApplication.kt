@@ -9,12 +9,12 @@ import android.content.SharedPreferences
 import android.os.Build
 import io.anonero.di.appModule
 import io.anonero.model.WalletManager
-import io.anonero.model.node.NodeFields
 import io.anonero.services.TorService
 import io.anonero.store.LogRepository
 import io.anonero.store.NodesRepository
 import io.anonero.ui.util.AnonLogTree
 import io.anonero.util.WALLET_PREFERENCES
+import io.anonero.util.WALLET_USE_TOR
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.android.get
@@ -64,8 +64,12 @@ class AnonApplication : Application(), Thread.UncaughtExceptionHandler {
         initConfigs()
         val torService: TorService = get()
         val prefs: SharedPreferences = get(named(WALLET_PREFERENCES))
-        val host = prefs.getString(NodeFields.RPC_HOST.value, "")
-        if (!host.isNullOrEmpty()) {
+        // Start Tor at process startup, not only after the user finishes node setup.
+        // A fresh restore may not have a saved node host yet, but Tor can bootstrap
+        // while the user enters the seed, passphrase, and PIN. This avoids beginning
+        // a cold Tor bootstrap only after the Home screen has already opened.
+        if (prefs.getBoolean(WALLET_USE_TOR, true)) {
+            Timber.tag(TAG).i("Prewarming Tor during app startup so wallet connection can begin immediately on Home")
             torService.start()
         }
         AnonConfig.clearSpendCacheFiles(this)
