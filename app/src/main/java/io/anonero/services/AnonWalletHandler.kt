@@ -102,14 +102,6 @@ class AnonWalletHandler(
 
     private suspend fun startServiceLocked() {
         if (wipeInProgress.get()) return
-        // A manual Connect click has priority over automatic startup. Home and
-        // onboarding can both request startup while Tor is bootstrapping; without
-        // this guard, an automatic init can take the wallet initialization lock
-        // just before the user's explicit connection request.
-        if (isManualNodeConnectionInProgress()) {
-            Timber.tag(TAG).i("Skipping automatic wallet startup while manual node connection is pending")
-            return
-        }
         val wallet = WalletManager.instance?.wallet ?: return
         if (wipeInProgress.get()) return
         if (
@@ -129,6 +121,14 @@ class AnonWalletHandler(
         handler = MoneroHandlerThread(wallet, walletState, this)
         wallet.setListener(handler)
         handler?.start()
+
+        // Keep the listener installed even when a manual request wins the race:
+        // the manual connect path starts scanning but relies on this listener to
+        // publish block progress and connection changes.
+        if (isManualNodeConnectionInProgress()) {
+            Timber.tag(TAG).i("Skipping automatic wallet startup while manual node connection is pending")
+            return
+        }
         walletState.setLoading(true)
 
         try {
