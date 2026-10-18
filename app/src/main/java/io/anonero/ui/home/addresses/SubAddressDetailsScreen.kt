@@ -211,6 +211,8 @@ fun SubAddressDetailScreen(
                     TransactionItem(
                         transactions[it],
                         hideAmounts = hideAmounts,
+                        amountCenter = true,
+                        showTime = true,
                         modifier = Modifier
                             .clickable {
                                 onTransactionClick(transactions[it])
