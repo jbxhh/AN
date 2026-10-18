@@ -125,6 +125,7 @@ class AnonWalletHandler(
             wallet.fullStatus.connectionStatus ==
                 Wallet.ConnectionStatus.ConnectionStatus_Connected
         ) {
+            if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
             // Reuse the already-running wallet only if its daemon is actually connected.
             // An initialized wallet can be disconnected after a network/Tor interruption;
             // in that case continue below and run the normal daemon initialization again.
@@ -164,6 +165,7 @@ class AnonWalletHandler(
                 WalletManager.instance?.setProxy(proxyAddress)
                 wallet.setProxy(proxyAddress)
             } else if (!proxyHost.isNullOrBlank() && proxyPort != -1) {
+                if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
                 val proxyAddress = "${proxyHost}:${proxyPort}"
                 WalletManager.instance?.setProxy(proxyAddress)
                 wallet.setProxy(proxyAddress)
@@ -193,6 +195,7 @@ class AnonWalletHandler(
                     wallet.fullStatus.connectionStatus ==
                         Wallet.ConnectionStatus.ConnectionStatus_Connected
                 ) {
+                    if (wipeInProgress.get() || walletState.isResyncPriorityActive) return@withLock
                     // The service may have started this wallet previously but its daemon
                     // can be disconnected now. Only reuse it when the connection is live;
                     // otherwise we must run the same daemon init path as manual Connect.
@@ -342,7 +345,10 @@ class AnonWalletHandler(
         val walletManager = WalletManager.instance
         wallet?.pauseRefresh()
         try {
-            if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
+            if (wipeInProgress.get() || walletState.isResyncPriorityActive) {
+                if (!wipeInProgress.get()) walletState.setLoading(false)
+                return
+            }
             if (node != null) {
                 walletState.updateDaemon(
                     DaemonInfo(
@@ -378,6 +384,10 @@ class AnonWalletHandler(
                 walletState.setLoading(false)
             }
         } catch (e: Exception) {
+            if (wipeInProgress.get() || walletState.isResyncPriorityActive) {
+                if (!wipeInProgress.get()) walletState.setLoading(false)
+                return
+            }
             walletState.updateDaemon(
                 DaemonInfo(
                     daemon = null,
