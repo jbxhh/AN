@@ -266,6 +266,9 @@ class MoneroHandlerThread(
 
         postCompletionScope.launch {
             try {
+                // Let the native refreshed() callback fully unwind before any JNI init.
+                delay(750L)
+                if (walletHandler.isManualNodeConnectionInProgress()) return@launch
                 walletHandler.withWalletInitializationLock {
                     // A user-initiated connection takes priority over automatic recovery,
                     // including a request that began while this coroutine was queued.
