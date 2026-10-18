@@ -96,13 +96,17 @@ fun CoinsScreen(
     // Output enumeration is only safe after native wallet scanning is synchronized.
     // Keep waiting while this screen is open: nodeConnected/loading can remain unchanged
     // when the native synchronized flag flips, so a one-shot effect can miss the refresh.
-    LaunchedEffect(nodeConnected) {
-        if (!nodeConnected) return@LaunchedEffect
+    LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             var emptyOutputRetries = 0
             while (currentCoroutineContext().isActive) {
-                val wallet = WalletManager.instance?.wallet ?: return@withContext
-                if (!wallet.isInitialized) return@withContext
+                // Wallet startup may finish after the output screen is opened. Retry
+                // readiness here instead of requiring another connection-status event.
+                val wallet = WalletManager.instance?.wallet
+                if (wallet == null || !wallet.isInitialized) {
+                    delay(1_000L)
+                    continue
+                }
 
                 if (wallet.isSynchronized) {
                     try {
