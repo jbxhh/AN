@@ -93,45 +93,43 @@ fun CoinsScreen(
     val loading by walletState.isLoading.asLiveData().observeAsState(false)
     val nodeConnected = connectionStatus == Wallet.ConnectionStatus.ConnectionStatus_Connected
 
-    // Output enumeration is only safe after native wallet scanning is synchronized.
-    // Keep waiting while this screen is open: nodeConnected/loading can remain unchanged
-    // when the native synchronized flag flips, so a one-shot effect can miss the refresh.
+    // Refresh the real native output inventory while the connected wallet is idle.
+    // Do not rely only on wallet.isSynchronized: restore can publish balance/history
+    // while that flag remains false, which previously left this screen permanently empty.
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             var emptyOutputRetries = 0
             while (currentCoroutineContext().isActive) {
-                // Wallet startup may finish after the output screen is opened. Retry
-                // readiness here instead of requiring another connection-status event.
                 val wallet = WalletManager.instance?.wallet
                 if (wallet == null || !wallet.isInitialized) {
                     delay(1_000L)
                     continue
                 }
 
-                if (wallet.isSynchronized) {
-                    try {
-                        wallet.refreshCoins()
-                        walletState.update()
-                        val outputs = wallet.coins?.all.orEmpty()
-                        val visibleCount = outputs.count { !it.spent }
-                        val hasBalance = wallet.balance > 0L || wallet.unlockedBalance > 0L
-                        Timber.tag("CoinsScreen").i(
-                            "Refreshed outputs for output list: total=%d visible=%d balance=%d synchronized=%s",
-                            outputs.size,
-                            visibleCount,
-                            wallet.balance,
-                            wallet.isSynchronized
+                val outputs = walletState.refreshOutputInventoryIfIdle()
+                if (outputs != null) {
+                    val hasBalance = wallet.balance > 0L || wallet.unlockedBalance > 0L
+                    Timber.tag("CoinsScreen").i(
+                        "Output screen refresh: total=%d unspent=%d spent=%d balance=%d synchronized=%s",
+                        outputs.size,
+                        outputs.count { !it.spent },
+                        outputs.count { it.spent },
+                        wallet.balance,
+                        wallet.isSynchronized
+                    )
+                    // Outputs include spent entries too. Retry transient empty native
+                    // snapshots for longer; if balance is still positive, leave an explicit
+                    // diagnostic in the log instead of silently treating it as no outputs.
+                    if (outputs.isNotEmpty() || !hasBalance) {
+                        return@withContext
+                    }
+                    emptyOutputRetries++
+                    if (emptyOutputRetries >= 10) {
+                        Timber.tag("CoinsScreen").e(
+                            "Output inventory is empty after 10 idle refreshes despite positive balance=%d",
+                            wallet.balance
                         )
-                        // A positive balance with no enumerated outputs can be a transient
-                        // native refresh result. Retry a few times, then stop if empty is real.
-                        if (visibleCount > 0 || !hasBalance || emptyOutputRetries >= 3) {
-                            return@withContext
-                        }
-                        emptyOutputRetries++
-                    } catch (e: Exception) {
-                        emptyOutputRetries++
-                        Timber.tag("CoinsScreen").w(e, "Unable to refresh outputs for output list")
-                        if (emptyOutputRetries > 3) return@withContext
+                        return@withContext
                     }
                 }
                 delay(1_000L)
