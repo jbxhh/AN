@@ -69,8 +69,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -122,7 +120,7 @@ class LogViewModel(private val logRepository: LogRepository) : ViewModel() {
         if (!file.isFile) return@withContext emptyList()
 
         val recordPattern = Regex(
-            """^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3}) \\| (-?\\d+) \\| ([^|]+) \\| ?(.*)$"""
+            """^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \| (-?\d+) \| ([^|]+) \| ?(.*)$"""
         )
         val parsed = mutableListOf<AnonLog>()
         var recordDate = 0L
@@ -147,25 +145,16 @@ class LogViewModel(private val logRepository: LogRepository) : ViewModel() {
                 if (match != null) {
                     flushRecord()
                     recordDate = runCatching {
-                        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
-                            .withZone(ZoneId.systemDefault())
-                            .parse(match.groupValues[1])
-                            .let { java.time.Instant.from(it).toEpochMilli() }
+                        java.text.SimpleDateFormat(
+                            "yyyy-MM-dd HH:mm:ss.SSS",
+                            java.util.Locale.US
+                        ).parse(match.groupValues[1])?.time ?: 0L
                     }.getOrDefault(0L)
-                    // SimpleDateFormat is more tolerant of Android's local log timestamps.
-                    if (recordDate == 0L) {
-                        recordDate = runCatching {
-                            java.text.SimpleDateFormat(
-                                "yyyy-MM-dd HH:mm:ss.SSS",
-                                java.util.Locale.US
-                            ).parse(match.groupValues[1])?.time ?: 0L
-                        }.getOrDefault(0L)
-                    }
                     recordPriority = match.groupValues[2].toIntOrNull() ?: Log.INFO
                     recordTag = match.groupValues[3].trim()
                     recordMessage = StringBuilder(match.groupValues[4])
                 } else if (recordDate != 0L) {
-                    recordMessage.append('\\n').append(line)
+                    recordMessage.append('\n').append(line)
                 }
             }
             flushRecord()
