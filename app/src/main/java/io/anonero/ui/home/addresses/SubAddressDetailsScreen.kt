@@ -26,6 +26,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
@@ -77,6 +78,7 @@ fun SubAddressDetailScreen(
     animatedContentScope: AnimatedContentScope
 ) {
     val walletState: WalletState by inject(WalletState::class.java)
+    val hideAmounts by walletState.hideAmountsFlow.collectAsState(false)
     var showQR by remember { mutableStateOf(false) }
     val subAddressDetailVm = viewModel {
         SubAddressDetail(subAddress)
@@ -184,7 +186,8 @@ fun SubAddressDetailScreen(
                                     color = MaterialTheme.colorScheme.primary,
                                 )
                                 Text(
-                                    Formats.getDisplayAmount(subAddress.totalAmount),
+                                    if (hideAmounts) Formats.maskAmount(subAddress.totalAmount)
+                                    else Formats.getDisplayAmount(subAddress.totalAmount),
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -206,7 +209,9 @@ fun SubAddressDetailScreen(
             items(transactions.size) {
                 with(sharedTransitionScope) {
                     TransactionItem(
-                        transactions[it], modifier = Modifier
+                        transactions[it],
+                        hideAmounts = hideAmounts,
+                        modifier = Modifier
                             .clickable {
                                 onTransactionClick(transactions[it])
                             }
