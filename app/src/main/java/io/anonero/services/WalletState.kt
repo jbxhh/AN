@@ -424,7 +424,11 @@ class WalletState(private val prefs: SharedPreferences) {
         // Listener-derived height is authoritative: getBlockChainHeight() can include
         // cached hashes for blocks whose wallet transactions have not yet been scanned.
         _scanTracking.set(true)
-        wallet.isSynchronized = false
+        // Keep a previously completed scan marked synchronized when reopening the wallet.
+        // refreshed() will clear this flag if the daemon has genuinely advanced beyond
+        // the persisted processed height. Unconditionally clearing it here made every
+        // app re-entry look like a new scan even when a trusted completion marker existed.
+        wallet.isSynchronized = resumeCompletedScan
         _walletHeight.value = initialHeight
         prefs.edit {
             if (resumeCompletedScan) {
