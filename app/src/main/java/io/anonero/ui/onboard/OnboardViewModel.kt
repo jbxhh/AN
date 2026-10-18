@@ -9,6 +9,7 @@ import io.anonero.model.NeroKeyPayload
 import io.anonero.model.Wallet
 import io.anonero.model.WalletManager
 import io.anonero.services.PREF_FORCE_FRESH_WALLET_SCAN
+import io.anonero.services.WalletState
 import io.anonero.util.KeyStoreHelper
 import io.anonero.util.PREFS_PASSPHRASE_HASH
 import io.anonero.util.PREFS_PIN_HASH
@@ -28,7 +29,10 @@ enum class Mode {
 
 private const val TAG = "OnboardViewModel"
 
-class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
+class OnboardViewModel(
+    private val prefs: SharedPreferences,
+    private val walletState: WalletState
+) : ViewModel() {
 
     private var mode = Mode.CREATE
     private var passPhrase = ""
@@ -75,6 +79,7 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
                 putLong(RESTORE_HEIGHT, 0L)
             }
             walllet = anonWallet
+            prepareFirstReceiveAddress(anonWallet)
             delay(500)
         }
     }
@@ -184,10 +189,42 @@ class OnboardViewModel(private val prefs: SharedPreferences) : ViewModel() {
             // and queues its first native scan from that height after the daemon is synced.
             putBoolean(PREF_FORCE_FRESH_WALLET_SCAN, true)
         }
+        // Generate the local receive child address before Home starts node init/scan.
+        prepareFirstReceiveAddress(anonWallet)
         // Keep the recovered wallet managed by WalletManager. Onboarding launches
         // AnonWalletHandler.startService() on Home; closing here clears WalletManager.wallet,
         // so startService() returns before it can apply the saved node and connect.
         delay(500)
+    }
+
+ 
+    /**
+     * Prepare the first receive child locally before node initialization starts.
+     * Subaddress creation does not need daemon sync; doing it here avoids racing
+     * the native wallet initialization/refresh thread on the first wallet screen.
+     */
+    private suspend fun prepareFirstReceiveAddress(wallet: Wallet) {
+        withContext(Dispatchers.IO) {
+            try {
+                walletState.publishWalletSnapshot(wallet)
+            } catch (e: Exception) {
+                Timber.tag(TAG).w(e, "Unable to publish the initial local wallet snapshot")
+            }
+        }
+
+        try {
+            val address = walletState.ensureNextReceiveAddress()
+            Timber.tag(TAG).i(
+                "Prepared initial receive subaddress index=%d",
+                address.addressIndex
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Do not fail wallet creation/restoration for a transient address error.
+            // ReceiveScreen retries until the usable child address is available.
+            Timber.tag(TAG).w(e, "Initial receive subaddress not ready; screen will retry")
+        }
     }
 
 }
