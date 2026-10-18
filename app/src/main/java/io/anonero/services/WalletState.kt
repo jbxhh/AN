@@ -283,6 +283,9 @@ class WalletState(private val prefs: SharedPreferences) {
     }
 
     fun freezeCoin(publicKey: String): Result<Boolean> = try {
+        if (walletWipeInProgress.get() || isResyncPriorityActive) {
+            return Result.failure(Exception("区块重置或安全删除优先执行，请稍后再操作输出"))
+        }
         val wallet = getWallet ?: return Result.failure(Exception("Wallet not initialized"))
         val coins = wallet.coins ?: return Result.failure(Exception("Coins not initialized"))
         coins.setFrozen(publicKey)
@@ -296,6 +299,9 @@ class WalletState(private val prefs: SharedPreferences) {
     }
 
     fun thawCoin(publicKey: String): Result<Boolean> = try {
+        if (walletWipeInProgress.get() || isResyncPriorityActive) {
+            return Result.failure(Exception("区块重置或安全删除优先执行，请稍后再操作输出"))
+        }
         val wallet = getWallet ?: return Result.failure(Exception("Wallet not initialized"))
         val coins = wallet.coins ?: return Result.failure(Exception("Coins not initialized"))
         coins.thaw(publicKey)
