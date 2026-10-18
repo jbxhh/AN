@@ -820,16 +820,12 @@ private fun TransactionDirectionIndicator(
         contentAlignment = Alignment.Center
     ) {
         if (confirming) {
+            // The spinner replaces the direction arrow until the transaction
+            // reaches the existing confirmation threshold.
             CircularProgressIndicator(
                 modifier = Modifier.size(iconSize),
                 color = tint,
                 strokeWidth = 1.5.dp
-            )
-            Icon(
-                imageVector = directionIcon,
-                modifier = Modifier.size((iconSize - 8.dp).coerceAtLeast(10.dp)),
-                tint = tint,
-                contentDescription = null
             )
         } else {
             Icon(
