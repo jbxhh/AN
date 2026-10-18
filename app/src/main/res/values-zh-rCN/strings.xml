@@ -53,6 +53,8 @@
     <string name="battery_optimization_message">为了让 ANONERO 在后台正常运行，建议关闭电池优化。\n你可以随时在 Android 的应用设置中更改此设置。\n\n是否继续？</string>
     <string name="enable">开启</string>
     <string name="cancel">取消</string>
+    <string name="exit_wallet_prompt">确定要退出%1$s吗？</string>
+    <string name="exit_wallet">退出</string>
     <string name="enter_current_pin">输入当前PIN</string>
     <string name="unlock_wallet">输入PIN</string>
     <string name="wallet_not_connected_to_node_please_check_network">钱包未连接到节点，请检查网络</string>
