@@ -60,6 +60,8 @@ class WalletState(private val prefs: SharedPreferences) {
     private val _nextAddress = MutableStateFlow<Subaddress?>(null)
     private val _coins = MutableStateFlow<List<CoinsInfo>>(arrayListOf())
     private val _syncProgress = MutableStateFlow<SyncProgress?>(null)
+    private val _resyncErrors = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val resyncErrors = _resyncErrors.asSharedFlow()
     private val _connectedDaemon = MutableStateFlow<DaemonInfo?>(null)
     // Cache the daemon's real target height once per refresh callback so block
     // callbacks can calculate progress without issuing an RPC for every block.
@@ -654,7 +656,6 @@ class WalletState(private val prefs: SharedPreferences) {
         _scanTracking.set(true)
         wallet.isSynchronized = false
         _walletHeight.value = height
-        clearSyncProgress()
         _transactions.value = emptyList()
         _coins.value = emptyList()
 
@@ -666,7 +667,8 @@ class WalletState(private val prefs: SharedPreferences) {
             syncUpdate(SyncProgress(progress = 0f, left = remainingBlocks))
             setLoading(false)
         } else {
-            // Keep loading only if the target cannot yet establish a positive backlog.
+            // No remaining blocks can be shown as a determinate bar.
+            clearSyncProgress()
             setLoading(true)
         }
     }
@@ -1429,52 +1431,61 @@ class WalletState(private val prefs: SharedPreferences) {
             }
             return Result.failure(Exception(message))
         }
+
         manualResyncScanPrepared.set(false)
+        var handedOffToWorker = false
         return try {
-            // Covers the race where secure wipe begins immediately after the
-            // first flag check but before this reset request reserves the operation.
-            if (walletWipeInProgress.get()) {
-                Result.failure(Exception("钱包正在安全删除，已取消区块重置"))
-            } else {
-                resyncBlockchainLocked(
-                    selectedRestoreHeight = selectedRestoreHeight,
-                    knownDaemonHeight = knownDaemonHeight,
-                    knownDaemonTargetHeight = knownDaemonTargetHeight
-                )
-            }
+            val result = validateAndScheduleManualResync(
+                selectedRestoreHeight = selectedRestoreHeight,
+                knownDaemonHeight = knownDaemonHeight,
+                knownDaemonTargetHeight = knownDaemonTargetHeight
+            )
+            handedOffToWorker = result.isSuccess
+            result
         } finally {
-            manualResyncInProgress.set(false)
-            manualResyncScanPrepared.set(false)
+            // The background task owns the reset guard after accepting the request.
+            // Failed validation is synchronous and must release the guard here.
+            if (!handedOffToWorker) {
+                manualResyncInProgress.set(false)
+                manualResyncScanPrepared.set(false)
+            }
         }
     }
 
-    private fun resyncBlockchainLocked(
-        selectedRestoreHeight: Long? = null,
-        knownDaemonHeight: Long? = null,
-        knownDaemonTargetHeight: Long? = null
+    /**
+     * Validate only from the already-known node heights and in-memory wallet snapshot.
+     * Once accepted, publish the determinate progress before making any blocking native
+     * wallet calls. The independent WalletState scope keeps the reset alive while the
+     * screen navigates back to the transaction page.
+     */
+    private fun validateAndScheduleManualResync(
+        selectedRestoreHeight: Long?,
+        knownDaemonHeight: Long?,
+        knownDaemonTargetHeight: Long?
     ): Result<Boolean> {
         val wallet = getWallet
             ?: return Result.failure(Exception("Wallet is not initialized"))
         if (!wallet.isInitialized) {
             return Result.failure(Exception("Wallet is not initialized"))
         }
+        if (walletWipeInProgress.get()) {
+            return Result.failure(Exception("钱包正在安全删除，已取消区块重置"))
+        }
+
         val hasFreshDaemonHeights =
             knownDaemonHeight != null && knownDaemonHeight > 0L &&
                 knownDaemonTargetHeight != null && knownDaemonTargetHeight > 0L
         if (!hasFreshDaemonHeights &&
             wallet.fullStatus.connectionStatus != Wallet.ConnectionStatus.ConnectionStatus_Connected
         ) {
-            // A rejected reset must not erase progress from the scan already in progress.
             return Result.failure(Exception("Please connect to daemon for resync"))
         }
         if (backgroundSync) {
             return Result.failure(Exception("Exit background sync before resetting the scan"))
         }
 
-        // Validate the daemon before changing the active scan or its visible progress.
-        // The reset screen can supply a fresh direct-RPC snapshot. Prefer it over
-        // native daemon-height calls, which may stall when the wallet refresh worker
-        // is idle even though the node itself is reachable.
+        // The reset screen supplies these direct-RPC heights. Avoid querying native
+        // daemon height again after that snapshot is already known.
         val daemonHeight = knownDaemonHeight?.takeIf { it > 0L }
             ?: runCatching { wallet.getDaemonBlockChainHeight() }.getOrDefault(0L).coerceAtLeast(0L)
         val daemonTargetHeight = knownDaemonTargetHeight?.takeIf { it > 0L }
@@ -1485,7 +1496,9 @@ class WalletState(private val prefs: SharedPreferences) {
             )
         }
 
-        val selectedHeight = selectedRestoreHeight ?: wallet.getRestoreHeight()
+        val selectedHeight = selectedRestoreHeight ?: runCatching {
+            wallet.getRestoreHeight()
+        }.getOrDefault(-1L)
         if (selectedHeight < 0L) {
             return Result.failure(Exception("恢复区块高度无效"))
         }
@@ -1495,10 +1508,8 @@ class WalletState(private val prefs: SharedPreferences) {
             )
         }
 
-        // A rescan discards Monero's current transfer cache and only rebuilds
-        // transactions from the configured refresh height. Protect an existing wallet
-        // from silently losing earlier transactions and their balance by refusing a
-        // start height later than the earliest confirmed transaction already known.
+        // A rescan discards Monero's cached transfers, so never start later than the
+        // earliest transaction already known by this wallet.
         val earliestFromCurrentHistory = _transactions.value.asSequence()
             .filter { !it.isPending && it.blockheight > 0L }
             .minOfOrNull { it.blockheight }
@@ -1521,28 +1532,63 @@ class WalletState(private val prefs: SharedPreferences) {
                 )
             )
         }
-        val walletHasFunds = runCatching {
-            wallet.balance > 0L || wallet.unlockedBalance > 0L
-        }.getOrDefault(false)
-        if (earliestKnownTransactionHeight == null && walletHasFunds && selectedHeight > 0L) {
+
+        // Do not call wallet.balance/unlockedBalance here: those JNI calls can block
+        // before the progress bar appears. Use the current published snapshot instead.
+        val cachedBalances = listOfNotNull(_balanceInfo.value, _unLockedBalance.value)
+        val cachedBalanceKnown = cachedBalances.isNotEmpty()
+        val cachedWalletHasFunds = cachedBalances.any { it > 0L }
+        if (earliestKnownTransactionHeight == null && selectedHeight > 0L &&
+            (!cachedBalanceKnown || cachedWalletHasFunds)
+        ) {
             return Result.failure(
                 Exception(
-                    "当前无法确认钱包最早交易区块，而钱包已有余额。为避免重扫后旧交易和余额缺失，" +
+                    "当前无法可靠确认钱包最早交易区块和余额。为避免重扫后旧交易和余额缺失，" +
                         "请将恢复高度设为 0，或先确保交易历史已加载。"
                 )
             )
         }
 
-        // Wipe can arrive while the preceding validation calls are running.
-        // Abort before mutating the restore height or scheduling native scanning.
         if (walletWipeInProgress.get()) {
             return Result.failure(Exception("钱包正在安全删除，已取消区块重置"))
         }
-        // Expose the reset preparation phase before native state mutation.
-        setLoading(true)
+
+        // Direct get_info heights are zero-based block indices; the progress model
+        // tracks processed-block counts. Publish progress immediately, before JNI setup.
+        val progressTargetHeight = if (knownDaemonHeight != null && knownDaemonHeight >= 0L) {
+            maxOf(
+                knownDaemonHeight,
+                knownDaemonTargetHeight ?: knownDaemonHeight
+            ) + 1L
+        } else {
+            maxOf(daemonHeight, daemonTargetHeight)
+        }
+        val remainingBlocks = (progressTargetHeight - selectedHeight).coerceAtLeast(0L)
+        if (remainingBlocks > 0L) {
+            syncUpdate(SyncProgress(progress = 0f, left = remainingBlocks))
+            setLoading(false)
+        } else {
+            clearSyncProgress()
+            setLoading(true)
+        }
+
+        // Once the UI has a real target and remaining-block estimate, return immediately.
+        // The worker does native persistence / rescan asynchronously; real block callbacks
+        // are the only source that advances this estimate.
+        scanHeightScope.launch {
+            runManualResyncWorker(wallet, selectedHeight, progressTargetHeight)
+        }
+        return Result.success(true)
+    }
+
+    private suspend fun runManualResyncWorker(
+        wallet: Wallet,
+        selectedHeight: Long,
+        progressTargetHeight: Long
+    ) {
         var previousRestoreHeight: Long? = null
         var rescanQueued = false
-        return try {
+        try {
             check(!walletWipeInProgress.get()) {
                 "钱包安全删除优先，已取消区块重置"
             }
@@ -1550,9 +1596,6 @@ class WalletState(private val prefs: SharedPreferences) {
             check(!walletWipeInProgress.get()) {
                 "钱包安全删除优先，已取消区块重置"
             }
-            // Finish all state and wallet reads before requesting native rescan.
-            // Once rescan starts, JNI reads such as balance/history can contend with
-            // the refresh worker and keep the reset coroutine suspended indefinitely.
             wallet.setRestoreHeight(selectedHeight)
             check(!walletWipeInProgress.get()) {
                 "钱包安全删除优先，已取消区块重置"
@@ -1565,89 +1608,61 @@ class WalletState(private val prefs: SharedPreferences) {
                 "钱包安全删除优先，已取消区块重置"
             }
 
-            // The reset screen already queried the real daemon tip directly. Seed the
-            // determinate progress state before queuing the native rescan, rather than
-            // leaving the UI on an endless spinner until a refreshed/newBlock callback arrives.
-            val progressTargetHeight = if (knownDaemonHeight != null && knownDaemonHeight >= 0L) {
-                maxOf(
-                    knownDaemonHeight,
-                    knownDaemonTargetHeight ?: knownDaemonHeight
-                ) + 1L // direct get_info heights are zero-based tip indices; scan progress uses counts
-            } else {
-                maxOf(daemonHeight, daemonTargetHeight) // native wallet heights are already counts
-            }
             prepareManualResyncScanState(wallet, selectedHeight, progressTargetHeight)
+            manualResyncScanPrepared.set(true)
             check(!walletWipeInProgress.get()) {
                 "钱包安全删除优先，已取消区块重置"
             }
-            manualResyncScanPrepared.set(true)
 
-            // This is the last operation that schedules the native scan. Do not make
-            // further JNI reads before the new listener callbacks publish scan progress.
-            Timber.tag(TAG).i("Manual rescan: queuing native scan from height %d", selectedHeight)
+            Timber.tag(TAG).i(
+                "Manual rescan: queuing native scan from height %d with %d blocks remaining",
+                selectedHeight,
+                (progressTargetHeight - selectedHeight).coerceAtLeast(0L)
+            )
             wallet.rescanBlockchainAsync()
             rescanQueued = true
             if (!walletWipeInProgress.get()) {
                 wallet.startRefresh()
                 Timber.tag(TAG).i("Manual rescan: native scan queued and refresh signalled")
             } else {
-                // Secure wipe has priority; it is waiting for this reset call to exit
-                // and will pause/close the wallet without restarting refresh here.
                 Timber.tag(TAG).i("Secure wipe requested after rescan queue; skipping refresh restart")
             }
-            Result.success(true)
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Wallet rescan failed to start")
-            if (!rescanQueued) {
-                // The reset yielded to secure wipe before the native scan was queued.
-                // Release its preparation marker so the wipe can continue.
-                manualResyncScanPrepared.set(false)
-                // Nothing was queued natively. Normally roll back and resume the
-                // existing scan; if secure wipe has priority, avoid every further JNI
-                // call because the wallet is about to be paused and closed.
-                if (!walletWipeInProgress.get()) {
-                    previousRestoreHeight?.let { restoreHeight ->
-                        runCatching {
-                            wallet.setRestoreHeight(restoreHeight)
-                            check(wallet.store()) { "Unable to restore previous restore height" }
-                        }.onFailure { rollbackError ->
-                            Timber.tag(TAG).e(rollbackError, "Restore-height rollback failed")
-                        }
-                    }
-                    runCatching { wallet.startRefresh() }.onFailure { restartError ->
-                        Timber.tag(TAG).e(restartError, "Unable to resume refresh after rejected rescan")
-                    }
-                } else {
-                    Timber.tag(TAG).i("Skipping reset rollback and refresh restart because secure wipe has priority")
-                }
-                Result.failure(e)
-            } else {
-                // The native rescan is already queued and scan state was prepared before
-                // queueing. Do not issue more JNI reads while the new scan is starting.
-                if (walletWipeInProgress.get()) {
-                    Result.success(true)
-                } else {
-                    val restart = runCatching { wallet.startRefresh() }
-                    if (restart.isSuccess) {
-                        Result.success(true)
-                    } else {
-                        Result.failure(restart.exceptionOrNull() ?: e)
+            Timber.tag(TAG).e(e, "Unable to start manual wallet rescan")
+            if (!rescanQueued && !walletWipeInProgress.get()) {
+                previousRestoreHeight?.let { restoreHeight ->
+                    runCatching {
+                        wallet.setRestoreHeight(restoreHeight)
+                        check(wallet.store()) { "Unable to restore previous restore height" }
+                    }.onFailure { rollbackError ->
+                        Timber.tag(TAG).e(rollbackError, "Restore-height rollback failed")
                     }
                 }
-            }
-        } finally {
-            if (!manualResyncScanPrepared.get()) {
-                // If native setup failed before scan state was published, remove only
-                // the temporary loader. Preserve a pre-existing/recovery scan indicator.
+                runCatching { wallet.startRefresh() }.onFailure { restartError ->
+                    Timber.tag(TAG).e(restartError, "Unable to resume refresh after rejected rescan")
+                }
+                clearSyncProgress()
                 val scanPending = _scanTracking.get() ||
-                    _syncProgress.value != null ||
                     prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
                 setLoading(
                     scanPending && runCatching {
                         getWallet?.isInitialized == true && getWallet?.isSynchronized != true
                     }.getOrDefault(false)
                 )
+                _resyncErrors.tryEmit(e.message ?: "无法启动区块扫描")
+            } else if (!rescanQueued && walletWipeInProgress.get()) {
+                Timber.tag(TAG).i("Reset setup cancelled because secure wipe has priority")
+            } else if (rescanQueued && !walletWipeInProgress.get()) {
+                // Scan is already queued. Keep its real progress state and report only
+                // if the refresh trigger could not be recovered.
+                val restart = runCatching { wallet.startRefresh() }
+                restart.exceptionOrNull()?.let {
+                    _resyncErrors.tryEmit(it.message ?: "扫描已提交，但钱包刷新未能启动")
+                }
             }
+        } finally {
+            manualResyncInProgress.set(false)
+            manualResyncScanPrepared.set(false)
         }
     }
 
