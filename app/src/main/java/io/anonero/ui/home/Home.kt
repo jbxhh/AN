@@ -9,8 +9,6 @@ import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -219,9 +217,7 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
             Box(modifier = modifier.padding(0.dp)) {
                 NavHost(
                     bottomNavController,
-                    startDestination = startDestination,
-                    exitTransition = { fadeOut(animationSpec = tween(340)) },
-                    enterTransition = { fadeIn(animationSpec = tween(340)) }
+                    startDestination = startDestination
                 ) {
                     composable<TransactionsRoute> {
                         TransactionScreen(
