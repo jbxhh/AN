@@ -107,11 +107,6 @@ class TorService(prefs: SharedPreferences) {
     }
 
     /**
-     * Returns only after the live SOCKS listener is available.
-     * On timeout, stop the stuck attempt and clear the replayed socket so a later
-     * connection attempt can start Tor afresh instead of waiting forever.
-     */
-    /**
      * Wait for SOCKS a bounded number of times. Wallet startup must not retain an
      * indefinite loading state if Tor cannot bootstrap; callers can return control
      * to the user and allow an explicit retry instead of looping forever.
@@ -130,6 +125,10 @@ class TorService(prefs: SharedPreferences) {
         return null
     }
 
+    /**
+     * Wait once for the live SOCKS listener. On timeout, check whether the Tor
+     * startup has stalled long enough to warrant a daemon restart.
+     */
     suspend fun awaitSocks(timeoutMillis: Long = 30_000L): IPSocketAddress? {
         socks?.let { return it }
         start()
