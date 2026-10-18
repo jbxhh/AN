@@ -162,10 +162,10 @@
     <string name="notification_channel_transactions_name">钱包交易通知</string>
     <string name="notification_channel_transactions_description">收到钱包交易时发送提醒。</string>
     <string name="notification_loading_wallet">钱包加载中…</string>
-    <string name="notification_wallet_locked_synced">钱包已锁定｜已同步至区块：%1$s</string>
+    <string name="notification_wallet_locked_synced">钱包已锁定｜区块高度：%1$s</string>
     <string name="notification_network_unavailable">网络未连接</string>
     <string name="notification_node_disconnected">节点连接断开</string>
-    <string name="notification_synced_height">已同步至区块：%1$s</string>
+    <string name="notification_synced_height">区块高度：%1$s</string>
     <string name="notification_syncing">正在同步…</string>
     <string name="notification_sync_progress">正在同步，剩余区块：%1$s 个区块%2$s</string>
     <string name="notification_sync_complete">区块同步完成%1$s</string>
