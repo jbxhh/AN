@@ -172,10 +172,16 @@ class MoneroHandlerThread(private val wallet: Wallet, private val walletState: W
                     }
 
                     try {
+                        // Output enumeration can lag behind the scan-completion callback.
+                        // Refresh it with history so outputs discovered during restore become
+                        // visible without requiring the user to manually reconnect the node.
+                        if (wallet.isSynchronized) {
+                            wallet.refreshCoins()
+                        }
                         wallet.refreshHistory()
                         walletState.update()
                     } catch (e: Exception) {
-                        Timber.tag(name).w(e, "Deferred transaction history refresh failed")
+                        Timber.tag(name).w(e, "Deferred wallet output/history refresh failed")
                     }
 
                     if (WalletManager.instance?.wallet !== wallet || !wallet.isInitialized) {
