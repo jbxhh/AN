@@ -44,6 +44,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,7 +79,13 @@ fun CoinsScreen(
     val coins by walletState.coins.collectAsState(arrayListOf())
     val hideAmounts by walletState.hideAmountsFlow.collectAsState(false)
 
-    var selectedCoins by remember { mutableStateOf(selected) }
+    var selectedCoins by rememberSaveable(
+        selected,
+        stateSaver = listSaver<Set<String>, String>(
+            save = { it.toList() },
+            restore = { it.toSet() }
+        )
+    ) { mutableStateOf(selected) }
     var detailCoin by remember { mutableStateOf<CoinsInfo?>(null) }
 
     val connectionStatus by walletState.walletConnectionStatus.asLiveData().observeAsState(
