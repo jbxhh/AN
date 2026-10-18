@@ -548,6 +548,18 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
                         }
                     )
                 }
+            if (activeNode == null && availableNodes.isEmpty()) {
+                item(key = "empty-node-list") {
+                    ListItem(
+                        headlineContent = {
+                            Text("暂无可用节点")
+                        },
+                        supportingContent = {
+                            Text("请点击右上角“添加节点”配置或重新添加节点。")
+                        }
+                    )
+                }
+            }
             if (availableNodes.isNotEmpty())
                 item(key = "header") {
                     Column(
