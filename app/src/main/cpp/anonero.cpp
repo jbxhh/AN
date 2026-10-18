@@ -1515,7 +1515,7 @@ jobject newCoinsInfo(JNIEnv *env, Monero::CoinsInfo *info) {
                                     static_cast<jlong> (info->amount()),
                                     _hash,
                                     _pub_key,
-                                    info->unlocked(),
+                                    info->frozen(),
                                     static_cast<jlong> (info->internalOutputIndex()));
     env->DeleteLocalRef(_key_image);
     env->DeleteLocalRef(_hash);
