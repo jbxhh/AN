@@ -38,18 +38,18 @@ path.write_text(source)
 # marked as scanning while the selected-height rescan was never executed.
 wallet_api_path = Path("external-libs/monero/src/wallet/api/wallet.cpp")
 wallet_api_source = wallet_api_path.read_text()
-old_unsynced_branch = "\\n".join([
+old_unsynced_branch = "\n".join([
     "        } else {",
-    "           LOG_PRINT_L3(__FUNCTION__ << \\": skipping refresh - daemon is not synced\\");",
+    '           LOG_PRINT_L3(__FUNCTION__ << ": skipping refresh - daemon is not synced");',
     "        }",
 ])
 if wallet_api_source.count(old_unsynced_branch) != 1:
     raise SystemExit(
         "Expected exactly one unsynced-daemon branch in WalletImpl::doRefresh()"
     )
-new_unsynced_branch = "\\n".join([
+new_unsynced_branch = "\n".join([
     "        } else {",
-    "           LOG_PRINT_L3(__FUNCTION__ << \\": skipping refresh - daemon is not synced\\");",
+    '           LOG_PRINT_L3(__FUNCTION__ << ": skipping refresh - daemon is not synced");',
     "           // Keep a restore/rescan request pending until a later refresh can run it.",
     "           if (rescan)",
     "               m_refreshShouldRescan.store(true);",
