@@ -107,9 +107,10 @@ fun ReceiveScreen(
                 }
             )
         }) {
-        // Index 0 is the primary address. Do not display it as the receive address;
-        // wait for wallet initialization and the next generated/reused subaddress.
-        if (nextAddress != null && nextAddress!!.addressIndex > 0) {
+        // Always show a valid wallet address. During startup or while a new
+        // subaddress is being prepared, nextAddress may still be the primary address
+        // (index 0); hiding it leaves the entire receive screen blank.
+        if (!nextAddress?.address.isNullOrBlank()) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize(),
