@@ -115,6 +115,7 @@ class OnboardViewModel(
                 putLong(RESTORE_HEIGHT, neroKeyPayload!!.restoreHeight)
             }
             walllet = anonWallet
+            prepareFirstReceiveAddress(anonWallet)
             delay(500)
         }
     }
