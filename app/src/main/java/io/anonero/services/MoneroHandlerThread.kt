@@ -67,6 +67,13 @@ class MoneroHandlerThread(
     }
 
     override fun updated() {
+        // During a manual rescan, keep native listener callbacks lightweight. Refreshing
+        // transaction history from this callback can contend with the active scan lock
+        // and prevent later newBlock callbacks from advancing the progress state.
+        if (walletState.isResyncPriorityActive) {
+            Timber.tag(name).d("Skipping history refresh while manual rescan owns wallet")
+            return
+        }
         refresh()
         Timber.tag(name).i("updated()")
         walletState.update()
