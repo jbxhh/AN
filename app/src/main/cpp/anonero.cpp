@@ -1284,10 +1284,16 @@ Java_io_anonero_model_Wallet_refreshAsync(JNIEnv *env, jobject instance) {
 //TODO virtual bool rescanBlockchain() = 0;
 
 //virtual void rescanBlockchainAsync() = 0;
-JNIEXPORT void JNICALL
+JNIEXPORT jboolean JNICALL
 Java_io_anonero_model_Wallet_rescanBlockchainAsyncJ(JNIEnv *env, jobject instance) {
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
     wallet->rescanBlockchainAsync();
+    const bool accepted = wallet->status() == Monero::Wallet::Status_Ok;
+    if (!accepted) {
+        const std::string error = wallet->errorString();
+        LOGE("Native rescan request rejected: %s", error.c_str());
+    }
+    return static_cast<jboolean>(accepted);
 }
 
 

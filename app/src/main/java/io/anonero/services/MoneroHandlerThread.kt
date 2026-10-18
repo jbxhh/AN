@@ -263,8 +263,12 @@ class MoneroHandlerThread(
         // This method is called from WalletListener.refreshed(), which is itself a
         // native wallet callback. Never call wallet.init() inline here: re-entering
         // native initialization from the refresh callback can stall refresh and race
-        // a manual node connection. Schedule a single, rate-limited recovery instead.
-        if (walletHandler.isManualNodeConnectionInProgress()) return
+        // a manual node connection or a manual rescan handoff.
+        if (
+            walletHandler.isManualNodeConnectionInProgress() ||
+            walletState.isManualResyncInProgress ||
+            walletState.isWalletWipeInProgress
+        ) return
         val now = System.currentTimeMillis()
         if (now - lastConnectionRecoveryAtMillis.get() < CONNECTION_RECOVERY_COOLDOWN_MILLIS) return
         if (!connectionRecoveryInFlight.compareAndSet(false, true)) return
@@ -274,12 +278,20 @@ class MoneroHandlerThread(
             try {
                 // Let the native refreshed() callback fully unwind before any JNI init.
                 delay(750L)
-                if (walletHandler.isManualNodeConnectionInProgress()) return@launch
+                if (
+                    walletHandler.isManualNodeConnectionInProgress() ||
+                    walletState.isManualResyncInProgress ||
+                    walletState.isWalletWipeInProgress
+                ) return@launch
                 walletHandler.withWalletInitializationLock {
-                    // A user-initiated connection takes priority over automatic recovery,
-                    // including a request that began while this coroutine was queued.
-                    if (walletHandler.isManualNodeConnectionInProgress()) {
-                        Timber.tag(name).i("Skipping automatic reconnect while manual node connection is pending")
+                    // A user-initiated connection or reset takes priority over automatic
+                    // recovery, including requests that began while this coroutine queued.
+                    if (
+                        walletHandler.isManualNodeConnectionInProgress() ||
+                        walletState.isManualResyncInProgress ||
+                        walletState.isWalletWipeInProgress
+                    ) {
+                        Timber.tag(name).i("Skipping automatic reconnect while a manual wallet operation is pending")
                         return@withWalletInitializationLock
                     }
                     if (WalletManager.instance?.wallet !== wallet || !wallet.isInitialized) {

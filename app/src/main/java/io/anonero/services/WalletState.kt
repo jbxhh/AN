@@ -110,6 +110,9 @@ class WalletState(private val prefs: SharedPreferences) {
         get() = resetPriorityActive.get() && !walletWipeInProgress.get()
     val isWalletWipeInProgress: Boolean
         get() = walletWipeInProgress.get()
+    /** True while a manual rescan request is being prepared/handed to native refresh. */
+    val isManualResyncInProgress: Boolean
+        get() = manualResyncInProgress.get()
 
     // While the native worker prepares reset state, callback data is suppressed.
     // Once scan state is published, block/progress callbacks must be allowed through,
@@ -1697,13 +1700,17 @@ class WalletState(private val prefs: SharedPreferences) {
             return Result.failure(Exception("钱包正在安全删除，已取消区块重置"))
         }
 
-        val hasFreshDaemonHeights =
-            knownDaemonHeight != null && knownDaemonHeight > 0L &&
-                knownDaemonTargetHeight != null && knownDaemonTargetHeight > 0L
-        if (!hasFreshDaemonHeights &&
-            wallet.fullStatus.connectionStatus != Wallet.ConnectionStatus.ConnectionStatus_Connected
-        ) {
-            return Result.failure(Exception("Please connect to daemon for resync"))
+        // The reset screen can query the node through an independent RPC connection.
+        // That does NOT mean Monero's native wallet connection is ready to rescan:
+        // WalletImpl::doRefresh() skips rescans while its own daemon connection is down.
+        // Require the native wallet to be connected even when external RPC heights are fresh.
+        val nativeConnectionStatus = runCatching {
+            wallet.fullStatus.connectionStatus
+        }.getOrNull()
+        if (nativeConnectionStatus != Wallet.ConnectionStatus.ConnectionStatus_Connected) {
+            return Result.failure(
+                Exception("钱包原生节点尚未连接成功。独立 RPC 能查询高度不代表钱包扫描已连接，请先连接节点成功后再重置。")
+            )
         }
         if (backgroundSync) {
             return Result.failure(Exception("Exit background sync before resetting the scan"))
@@ -1882,6 +1889,19 @@ class WalletState(private val prefs: SharedPreferences) {
                 "钱包安全删除优先，已取消区块重置"
             }
 
+            Timber.tag(TAG).i(
+                "Manual rescan: requesting native scan from height %d with %d blocks remaining",
+                selectedHeight,
+                (progressTargetHeight - selectedHeight).coerceAtLeast(0L)
+            )
+            // Refresh is paused. Queue the explicit native rescan first and check whether
+            // Monero accepted it; only then publish the selected-height scan state.
+            wallet.rescanBlockchainAsync()
+            rescanQueued = true
+            check(!walletWipeInProgress.get()) {
+                "钱包安全删除优先，已取消区块重置"
+            }
+
             prepareManualResyncScanState(
                 wallet,
                 selectedHeight,
@@ -1893,18 +1913,10 @@ class WalletState(private val prefs: SharedPreferences) {
                 "钱包安全删除优先，已取消区块重置"
             }
 
-            Timber.tag(TAG).i(
-                "Manual rescan: queuing native scan from height %d with %d blocks remaining",
-                selectedHeight,
-                (progressTargetHeight - selectedHeight).coerceAtLeast(0L)
-            )
-            wallet.rescanBlockchainAsync()
-            rescanQueued = true
             if (!walletWipeInProgress.get()) {
                 wallet.startRefresh()
-                // Publish remaining-block progress only after the native refresh worker starts.
-                // updateSyncProgressFromWallet uses the selected-height baseline and the latest
-                // processed-block callback, not the node's cached hash-chain tip.
+                // Publish remaining-block progress after the accepted request is handed to
+                // native refresh, using the selected-height baseline rather than node tip.
                 updateSyncProgressFromWallet(wallet, progressDaemonHeight)
                 val hasRemainingBlocks = _syncProgress.value?.left?.let { it > 0L } == true
                 setLoading(!hasRemainingBlocks && !wallet.isSynchronized)

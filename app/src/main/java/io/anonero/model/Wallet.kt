@@ -262,10 +262,16 @@ class Wallet {
     external fun pauseRefresh()
     external fun refresh(): Boolean
     external fun refreshAsync()
-    private external fun rescanBlockchainAsyncJ()
+    private external fun rescanBlockchainAsyncJ(): Boolean
     fun rescanBlockchainAsync() {
+        // The native API returns early without queueing a scan for background wallets
+        // or while background sync is active. Do not silently report those cases as
+        // a successful manual reset.
+        check(rescanBlockchainAsyncJ()) {
+            status.errorString.takeIf { it.isNotBlank() }
+                ?: "原生钱包拒绝区块重扫请求"
+        }
         isSynchronized = false
-        rescanBlockchainAsyncJ()
     }
 
     //TODO virtual void setAutoRefreshInterval(int millis) = 0;
