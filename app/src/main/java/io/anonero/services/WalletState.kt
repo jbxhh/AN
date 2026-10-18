@@ -75,6 +75,8 @@ class WalletState(private val prefs: SharedPreferences) {
     private val bgSyncMutex = Mutex()
     private val subaddressMutex = Mutex()
     private val daemonHeightQueryMutex = Mutex()
+    // Native operations already started before reset priority was raised must drain first.
+    private val ordinaryWalletOperationsInFlight = AtomicLong(0L)
     private val walletWipeInProgress = AtomicBoolean(false)
     // Wallet scan progress needs the live daemon target as soon as a scan starts.
     // Keep this request off the UI thread and avoid duplicate startup height RPCs.
@@ -103,6 +105,8 @@ class WalletState(private val prefs: SharedPreferences) {
     /** True from the user's reset click until scan completion; secure wipe overrides it. */
     val isResyncPriorityActive: Boolean
         get() = resetPriorityActive.get() && !walletWipeInProgress.get()
+    val isWalletWipeInProgress: Boolean
+        get() = walletWipeInProgress.get()
     val backgroundSyncFlow: Flow<Boolean> = _backgroundSync
 
     val walletStatus: Flow<Wallet.Status?> = _walletStatus
@@ -353,7 +357,7 @@ class WalletState(private val prefs: SharedPreferences) {
      * Keep the request pending until the daemon is connected and fully synchronized.
      */
     fun maybeStartForcedRestoreScan(wallet: Wallet) {
-        if (walletWipeInProgress.get()) return
+        if (walletWipeInProgress.get() || manualResyncInProgress.get() || isResyncPriorityActive) return
         if (!prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) return
         if (forcedRestoreScanStarted.get()) return
         if (!forcedRestoreScanInFlight.compareAndSet(false, true)) return
@@ -533,6 +537,38 @@ class WalletState(private val prefs: SharedPreferences) {
         return reservation
     }
 
+    private fun beginOrdinaryWalletOperation(): Boolean {
+        if (walletWipeInProgress.get() || isResyncPriorityActive) return false
+        ordinaryWalletOperationsInFlight.incrementAndGet()
+        if (walletWipeInProgress.get() || isResyncPriorityActive) {
+            endOrdinaryWalletOperation()
+            return false
+        }
+        return true
+    }
+
+    private fun endOrdinaryWalletOperation() {
+        ordinaryWalletOperationsInFlight.updateAndGet { current -> (current - 1L).coerceAtLeast(0L) }
+    }
+
+    /** Reset waits for finite native calls that had already started. */
+    suspend fun awaitOrdinaryWalletOperationsIdle() {
+        while (ordinaryWalletOperationsInFlight.get() > 0L) {
+            check(!walletWipeInProgress.get()) {
+                "钱包安全删除优先，已取消区块重置"
+            }
+            delay(25L)
+        }
+    }
+
+    suspend fun awaitBackgroundSyncOperationIdle() {
+        bgSyncMutex.withLock { }
+    }
+
+    /** Monitor barrier: wait for any callback already inside a synchronized state method. */
+    @Synchronized
+    fun awaitWalletStateCallbacksIdle() = Unit
+
     /** Release a preflight reservation when the node query or validation fails. */
     fun cancelManualResyncRequest(reservation: ManualResyncReservation) {
         if (manualResyncNativeWorkerStarted.get()) return
@@ -566,6 +602,10 @@ class WalletState(private val prefs: SharedPreferences) {
     /** Wait until any daemon-height JNI/RPC query started by scan progress has left its critical section. */
     suspend fun awaitPendingNativeQueries() {
         daemonHeightQueryMutex.withLock { }
+        bgSyncMutex.withLock { }
+        while (ordinaryWalletOperationsInFlight.get() > 0L) {
+            delay(25L)
+        }
         // Secure wipe has priority over manual resync. It closes the native wallet,
         // so wait until an already-running reset has observed the wipe gate and exited.
         while (manualResyncInProgress.get()) {
@@ -997,7 +1037,7 @@ class WalletState(private val prefs: SharedPreferences) {
         wallet: Wallet? = getWallet,
         knownDaemonHeight: Long? = null
     ) {
-        if (walletWipeInProgress.get()) return
+        if (walletWipeInProgress.get() || manualResyncInProgress.get()) return
         if (wallet == null || !wallet.isInitialized) {
             _walletHeight.value = 0L
             _connectedDaemon.update { current -> current?.copy(daemonHeight = 0L) }
@@ -1056,7 +1096,7 @@ class WalletState(private val prefs: SharedPreferences) {
         wallet: Wallet? = getWallet,
         knownDaemonHeight: Long? = null
     ) {
-        if (walletWipeInProgress.get()) return
+        if (walletWipeInProgress.get() || manualResyncInProgress.get()) return
         if (wallet == null || !wallet.isInitialized) {
             clearSyncProgress()
             return
@@ -1702,6 +1742,9 @@ class WalletState(private val prefs: SharedPreferences) {
             // initialization lock time to exit. New ones are rejected by the reset gate.
             // Progress has already been published, so the UI does not wait on this lock.
             awaitOtherWalletWork()
+            awaitBackgroundSyncOperationIdle()
+            awaitOrdinaryWalletOperationsIdle()
+            awaitWalletStateCallbacksIdle()
             check(!walletWipeInProgress.get()) {
                 "钱包安全删除优先，已取消区块重置"
             }
