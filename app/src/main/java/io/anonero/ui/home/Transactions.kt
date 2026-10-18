@@ -281,7 +281,7 @@ fun TransactionScreen(
                 )
             },
             text = {
-                Text("Do you want to exit ${stringResource(R.string.app_name)}?")
+                Text(stringResource(R.string.exit_wallet_prompt, stringResource(R.string.app_name)))
             },
             onDismissRequest = {
                 showExitDialog = false
@@ -322,7 +322,7 @@ fun TransactionScreen(
                     ),
                     onClick = {
                         activity?.finishAffinity()
-                    }) { Text("Exit") }
+                    }) { Text(stringResource(R.string.exit_wallet)) }
             },
         )
     }
