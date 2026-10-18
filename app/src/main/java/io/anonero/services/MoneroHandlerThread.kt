@@ -94,10 +94,6 @@ class MoneroHandlerThread(
                     if (walletState.isResyncPriorityActive || walletState.isWalletWipeInProgress) continue
                     refresh()
                     Timber.tag(name).i("updated() processed outside native wallet callback")
-                    // Native updated() events can arrive in bursts during synchronization.
-                    // Coalesce pending callbacks instead of continuously rereading all history,
-                    // outputs, and subaddresses while the user navigates between screens.
-                    delay(WALLET_STATE_UPDATE_COALESCE_MS)
                 }
             } catch (e: Exception) {
                 Timber.tag(name).w(e, "Deferred wallet update failed")
@@ -126,9 +122,6 @@ class MoneroHandlerThread(
                 while (refreshedCallbackPending.getAndSet(false)) {
                     if (WalletManager.instance?.wallet !== wallet || !wallet.isInitialized) break
                     processRefreshedCallback()
-                    // Progress callbacks are also coalesced; newBlock() still publishes
-                    // block progress immediately, so this only limits repeated JNI snapshots.
-                    delay(WALLET_STATE_UPDATE_COALESCE_MS)
                 }
             } catch (e: Exception) {
                 Timber.tag(name).w(e, "Deferred refreshed callback processing failed")
@@ -419,7 +412,6 @@ class MoneroHandlerThread(
         // Avoid repeated native init attempts when refreshed() reports Disconnected
         // several times during one failed connection attempt.
         private const val CONNECTION_RECOVERY_COOLDOWN_MILLIS = 15_000L
-        private const val WALLET_STATE_UPDATE_COALESCE_MS = 250L
 
         // from src/cryptonote_config.h
         const val THREAD_STACK_SIZE = (5 * 1024 * 1024).toLong()
