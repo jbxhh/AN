@@ -452,14 +452,16 @@ class WalletState(private val prefs: SharedPreferences) {
                         )
                         return@withLock
                     }
-                    // Do not wait for the remote daemon's entire chain to finish syncing.
-                    // Scan every available block from the selected restore height now;
-                    // the normal refresh worker will continue when the daemon advances.
+                    // Monero's WalletImpl::doRefresh() skips refresh/rescan while the
+                    // daemon is below its target height. Queueing a rescan before then can
+                    // be discarded by native code, while the app incorrectly marks it started.
+                    // Keep the request pending and retry from the next refreshed() callback.
                     if (daemonTargetHeight > daemonHeight) {
                         Timber.tag(TAG).i(
-                            "Daemon is still syncing; starting restore scan against available tip: height=%d target=%d",
+                            "Restore scan pending until daemon is synced: height=%d target=%d",
                             daemonHeight, daemonTargetHeight
                         )
+                        return@withLock
                     }
 
                     // The saved restore height, not the native cache tip, is the source
