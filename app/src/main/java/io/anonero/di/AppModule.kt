@@ -35,7 +35,7 @@ val appModule = module {
     single {
         AppViewModel(get(), get())
     }
-    viewModel { OnboardViewModel(get(named(WALLET_PREFERENCES))) }
+    viewModel { OnboardViewModel(get(named(WALLET_PREFERENCES)), get()) }
     viewModel { LogViewModel(get()) }
     viewModel { SendViewModel() }
     viewModel { SecureWipeViewModel(get(), get(named(WALLET_PREFERENCES)), get(), get()) }
