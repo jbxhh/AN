@@ -10,6 +10,7 @@ import io.anonero.model.WalletManager
 import io.anonero.ui.theme.AnonNeroTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -59,6 +60,7 @@ import io.anonero.model.Wallet
 import io.anonero.services.WalletState
 import io.anonero.ui.components.WalletProgressIndicator
 import io.anonero.ui.home.graph.routes.SendScreenRoute
+import io.anonero.ui.theme.Orange
 import io.anonero.util.Formats
 import org.koin.java.KoinJavaComponent.inject
 import timber.log.Timber
@@ -73,6 +75,7 @@ fun CoinsScreen(
 ) {
     val walletState: WalletState by inject(WalletState::class.java)
     val coins by walletState.coins.collectAsState(arrayListOf())
+    val hideAmounts by walletState.hideAmountsFlow.collectAsState(false)
 
     var selectedCoins by remember { mutableStateOf(selected) }
     var detailCoin by remember { mutableStateOf<CoinsInfo?>(null) }
@@ -195,11 +198,13 @@ fun CoinsScreen(
                 topBar = {
                     TopAppBar(
                         title = {
-                            Box(modifier = Modifier.offset(y = (-3).dp)) {
-                                XmrText(
-                                    style = MaterialTheme.typography.titleLarge.copy(fontSize = 26.sp)
+                            XmrText(
+                                modifier = Modifier.offset(y = (-2).dp),
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontSize = 30.sp,
+                                    color = Orange
                                 )
-                            }
+                            )
                         },
                         navigationIcon = {
                             IconButton(onClick = onBackPress) {
@@ -224,61 +229,69 @@ fun CoinsScreen(
 
                         ListItem(
                             modifier = Modifier
-                                .padding(
-                                    horizontal = 4.dp,
-                                    vertical = 6.dp
-                                )
+                                .padding(horizontal = 4.dp, vertical = 6.dp)
                                 .clickable {
                                     // Opening output details must not discard other selected outputs.
                                     detailCoin = coin
                                 },
                             headlineContent = {
                                 Row(
+                                    horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text(
                                         stringResource(R.string.output_number, index + 1),
-                                        color = if (isFrozen) {
+                                        color = if (isFrozen || coin.spent) {
                                             MaterialTheme.colorScheme.onSurfaceVariant
                                         } else {
                                             MaterialTheme.colorScheme.primary
                                         },
                                     )
                                     Text(
-                                        Formats.getDisplayAmount(coin.amount),
-                                        color = if (isFrozen) {
+                                        if (hideAmounts) Formats.maskAmount(coin.amount)
+                                        else Formats.getDisplayAmount(coin.amount),
+                                        modifier = Modifier.weight(1f),
+                                        color = if (isFrozen || coin.spent) {
                                             MaterialTheme.colorScheme.onSurfaceVariant
                                         } else {
                                             MaterialTheme.colorScheme.primary
                                         },
                                         fontWeight = FontWeight.SemiBold,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.weight(1f)
+                                        textAlign = TextAlign.Center
                                     )
-
-                                    if (isFrozen) {
-                                        Text(
-                                            "已冻结",
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            fontWeight = FontWeight.Medium,
-                                            style = MaterialTheme.typography.bodyLarge
-                                        )
-                                    } else if (coin.spent) {
-                                        Text(
-                                            "已花费",
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            fontWeight = FontWeight.Medium,
-                                            style = MaterialTheme.typography.bodyLarge
-                                        )
-                                    } else {
-                                        Checkbox(
-                                            checked = selectedCoins.contains(coin.key),
-                                            onCheckedChange = {
-                                                selectCoin(coin)
-                                            }
-                                        )
-                                    }
+                                }
+                            },
+                            supportingContent = {
+                                SelectionContainer {
+                                    Text(
+                                        coin.pub_key,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 14.sp,
+                                        textAlign = TextAlign.Justify
+                                    )
+                                }
+                            },
+                            trailingContent = {
+                                if (isFrozen) {
+                                    Text(
+                                        "已冻结",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = FontWeight.Medium,
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
+                                } else if (coin.spent) {
+                                    Text(
+                                        "已花费",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = FontWeight.Medium,
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
+                                } else {
+                                    Checkbox(
+                                        checked = selectedCoins.contains(coin.key),
+                                        onCheckedChange = { selectCoin(coin) }
+                                    )
                                 }
                             }
                         )
