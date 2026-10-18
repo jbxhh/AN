@@ -13,19 +13,15 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import io.anonero.ui.theme.AnonOutlineButton
-import androidx.activity.compose.BackHandler
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -37,19 +33,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.anonero.services.WalletState
 import io.anonero.util.Formats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
 
-private fun breakableIdentifier(value: String, chunkSize: Int = 8): String {
-    if (value.isEmpty()) return value
-    return value.chunked(chunkSize).joinToString(separator = "\u200B")
+private fun abbreviatedValue(value: String, maxChars: Int): String {
+    if (value.length <= maxChars) return value
+    val available = (maxChars - 3).coerceAtLeast(2)
+    val left = available / 2
+    val right = available - left
+    return value.take(left) + "..." + value.takeLast(right)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,22 +55,12 @@ fun CoinDetailScreen(
     coinKey: String,
     onBackPress: () -> Unit = {},
 ) {
-    BackHandler(onBack = onBackPress)
-
     val walletState = koinInject<WalletState>()
     val coins by walletState.coins.collectAsState(arrayListOf())
     val hideAmounts by walletState.hideAmountsFlow.collectAsState(false)
     val coinIndex = coins.indexOfFirst { it.key == coinKey }
-    val currentCoin = coins.getOrNull(coinIndex)
-    // Keep the opened output visible while WalletState temporarily hides the output
-    // inventory during a rescan. A successful freeze/thaw updates this local snapshot.
-    var lastKnownCoin by remember(coinKey) { mutableStateOf(currentCoin) }
-    LaunchedEffect(currentCoin) {
-        if (currentCoin != null) lastKnownCoin = currentCoin
-    }
-    val coin = currentCoin ?: lastKnownCoin
+    val coin = coins.getOrNull(coinIndex)
     val scope = rememberCoroutineScope()
-    val snackbarHostState = remember { SnackbarHostState() }
     val clipboardManager = LocalClipboardManager.current
     var busy by remember { mutableStateOf(false) }
     var pubKeyState by remember { mutableStateOf(0) }
@@ -87,7 +74,6 @@ fun CoinDetailScreen(
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("冻结") },
@@ -156,15 +142,10 @@ fun CoinDetailScreen(
                 ) {
                     Text("公钥", modifier = Modifier.size(width = 40.dp, height = 24.dp), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = coin?.let {
-                            if (pubKeyState == 1) breakableIdentifier(it.pub_key) else it.pub_key
-                        } ?: "____",
+                        text = coin?.let { if (pubKeyState == 1) it.pub_key else abbreviatedValue(it.pub_key, 32) } ?: "____",
                         modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Start,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = if (pubKeyState == 1) Int.MAX_VALUE else 1,
-                        softWrap = pubKeyState == 1,
-                        overflow = if (pubKeyState == 1) TextOverflow.Clip else TextOverflow.Ellipsis
+                        textAlign = TextAlign.End,
+                        style = MaterialTheme.typography.titleMedium
                     )
                 }
                 androidx.compose.foundation.layout.Row(
@@ -179,15 +160,10 @@ fun CoinDetailScreen(
                 ) {
                     Text("哈希", modifier = Modifier.size(width = 40.dp, height = 24.dp), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = coin?.let {
-                            if (hashState == 1) breakableIdentifier(it.hash) else it.hash
-                        } ?: "____",
+                        text = coin?.let { if (hashState == 1) it.hash else abbreviatedValue(it.hash, 32) } ?: "____",
                         modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Start,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = if (hashState == 1) Int.MAX_VALUE else 1,
-                        softWrap = hashState == 1,
-                        overflow = if (hashState == 1) TextOverflow.Clip else TextOverflow.Ellipsis
+                        textAlign = TextAlign.End,
+                        style = MaterialTheme.typography.titleMedium
                     )
                 }
                 androidx.compose.foundation.layout.Row(
@@ -202,15 +178,10 @@ fun CoinDetailScreen(
                 ) {
                     Text("地址", modifier = Modifier.size(width = 40.dp, height = 24.dp), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = outputAddress?.let {
-                            if (addressState == 1) breakableIdentifier(it) else it
-                        } ?: "____",
+                        text = outputAddress?.let { if (addressState == 1) it else abbreviatedValue(it, 32) } ?: "____",
                         modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Start,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = if (addressState == 1) Int.MAX_VALUE else 1,
-                        softWrap = addressState == 1,
-                        overflow = if (addressState == 1) TextOverflow.Clip else TextOverflow.Ellipsis
+                        textAlign = TextAlign.End,
+                        style = MaterialTheme.typography.titleMedium
                     )
                 }
             }
@@ -219,30 +190,15 @@ fun CoinDetailScreen(
                     val selectedCoin = coin ?: return@AnonOutlineButton
                     if (busy) return@AnonOutlineButton
                     busy = true
-                    scope.launch {
-                        val wasFrozen = selectedCoin.frozen
-                        val error = try {
-                            val result = withContext(Dispatchers.IO) {
-                                if (wasFrozen) {
-                                    walletState.thawCoin(selectedCoin.pub_key)
-                                } else {
-                                    walletState.freezeCoin(selectedCoin.pub_key)
-                                }
+                    scope.launch(Dispatchers.IO) {
+                        try {
+                            if (selectedCoin.frozen) {
+                                walletState.thawCoin(selectedCoin.pub_key)
+                            } else {
+                                walletState.freezeCoin(selectedCoin.pub_key)
                             }
-                            result.exceptionOrNull()
-                        } catch (e: Exception) {
-                            e
                         } finally {
                             busy = false
-                        }
-                        if (error != null) {
-                            snackbarHostState.showSnackbar(
-                                (if (wasFrozen) "解冻失败：" else "冻结失败：") +
-                                    (error.message ?: "未知错误")
-                            )
-                        } else {
-                            lastKnownCoin = selectedCoin.copy(frozen = !wasFrozen)
-                            snackbarHostState.showSnackbar(if (wasFrozen) "解冻成功" else "冻结成功")
                         }
                     }
                 },
