@@ -151,26 +151,31 @@ class WalletState(private val prefs: SharedPreferences) {
 
             // Balance can change during restore and must remain visible while scanning.
             updateBalanceFromWallet(wallet)
-            if (!backgroundSync) {
-                if (wallet.isSynchronized) {
-                    // The output list is an inventory, not just a spendable-input picker.
-                    // Keep spent and frozen outputs in state so the UI can display their
-                    // status; selection logic already prevents spending them.
-                    val outputSnapshot = wallet.coins?.all ?: emptyList()
-                    _coins.value = outputSnapshot
-                    Timber.tag(TAG).i(
-                        "Output snapshot: total=%d unspent=%d spent=%d frozen=%d",
-                        outputSnapshot.size,
-                        outputSnapshot.count { !it.spent },
-                        outputSnapshot.count { it.spent },
-                        outputSnapshot.count { it.frozen }
-                    )
-                }
-                // Do not erase a snapshot explicitly refreshed by the Outputs screen
-                // just because isSynchronized is temporarily false during a state
-                // transition. The Outputs screen refreshes the inventory only when the
-                // wallet is connected and otherwise idle.
+            val outputInventoryAvailable = wallet.isSynchronized ||
+                (
+                    currentConnectionStatus == Wallet.ConnectionStatus.ConnectionStatus_Connected &&
+                        !_isLoading.value &&
+                        !_isSyncing.get() &&
+                        _syncProgress.value == null
+                )
+            if (!backgroundSync && outputInventoryAvailable) {
+                // The output list is an inventory, not just a spendable-input picker.
+                // Keep spent and frozen outputs in state so the UI can display their
+                // status; selection logic already prevents spending them.
+                val outputSnapshot = wallet.coins?.all ?: emptyList()
+                _coins.value = outputSnapshot
+                Timber.tag(TAG).i(
+                    "Output snapshot: total=%d unspent=%d spent=%d frozen=%d synchronized=%s",
+                    outputSnapshot.size,
+                    outputSnapshot.count { !it.spent },
+                    outputSnapshot.count { it.spent },
+                    outputSnapshot.count { it.frozen },
+                    wallet.isSynchronized
+                )
             } else {
+                // Never expose selectable outputs while a scan, reset, or wallet
+                // initialization is active. The idle Outputs-screen refresh will
+                // publish a fresh native inventory after those tasks finish.
                 _coins.value = emptyList()
             }
 
