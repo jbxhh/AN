@@ -1,6 +1,9 @@
 package io.anonero.ui.home
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import io.anonero.model.WalletManager
@@ -90,23 +93,44 @@ fun CoinsScreen(
     val loading by walletState.isLoading.asLiveData().observeAsState(false)
     val nodeConnected = connectionStatus == Wallet.ConnectionStatus.ConnectionStatus_Connected
 
-    // Native output enumeration is separate from transaction-history refresh. Re-read
-    // outputs when the connected wallet becomes idle and whenever this screen is opened,
-    // so a restore that finished before the first output refresh does not show an empty list.
-    LaunchedEffect(nodeConnected, loading) {
-        if (!nodeConnected || loading) return@LaunchedEffect
+    // Output enumeration is only safe after native wallet scanning is synchronized.
+    // Keep waiting while this screen is open: nodeConnected/loading can remain unchanged
+    // when the native synchronized flag flips, so a one-shot effect can miss the refresh.
+    LaunchedEffect(nodeConnected) {
+        if (!nodeConnected) return@LaunchedEffect
         withContext(Dispatchers.IO) {
-            val wallet = WalletManager.instance?.wallet ?: return@withContext
-            if (!wallet.isInitialized || !wallet.isSynchronized) return@withContext
-            try {
-                wallet.refreshCoins()
-                walletState.update()
-                Timber.tag("CoinsScreen").i(
-                    "Refreshed outputs for output list: count=%d",
-                    wallet.coins?.all?.size ?: 0
-                )
-            } catch (e: Exception) {
-                Timber.tag("CoinsScreen").w(e, "Unable to refresh outputs for output list")
+            var emptyOutputRetries = 0
+            while (currentCoroutineContext().isActive) {
+                val wallet = WalletManager.instance?.wallet ?: return@withContext
+                if (!wallet.isInitialized) return@withContext
+
+                if (wallet.isSynchronized) {
+                    try {
+                        wallet.refreshCoins()
+                        walletState.update()
+                        val outputs = wallet.coins?.all.orEmpty()
+                        val visibleCount = outputs.count { !it.spent }
+                        val hasBalance = wallet.balance > 0L || wallet.unlockedBalance > 0L
+                        Timber.tag("CoinsScreen").i(
+                            "Refreshed outputs for output list: total=%d visible=%d balance=%d synchronized=%s",
+                            outputs.size,
+                            visibleCount,
+                            wallet.balance,
+                            wallet.isSynchronized
+                        )
+                        // A positive balance with no enumerated outputs can be a transient
+                        // native refresh result. Retry a few times, then stop if empty is real.
+                        if (visibleCount > 0 || !hasBalance || emptyOutputRetries >= 3) {
+                            return@withContext
+                        }
+                        emptyOutputRetries++
+                    } catch (e: Exception) {
+                        emptyOutputRetries++
+                        Timber.tag("CoinsScreen").w(e, "Unable to refresh outputs for output list")
+                        if (emptyOutputRetries > 3) return@withContext
+                    }
+                }
+                delay(1_000L)
             }
         }
     }
