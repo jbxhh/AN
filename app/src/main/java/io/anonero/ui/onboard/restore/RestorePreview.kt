@@ -36,6 +36,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,7 +61,9 @@ import androidx.compose.ui.window.SecureFlagPolicy
 import io.anonero.R
 import io.anonero.model.BackupPayload
 import io.anonero.model.Wallet
+import io.anonero.services.WalletState
 import io.anonero.ui.onboard.graph.OnboardLogsScreen
+import io.anonero.util.Formats
 import io.anonero.util.backup.BackupHelper
 import io.anonero.util.backup.NetworkMismatchException
 import io.anonero.util.rememberShakeController
@@ -69,6 +72,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.koin.compose.koinInject
 import timber.log.Timber
 import java.time.Instant
 import java.time.LocalDateTime
@@ -98,6 +102,8 @@ fun RestorePreview(
     val scope = rememberCoroutineScope()
     val errorShake = rememberShakeController()
     val view = LocalView.current
+    val walletState = koinInject<WalletState>()
+    val hideAmounts by walletState.hideAmountsFlow.collectAsState(false)
 
     fun restoreFromBackup() {
         scope.launch(Dispatchers.IO) {
@@ -367,7 +373,8 @@ fun RestorePreview(
                                 )
                                 ListWidget(
                                     title = "Balance",
-                                    subtitle = "${Wallet.getDisplayAmount(wallet.balanceAll)}",
+                                    subtitle = if (hideAmounts) Formats.maskAmount(wallet.balanceAll)
+                                        else Wallet.getDisplayAmount(wallet.balanceAll),
                                     modifier = Modifier.weight(1f)
                                 )
                                 HorizontalDivider(
