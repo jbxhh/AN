@@ -56,6 +56,35 @@ new_unsynced_branch = "\n".join([
     "        }",
 ])
 wallet_api_source = wallet_api_source.replace(old_unsynced_branch, new_unsynced_branch, 1)
+
+# pauseRefresh() only disables future automatic refreshes; an already-running
+# WalletImpl::doRefresh() may still be scanning under m_refreshMutex2. Wait for that
+# cycle to finish before publishing the explicit rescan request. Otherwise the old
+# refresh can consume the flag before ANONERO has published the selected-height baseline.
+old_async_rescan = "\\n".join([
+    "void WalletImpl::rescanBlockchainAsync()",
+    "{",
+    '    if (checkBackgroundSync("cannot rescan blockchain"))',
+    "        return;",
+    "    m_refreshShouldRescan = true;",
+    "    refreshAsync();",
+    "}",
+])
+if wallet_api_source.count(old_async_rescan) != 1:
+    raise SystemExit("Expected exactly one WalletImpl::rescanBlockchainAsync() implementation")
+new_async_rescan = "\\n".join([
+    "void WalletImpl::rescanBlockchainAsync()",
+    "{",
+    '    if (checkBackgroundSync("cannot rescan blockchain"))',
+    "        return;",
+    "    {",
+    "        boost::mutex::scoped_lock lock(m_refreshMutex2);",
+    "        m_refreshShouldRescan = true;",
+    "    }",
+    "    refreshAsync();",
+    "}",
+])
+wallet_api_source = wallet_api_source.replace(old_async_rescan, new_async_rescan, 1)
 wallet_api_path.write_text(wallet_api_source)
 
-print("Patched Monero: truthful scan callbacks and persistent pending rescans")
+print("Patched Monero: truthful scan callbacks, serialized rescan requests, and persistent pending rescans")
