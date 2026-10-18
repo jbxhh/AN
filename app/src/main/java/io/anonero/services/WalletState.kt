@@ -250,7 +250,7 @@ class WalletState(private val prefs: SharedPreferences) {
         ) return null
 
         val wallet = getWallet ?: return null
-        if (!wallet.isInitialized) return null
+        if (!wallet.isInitialized || !beginOrdinaryWalletOperation()) return null
 
         return try {
             if (wallet.fullStatus.connectionStatus != Wallet.ConnectionStatus.ConnectionStatus_Connected) {
@@ -271,51 +271,63 @@ class WalletState(private val prefs: SharedPreferences) {
         } catch (e: Exception) {
             Timber.tag(TAG).w(e, "Unable to refresh output inventory while wallet is idle")
             null
+        } finally {
+            endOrdinaryWalletOperation()
         }
     }
 
-
     fun getAddressForCoin(txHash: String?): String? {
-        if (txHash.isNullOrEmpty()) return null
+        if (txHash.isNullOrEmpty() || walletWipeInProgress.get() || isResyncPriorityActive) return null
         val tx = _transactions.value.firstOrNull { it.hash == txHash } ?: return null
+        if (!beginOrdinaryWalletOperation()) return null
         return try {
             getWallet?.getSubaddress(tx.accountIndex, tx.addressIndex)
         } catch (e: Exception) {
             Timber.tag(TAG).w(e, "Unable to resolve address for output transaction")
             null
+        } finally {
+            endOrdinaryWalletOperation()
         }
     }
 
-    fun freezeCoin(publicKey: String): Result<Boolean> = try {
-        if (walletWipeInProgress.get() || isResyncPriorityActive) {
+    fun freezeCoin(publicKey: String): Result<Boolean> {
+        if (!beginOrdinaryWalletOperation()) {
             return Result.failure(Exception("区块重置或安全删除优先执行，请稍后再操作输出"))
         }
-        val wallet = getWallet ?: return Result.failure(Exception("Wallet not initialized"))
-        val coins = wallet.coins ?: return Result.failure(Exception("Coins not initialized"))
-        coins.setFrozen(publicKey)
-        wallet.store()
-        coins.refresh()
-        update()
-        Result.success(true)
-    } catch (e: Exception) {
-        Timber.tag(TAG).e(e, "Unable to freeze output")
-        Result.failure(e)
+        return try {
+            val wallet = getWallet ?: return Result.failure(Exception("Wallet not initialized"))
+            val coins = wallet.coins ?: return Result.failure(Exception("Coins not initialized"))
+            coins.setFrozen(publicKey)
+            check(wallet.store()) { "Unable to persist frozen output state" }
+            coins.refresh()
+            update()
+            Result.success(true)
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Unable to freeze output")
+            Result.failure(e)
+        } finally {
+            endOrdinaryWalletOperation()
+        }
     }
 
-    fun thawCoin(publicKey: String): Result<Boolean> = try {
-        if (walletWipeInProgress.get() || isResyncPriorityActive) {
+    fun thawCoin(publicKey: String): Result<Boolean> {
+        if (!beginOrdinaryWalletOperation()) {
             return Result.failure(Exception("区块重置或安全删除优先执行，请稍后再操作输出"))
         }
-        val wallet = getWallet ?: return Result.failure(Exception("Wallet not initialized"))
-        val coins = wallet.coins ?: return Result.failure(Exception("Coins not initialized"))
-        coins.thaw(publicKey)
-        wallet.store()
-        coins.refresh()
-        update()
-        Result.success(true)
-    } catch (e: Exception) {
-        Timber.tag(TAG).e(e, "Unable to thaw output")
-        Result.failure(e)
+        return try {
+            val wallet = getWallet ?: return Result.failure(Exception("Wallet not initialized"))
+            val coins = wallet.coins ?: return Result.failure(Exception("Coins not initialized"))
+            coins.thaw(publicKey)
+            check(wallet.store()) { "Unable to persist thawed output state" }
+            coins.refresh()
+            update()
+            Result.success(true)
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Unable to thaw output")
+            Result.failure(e)
+        } finally {
+            endOrdinaryWalletOperation()
+        }
     }
 
     /**
@@ -1343,98 +1355,111 @@ class WalletState(private val prefs: SharedPreferences) {
      */
     suspend fun ensureNextReceiveAddress(): Subaddress = withContext(Dispatchers.IO) {
         subaddressMutex.withLock {
-        if (walletWipeInProgress.get()) throw IllegalStateException("钱包正在安全删除")
-        if (isResyncPriorityActive) throw IllegalStateException("区块重置优先执行，请稍后再生成收款地址")
-        val wallet = getWallet ?: throw IllegalStateException("钱包未打开")
-        val accountIndex = wallet.getAccountIndex()
-
-        // A receive subaddress is derived from local wallet keys and does not require
-        // a connected daemon. Keep this path enabled before wallet.init() so restore
-        // can display a child address while Tor/RPC is still starting.
-        // Never return the primary address from this receive-address operation.
-
-        // Reuse the lowest already-generated address above the highest used index.
-        // This relies on cached app state/history rather than querying native address
-        // vectors while the scanner may be mutating them.
-        val lastUsedIndex = wallet.getLastUnusedIndex()
-        val existingAddress = (
-            _subAddresses.value.asSequence() + listOfNotNull(_nextAddress.value).asSequence()
-        )
-            .filter {
-                it.addressIndex > 0 &&
-                    it.addressIndex > lastUsedIndex &&
-                    it.address.isNotBlank()
+            if (walletWipeInProgress.get()) throw IllegalStateException("钱包正在安全删除")
+            check(beginOrdinaryWalletOperation()) {
+                "区块重置或安全删除优先执行，请稍后再生成收款地址"
             }
-            .minByOrNull { it.addressIndex }
+            try {
+                val wallet = getWallet ?: throw IllegalStateException("钱包未打开")
+                val accountIndex = wallet.getAccountIndex()
 
-        if (existingAddress != null) {
-            _nextAddress.value = existingAddress
-            return@withLock existingAddress
-        }
+                val lastUsedIndex = wallet.getLastUnusedIndex()
+                val existingAddress = (
+                    _subAddresses.value.asSequence() + listOfNotNull(_nextAddress.value).asSequence()
+                )
+                    .filter {
+                        it.addressIndex > 0 &&
+                            it.addressIndex > lastUsedIndex &&
+                            it.address.isNotBlank()
+                    }
+                    .minByOrNull { it.addressIndex }
 
-        if (walletWipeInProgress.get() || getWallet !== wallet) {
-            throw IllegalStateException("钱包状态已改变")
-        }
+                if (existingAddress != null) {
+                    _nextAddress.value = existingAddress
+                    return@withLock existingAddress
+                }
 
-        // Native code waits for a refresh batch boundary, then atomically appends,
-        // persists, and returns the newly generated index/address. Do not hold
-        // synchronized(wallet) while it waits for the callback to unwind.
-        val created = wallet.addSubaddressAndGetSubaddress(accountIndex)
-        check(created.addressIndex > 0 && created.address.isNotBlank()) {
-            "原生钱包未能生成有效子地址"
-        }
-        _nextAddress.value = created
-        _subAddresses.update { current ->
-            (current + created)
-                .distinctBy { it.address }
-                .sortedByDescending { it.addressIndex }
-        }
-        created
+                if (walletWipeInProgress.get() || getWallet !== wallet) {
+                    throw IllegalStateException("钱包状态已改变")
+                }
+
+                val created = wallet.addSubaddressAndGetSubaddress(accountIndex)
+                check(created.addressIndex > 0 && created.address.isNotBlank()) {
+                    "原生钱包未能生成有效子地址"
+                }
+                _nextAddress.value = created
+                _subAddresses.update { current ->
+                    (current + created)
+                        .distinctBy { it.address }
+                        .sortedByDescending { it.addressIndex }
+                }
+                created
+            } finally {
+                endOrdinaryWalletOperation()
+            }
         }
     }
 
     suspend fun getNewAddress(): Subaddress = subaddressMutex.withLock {
-        val wallet = getWallet ?: throw IllegalStateException("钱包未打开")
-        val accountIndex = wallet.getAccountIndex()
-
-        // This native call pauses only at a refresh batch boundary. Never hold the JVM
-        // wallet monitor while the native call waits for the refresh thread to unwind.
-        val addedAddress = wallet.addSubaddressAndGetSubaddress(accountIndex)
-
-        _subAddresses.update { current ->
-            (current + addedAddress)
-                .distinctBy { it.address }
-                .sortedByDescending { it.addressIndex }
+        if (walletWipeInProgress.get()) throw IllegalStateException("钱包正在安全删除")
+        check(beginOrdinaryWalletOperation()) {
+            "区块重置或安全删除优先执行，请稍后再生成收款地址"
         }
-        _nextAddress.update { current ->
-            if (current == null || current.addressIndex == addedAddress.addressIndex) {
-                addedAddress
-            } else {
-                current
+        try {
+            val wallet = getWallet ?: throw IllegalStateException("钱包未打开")
+            val accountIndex = wallet.getAccountIndex()
+            val addedAddress = wallet.addSubaddressAndGetSubaddress(accountIndex)
+
+            _subAddresses.update { current ->
+                (current + addedAddress)
+                    .distinctBy { it.address }
+                    .sortedByDescending { it.addressIndex }
             }
+            _nextAddress.update { current ->
+                if (current == null || current.addressIndex == addedAddress.addressIndex) {
+                    addedAddress
+                } else {
+                    current
+                }
+            }
+            addedAddress
+        } finally {
+            endOrdinaryWalletOperation()
         }
-        addedAddress
     }
+
     fun setTransactionNote(note: String, transactionInfo: TransactionInfo) {
-        getWallet?.let {
-            it.setUserNote(transactionInfo.hash, note)
-            it.store()
-            it.refreshHistory()
+        if (!beginOrdinaryWalletOperation()) return
+        try {
+            val wallet = getWallet ?: return
+            wallet.setUserNote(transactionInfo.hash, note)
+            wallet.store()
+            wallet.refreshHistory()
             update()
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "Unable to update transaction note")
+        } finally {
+            endOrdinaryWalletOperation()
         }
     }
 
     fun updateAddressLabel(label: String, addressIndex: Int) {
-        getWallet?.let {
-            it.setSubaddressLabel(addressIndex, label)
-            it.store()
-            it.refreshHistory()
-            it.getAllUsedSubAddresses().let { allItems ->
+        if (!beginOrdinaryWalletOperation()) return
+        try {
+            val wallet = getWallet ?: return
+            wallet.setSubaddressLabel(addressIndex, label)
+            wallet.store()
+            wallet.refreshHistory()
+            wallet.getAllUsedSubAddresses().let { allItems ->
                 _subAddresses.update { allItems.reversed() }
             }
-            it.getLatestSubAddress().let { subAddresses ->
+            wallet.getLatestSubAddress().let { subAddresses ->
                 _nextAddress.update { subAddresses }
             }
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "Unable to update address label")
+        } finally {
+            endOrdinaryWalletOperation()
         }
     }
 
@@ -1448,13 +1473,15 @@ class WalletState(private val prefs: SharedPreferences) {
     suspend fun refreshTransactionHistory(): Int = withContext(Dispatchers.IO) {
         val wallet = getWallet ?: return@withContext 0
         if (walletWipeInProgress.get() || isResyncPriorityActive || !wallet.isInitialized) return@withContext 0
+        if (!beginOrdinaryWalletOperation()) return@withContext 0
 
         try {
             wallet.refreshHistory()
-            if (walletWipeInProgress.get() || getWallet !== wallet || !wallet.isInitialized) {
+            if (walletWipeInProgress.get() || isResyncPriorityActive ||
+                getWallet !== wallet || !wallet.isInitialized
+            ) {
                 return@withContext 0
             }
-
             val transactionCount = wallet.history?.all?.size ?: 0
             update()
             Timber.tag(TAG).i(
@@ -1466,6 +1493,8 @@ class WalletState(private val prefs: SharedPreferences) {
         } catch (e: Exception) {
             Timber.tag(TAG).w(e, "Explicit transaction history refresh failed")
             0
+        } finally {
+            endOrdinaryWalletOperation()
         }
     }
 
@@ -1473,56 +1502,40 @@ class WalletState(private val prefs: SharedPreferences) {
         // A manual refresh must yield to the reset and may not replace its progress UI.
         if (walletWipeInProgress.get() || isResyncPriorityActive) return
         val wallet = getWallet
-        if (wallet == null || !wallet.isInitialized) {
-            return
-        }
+        if (wallet == null || !wallet.isInitialized) return
+        if (!beginOrdinaryWalletOperation()) return
 
-        // Keep a visible refresh indicator from the moment the request starts.
-        // If this wallet is already behind the daemon, keep the indicator active
-        // until listener callbacks publish real scan progress; this avoids a blank
-        // gap between the pull-to-refresh animation and the sync progress bar.
         setLoading(true)
         try {
-            // Manual refresh is a data refresh, not a command to start/resume blockchain
-            // scanning. The normal wallet lifecycle owns startRefresh(); this method only
-            // reads the current node height and republishes wallet history/balance.
             withContext(Dispatchers.IO) {
+                if (walletWipeInProgress.get() || isResyncPriorityActive) return@withContext
                 val connected = wallet.fullStatus.connectionStatus ==
                     Wallet.ConnectionStatus.ConnectionStatus_Connected
                 if (!connected) return@withContext
 
                 val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
-                if (daemonHeight > 0L) {
-                    updateBlockHeights(wallet, daemonHeight)
-                }
+                if (daemonHeight > 0L) updateBlockHeights(wallet, daemonHeight)
 
                 wallet.refreshHistory()
                 update()
 
-                // Update the displayed node height without manufacturing a new
-                // sync-progress state just because the user requested a refresh.
                 val latestDaemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
-                if (latestDaemonHeight > 0L) {
-                    updateBlockHeights(wallet, latestDaemonHeight)
-                }
+                if (latestDaemonHeight > 0L) updateBlockHeights(wallet, latestDaemonHeight)
             }
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Wallet data refresh failed")
         } finally {
-            // A refresh is complete when the wallet is caught up or no longer
-            // connected. When it is connected but an active scan has not published
-            // its first real progress sample yet, retain the indeterminate indicator.
-            val waitingForScanProgress = runCatching {
-                wallet.isInitialized &&
-                    !wallet.isSynchronized &&
-                    (_scanTracking.get() ||
-                        prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) &&
-                    _syncProgress.value == null &&
-                    !walletWipeInProgress.get()
-            }.getOrDefault(false)
-            // Preserve the loader even through a temporary disconnect or while Tor is
-            // starting. It hands off to the determinate bar only after real heights arrive.
-            setLoading(waitingForScanProgress)
+            if (!isResyncPriorityActive && !walletWipeInProgress.get()) {
+                val waitingForScanProgress = runCatching {
+                    wallet.isInitialized &&
+                        !wallet.isSynchronized &&
+                        (_scanTracking.get() ||
+                            prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) &&
+                        _syncProgress.value == null
+                }.getOrDefault(false)
+                setLoading(waitingForScanProgress)
+            }
+            endOrdinaryWalletOperation()
         }
     }
 
