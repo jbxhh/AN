@@ -811,9 +811,8 @@ private fun TransactionDirectionIndicator(
     val tint = if (isIncoming) MaterialTheme.colorScheme.primary else LocalContentColor.current
     val directionIcon = if (isIncoming) AnonIcons.ArrowDownLeft else AnonIcons.ArrowUpRight
 
-    // Incoming and outgoing transactions stay in the confirming state until the
-    // model's existing confirmation threshold is reached. Keep the direction arrow
-    // visible inside the spinner so users can still tell the transaction direction.
+    // Incoming and outgoing transactions show a spinner instead of an arrow
+    // until the model's existing confirmation threshold is reached.
     val confirming = !tx.isConfirmed && !tx.isFailed
     Box(
         modifier = Modifier.size(iconSize),
