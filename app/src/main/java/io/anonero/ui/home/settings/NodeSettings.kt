@@ -292,7 +292,13 @@ class NodeSettingsViewModel(
                     val wallet = WalletManager.instance?.wallet
                         ?: throw IllegalStateException("钱包未打开")
                     val walletManager = WalletManager.instance
+                    // Reuse the current wallet only when the selected daemon is
+                    // actually connected. A restored wallet can be initialized while its
+                    // daemon is disconnected; treating that as a successful same-node
+                    // connection skips setDaemon/init and leaves manual reconnect ineffective.
                     val sameNodeAlreadyInitialized = wallet.isInitialized &&
+                        wallet.fullStatus.connectionStatus ==
+                            Wallet.ConnectionStatus.ConnectionStatus_Connected &&
                         walletManager != null &&
                         walletManager.getDaemonAddress() == node.address &&
                         walletManager.daemonUseSsl == node.usesSsl &&
