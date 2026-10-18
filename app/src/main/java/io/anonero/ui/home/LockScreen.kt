@@ -150,13 +150,16 @@ fun LockScreen(
         val keysPath = walletPath?.plus(".keys")
         val keysFileExists = keysPath?.let { java.io.File(it).isFile } == true
 
-        // The saved fingerprint is written only after a wallet was successfully
-        // opened or a PIN was explicitly set. Keep it as a fallback when native
-        // verification fails while the background wallet worker is holding native state.
-        // A successful native check remains authoritative and repairs a stale fingerprint.
+        // The local fingerprint is saved only after a successful wallet open/PIN setup.
+        // Check it first: querying WalletManager through JNI while the background sync
+        // worker holds native wallet locks can stall PIN verification indefinitely.
         val savedFingerprintMatches = prefs.getString(PREFS_PIN_HASH, "") == pinHash
-        val valid = if (keysFileExists) {
-            val nativeValid = runCatching {
+        val valid = if (savedFingerprintMatches) {
+            true
+        } else if (keysFileExists) {
+            // Fall back to the encrypted wallet keys for legacy wallets whose local
+            // fingerprint is missing or stale, and repair the fingerprint on success.
+            runCatching {
                 WalletManager.instance?.verifyWalletPassword(
                     keysPath,
                     pin,
@@ -165,9 +168,8 @@ fun LockScreen(
             }.onFailure { error ->
                 Timber.tag(TAG).w(error, "Native wallet PIN verification failed")
             }.getOrDefault(false)
-            nativeValid || savedFingerprintMatches
         } else {
-            savedFingerprintMatches
+            false
         }
 
         if (valid && prefs.getString(PREFS_PIN_HASH, "") != pinHash) {
