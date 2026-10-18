@@ -151,19 +151,25 @@ class WalletState(private val prefs: SharedPreferences) {
 
             // Balance can change during restore and must remain visible while scanning.
             updateBalanceFromWallet(wallet)
-            if (wallet.isSynchronized && !backgroundSync) {
-                // The output list is an inventory, not just a spendable-input picker.
-                // Keep spent and frozen outputs in state so the UI can display their
-                // status; selection logic already prevents spending them.
-                val outputSnapshot = wallet.coins?.all ?: emptyList()
-                _coins.value = outputSnapshot
-                Timber.tag(TAG).i(
-                    "Output snapshot: total=%d unspent=%d spent=%d frozen=%d",
-                    outputSnapshot.size,
-                    outputSnapshot.count { !it.spent },
-                    outputSnapshot.count { it.spent },
-                    outputSnapshot.count { it.frozen }
-                )
+            if (!backgroundSync) {
+                if (wallet.isSynchronized) {
+                    // The output list is an inventory, not just a spendable-input picker.
+                    // Keep spent and frozen outputs in state so the UI can display their
+                    // status; selection logic already prevents spending them.
+                    val outputSnapshot = wallet.coins?.all ?: emptyList()
+                    _coins.value = outputSnapshot
+                    Timber.tag(TAG).i(
+                        "Output snapshot: total=%d unspent=%d spent=%d frozen=%d",
+                        outputSnapshot.size,
+                        outputSnapshot.count { !it.spent },
+                        outputSnapshot.count { it.spent },
+                        outputSnapshot.count { it.frozen }
+                    )
+                }
+                // Do not erase a snapshot explicitly refreshed by the Outputs screen
+                // just because isSynchronized is temporarily false during a state
+                // transition. The Outputs screen refreshes the inventory only when the
+                // wallet is connected and otherwise idle.
             } else {
                 _coins.value = emptyList()
             }
@@ -176,6 +182,50 @@ class WalletState(private val prefs: SharedPreferences) {
             // Do not start a forced blockchain rescan from generic state publication.
             // Restore scans are started by the wallet startup/connection lifecycle,
             // not by manual refreshes or unrelated balance/history updates.
+        }
+    }
+
+
+    /**
+     * Refresh and publish outputs when the wallet is connected and idle. This is a
+     * dedicated inventory read for the Outputs screen: do not require the synchronized
+     * flag, because balance/history may be available even when that flag is stale.
+     * Never call this during scan progress, loading, background sync, resync, or wipe.
+     */
+    @Synchronized
+    fun refreshOutputInventoryIfIdle(): List<CoinsInfo>? {
+        if (
+            _blockUpdates.get() ||
+            walletWipeInProgress.get() ||
+            manualResyncInProgress.get() ||
+            _isLoading.value ||
+            _isSyncing.get() ||
+            _syncProgress.value != null ||
+            backgroundSync
+        ) return null
+
+        val wallet = getWallet ?: return null
+        if (!wallet.isInitialized) return null
+
+        return try {
+            if (wallet.fullStatus.connectionStatus != Wallet.ConnectionStatus.ConnectionStatus_Connected) {
+                return null
+            }
+            wallet.refreshCoins(allowUnsynchronized = true)
+            val outputs = wallet.coins?.all ?: emptyList()
+            _coins.value = outputs
+            Timber.tag(TAG).i(
+                "Output inventory refresh: total=%d unspent=%d spent=%d balance=%d synchronized=%s",
+                outputs.size,
+                outputs.count { !it.spent },
+                outputs.count { it.spent },
+                wallet.balance,
+                wallet.isSynchronized
+            )
+            outputs
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "Unable to refresh output inventory while wallet is idle")
+            null
         }
     }
 
