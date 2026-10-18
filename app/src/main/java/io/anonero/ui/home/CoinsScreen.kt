@@ -9,7 +9,7 @@ import kotlinx.coroutines.withContext
 import io.anonero.model.WalletManager
 import io.anonero.ui.theme.AnonNeroTheme
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -67,7 +67,7 @@ import io.anonero.util.Formats
 import org.koin.java.KoinJavaComponent.inject
 import timber.log.Timber
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun CoinsScreen(
     modifier: Modifier = Modifier,
@@ -147,13 +147,15 @@ fun CoinsScreen(
         message = stringResource(R.string.no_coins_available)
     }
 
+    // Match upstream behavior: selection state and the send route use output public keys.
+    // CoinsInfo.key is the key image used later by transaction construction, not the UI ID.
     fun selectCoin(coin: CoinsInfo) {
         if (coin.frozen || coin.spent) return
 
-        selectedCoins = if (selectedCoins.contains(coin.key)) {
-            selectedCoins - coin.key
+        selectedCoins = if (selectedCoins.contains(coin.pub_key)) {
+            selectedCoins - coin.pub_key
         } else {
-            selectedCoins + coin.key
+            selectedCoins + coin.pub_key
         }
     }
 
@@ -238,10 +240,12 @@ fun CoinsScreen(
                         ListItem(
                             modifier = Modifier
                                 .padding(horizontal = 4.dp, vertical = 6.dp)
-                                .clickable {
-                                    // Opening output details must not discard other selected outputs.
-                                    detailCoin = coin
-                                },
+                                .combinedClickable(
+                                onClick = { selectCoin(coin) },
+                                // Keep freeze/thaw details available without stealing the
+                                // normal tap gesture used by the upstream output selector.
+                                onLongClick = { detailCoin = coin }
+                            ),
                             headlineContent = {
                                 Row(
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -297,7 +301,7 @@ fun CoinsScreen(
                                     )
                                 } else {
                                     Checkbox(
-                                        checked = selectedCoins.contains(coin.key),
+                                        checked = selectedCoins.contains(coin.pub_key),
                                         onCheckedChange = { selectCoin(coin) }
                                     )
                                 }
