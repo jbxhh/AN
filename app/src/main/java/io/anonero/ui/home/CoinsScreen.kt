@@ -395,6 +395,7 @@ private fun OutputDetailScreen(
     val clipboardManager = LocalClipboardManager.current
     var publicKeyExpanded by remember(coin.key) { mutableStateOf(false) }
     var hashExpanded by remember(coin.key) { mutableStateOf(false) }
+    var addressExpanded by remember(coin.key) { mutableStateOf(false) }
 
     val outputAddress = remember(coin.hash, transactions) {
         transactions.firstOrNull { it.hash == coin.hash }?.let { transaction ->
@@ -527,7 +528,7 @@ private fun OutputDetailScreen(
                         .fillMaxWidth()
                         .padding(top = 8.dp)
                         .combinedClickable(
-                            onClick = { },
+                            onClick = { addressExpanded = !addressExpanded },
                             onLongClick = {
                                 outputAddress?.let {
                                     clipboardManager.setText(AnnotatedString(it))
@@ -542,7 +543,7 @@ private fun OutputDetailScreen(
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        outputAddress?.let { abbreviatedValue(it) } ?: "____",
+                        outputAddress?.let { if (addressExpanded) it else abbreviatedValue(it) } ?: "____",
                         modifier = Modifier.weight(1f),
                         textAlign = TextAlign.End,
                         style = MaterialTheme.typography.titleMedium
