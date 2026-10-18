@@ -107,12 +107,10 @@ fun ReceiveScreen(
                 }
             )
         }) {
-        // The receive QR must use a generated subaddress, never the primary address.
-        // The wallet state may temporarily publish index 0 while startup prepares index 1.
-        if (nextAddress != null &&
-            nextAddress!!.addressIndex > 0 &&
-            nextAddress!!.address.isNotBlank()
-        ) {
+        // Prefer the generated subaddress, but keep receiving usable while startup or
+        // a stalled native refresh delays its creation. The primary address is valid;
+        // once ensureNextReceiveAddress succeeds, state updates to the unused subaddress.
+        if (nextAddress != null && nextAddress!!.address.isNotBlank()) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize(),
