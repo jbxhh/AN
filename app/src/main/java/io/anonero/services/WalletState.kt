@@ -566,7 +566,11 @@ class WalletState(private val prefs: SharedPreferences) {
      * calling native height/balance APIs. Listener callbacks are gated until the native
      * rescan is queued, avoiding a lock cycle with update() during an active refresh.
      */
-    private fun prepareManualResyncScanState(wallet: Wallet, selectedHeight: Long) {
+    private fun prepareManualResyncScanState(
+        wallet: Wallet,
+        selectedHeight: Long,
+        progressTargetHeight: Long
+    ) {
         val height = selectedHeight.coerceAtLeast(0L)
         val inProgressKey = scanPreferenceKey(wallet, "in_progress")
         val completedKey = scanPreferenceKey(wallet, "completed")
@@ -588,7 +592,18 @@ class WalletState(private val prefs: SharedPreferences) {
         clearSyncProgress()
         _transactions.value = emptyList()
         _coins.value = emptyList()
-        setLoading(true)
+
+        // Publish the known remaining-block count immediately. The progress indicator
+        // must not depend on the first native callback to switch away from the endless
+        // refresh spinner after a manual reset.
+        val remainingBlocks = (progressTargetHeight - height).coerceAtLeast(0L)
+        if (remainingBlocks > 0L) {
+            syncUpdate(SyncProgress(progress = 0f, left = remainingBlocks))
+            setLoading(false)
+        } else {
+            // Keep loading only if the target cannot yet establish a positive backlog.
+            setLoading(true)
+        }
     }
 
     private fun scanPreferenceKey(wallet: Wallet, suffix: String): String {
@@ -1366,7 +1381,18 @@ class WalletState(private val prefs: SharedPreferences) {
             }
             check(wallet.store()) { "Unable to persist selected restore height" }
 
-            prepareManualResyncScanState(wallet, selectedHeight)
+            // The reset screen already queried the real daemon tip directly. Seed the
+            // determinate progress state before queuing the native rescan, rather than
+            // leaving the UI on an endless spinner until a refreshed/newBlock callback arrives.
+            val progressTargetHeight = if (knownDaemonHeight != null && knownDaemonHeight >= 0L) {
+                maxOf(
+                    knownDaemonHeight,
+                    knownDaemonTargetHeight ?: knownDaemonHeight
+                ) + 1L // direct get_info heights are zero-based tip indices; scan progress uses counts
+            } else {
+                maxOf(daemonHeight, daemonTargetHeight) // native wallet heights are already counts
+            }
+            prepareManualResyncScanState(wallet, selectedHeight, progressTargetHeight)
 
             // This is the last operation that schedules the native scan. Do not make
             // further JNI reads before the new listener callbacks publish scan progress.
