@@ -1572,8 +1572,14 @@ class WalletState(private val prefs: SharedPreferences) {
             Timber.tag(TAG).i("Manual rescan: queuing native scan from height %d", selectedHeight)
             wallet.rescanBlockchainAsync()
             rescanQueued = true
-            wallet.startRefresh()
-            Timber.tag(TAG).i("Manual rescan: native scan queued and refresh signalled")
+            if (!walletWipeInProgress.get()) {
+                wallet.startRefresh()
+                Timber.tag(TAG).i("Manual rescan: native scan queued and refresh signalled")
+            } else {
+                // Secure wipe has priority; it is waiting for this reset call to exit
+                // and will pause/close the wallet without restarting refresh here.
+                Timber.tag(TAG).i("Secure wipe requested after rescan queue; skipping refresh restart")
+            }
             Result.success(true)
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Wallet rescan failed to start")
@@ -1600,11 +1606,15 @@ class WalletState(private val prefs: SharedPreferences) {
             } else {
                 // The native rescan is already queued and scan state was prepared before
                 // queueing. Do not issue more JNI reads while the new scan is starting.
-                val restart = runCatching { wallet.startRefresh() }
-                if (restart.isSuccess) {
+                if (walletWipeInProgress.get()) {
                     Result.success(true)
                 } else {
-                    Result.failure(restart.exceptionOrNull() ?: e)
+                    val restart = runCatching { wallet.startRefresh() }
+                    if (restart.isSuccess) {
+                        Result.success(true)
+                    } else {
+                        Result.failure(restart.exceptionOrNull() ?: e)
+                    }
                 }
             }
         } finally {
