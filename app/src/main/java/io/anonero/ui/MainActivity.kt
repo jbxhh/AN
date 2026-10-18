@@ -207,7 +207,7 @@ class MainActivity : ComponentActivity() {
                     navController.addOnDestinationChangedListener { x, destination, d ->
                         Timber.tag(TAG).d("destination changed to ${destination.route}")
                     }
-                    val showLockScreen by walletState.backgroundSyncFlow.asLiveData().observeAsState(walletState.backgroundSync)
+                    val showLockScreen by walletState.pinLockVisibleFlow.asLiveData().observeAsState(walletState.pinLockVisible)
                     Box(modifier = androidx.compose.ui.Modifier.fillMaxSize()) {
                         NavHost(
                             navController = navController, popExitTransition = {
@@ -226,8 +226,10 @@ class MainActivity : ComponentActivity() {
                                 mode = LockScreenMode.LOCK_SCREEN,
                                 modifier = androidx.compose.ui.Modifier.fillMaxSize(),
                                 onUnLocked = { pin, shortCut ->
-                                    // Keep the PIN overlay visible until native background sync
-                                    // has stopped and normal refresh has restarted successfully.
+                                    // The PIN has already been verified by LockScreen. Dismiss
+                                    // the overlay immediately; background-sync shutdown and refresh
+                                    // recovery must never trap the user on the PIN screen.
+                                    walletState.dismissPinLockScreen()
                                     if (shortCut != LockScreenShortCut.HOME) {
                                         walletState.emitUnlockShortcut(shortCut)
                                     }
