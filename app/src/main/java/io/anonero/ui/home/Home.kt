@@ -135,6 +135,12 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
         }
     }
 
+    LaunchedEffect(Unit) {
+        walletState.resyncErrors.collect { message ->
+            toastState.show("重置失败：$message")
+        }
+    }
+
     LaunchedEffect(currentRoute) {
         if (getRoutes().find { it.getRouteAsString == currentRoute } != null) {
             showBottomNavigation = true
@@ -247,6 +253,13 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
                             onBackPress = {
                                 showBottomNavigation = resyncReturnBottomNavigation
                                 bottomNavController.popBackStack()
+                            },
+                            onResyncStarted = {
+                                showBottomNavigation = true
+                                bottomNavController.popBackStack(
+                                    route = TransactionsRoute,
+                                    inclusive = false
+                                )
                             },
                             toastState = toastState
                         )
