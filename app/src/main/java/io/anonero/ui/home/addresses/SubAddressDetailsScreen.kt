@@ -45,6 +45,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.anonero.icons.AnonIcons
 import io.anonero.R
 import io.anonero.model.Subaddress
+import io.anonero.model.TransactionInfo
 import io.anonero.services.WalletState
 import io.anonero.ui.components.SubAddressLabelDialog
 import io.anonero.ui.components.qr.QrCodeView
