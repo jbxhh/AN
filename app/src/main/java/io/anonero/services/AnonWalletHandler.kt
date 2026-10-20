@@ -52,6 +52,9 @@ class AnonWalletHandler(
 
     val scope get() = _scope
 
+    /** True while the process-wide secure-wipe native operation is running. */
+    fun isSecureWipeInProgress(): Boolean = wipeInProgress.get()
+
     init {
         scope.launch {
             torService.socksFlow.collect { socket ->
