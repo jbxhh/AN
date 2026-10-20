@@ -1844,8 +1844,9 @@ jobject newTransactionInfo(JNIEnv *env, Monero::TransactionInfo *info) {
     jstring _paymentId = env->NewStringUTF(info->paymentId().c_str());
     jstring _label = env->NewStringUTF(info->label().c_str());
     uint32_t subaddrIndex = 0;
-    if (info->direction() == Monero::TransactionInfo::Direction_In)
-        subaddrIndex = *(info->subaddrIndex().begin());
+    const auto subaddressIndices = info->subaddrIndex();
+    if (!subaddressIndices.empty())
+        subaddrIndex = *subaddressIndices.begin();
     jobject result = env->NewObject(class_TransactionInfo, c,
                                     info->direction(),
                                     info->isPending(),

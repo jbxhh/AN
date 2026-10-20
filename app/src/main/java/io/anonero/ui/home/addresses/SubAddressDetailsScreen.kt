@@ -26,7 +26,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
@@ -46,7 +45,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.anonero.icons.AnonIcons
 import io.anonero.R
 import io.anonero.model.Subaddress
-import io.anonero.model.TransactionInfo
 import io.anonero.services.WalletState
 import io.anonero.ui.components.SubAddressLabelDialog
 import io.anonero.ui.components.qr.QrCodeView
@@ -59,11 +57,8 @@ class SubAddressDetail(subAddress: Subaddress) : ViewModel() {
     private val walletState: WalletState by inject(WalletState::class.java)
 
     val transactions = walletState.transactions
-        .map {
-            it.filter { txInfo ->
-                return@filter txInfo.addressIndex == subAddress.addressIndex
-                        && txInfo.direction == TransactionInfo.Direction.Direction_In
-            }
+        .map { items ->
+            items.filter { txInfo -> txInfo.addressIndex == subAddress.addressIndex }
         }.asLiveData()
 }
 
@@ -78,7 +73,6 @@ fun SubAddressDetailScreen(
     animatedContentScope: AnimatedContentScope
 ) {
     val walletState: WalletState by inject(WalletState::class.java)
-    val hideAmounts by walletState.hideAmountsFlow.collectAsState(false)
     var showQR by remember { mutableStateOf(false) }
     val subAddressDetailVm = viewModel {
         SubAddressDetail(subAddress)
@@ -186,8 +180,7 @@ fun SubAddressDetailScreen(
                                     color = MaterialTheme.colorScheme.primary,
                                 )
                                 Text(
-                                    if (hideAmounts) Formats.maskAmount(subAddress.totalAmount)
-                                    else Formats.getDisplayAmount(subAddress.totalAmount),
+                                    Formats.getDisplayAmount(subAddress.totalAmount),
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -210,7 +203,7 @@ fun SubAddressDetailScreen(
                 with(sharedTransitionScope) {
                     TransactionItem(
                         transactions[it],
-                        hideAmounts = hideAmounts,
+                        hideAmounts = false,
                         amountCenter = true,
                         showTime = true,
                         modifier = Modifier

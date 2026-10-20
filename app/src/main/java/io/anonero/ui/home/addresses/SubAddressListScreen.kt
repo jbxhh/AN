@@ -24,7 +24,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -82,8 +81,6 @@ fun SubAddressesScreen(
         onBackPress()
     }
     val vm = viewModel<SubAddressListViewModel>()
-    val walletState: WalletState by inject(WalletState::class.java)
-    val hideAmounts by walletState.hideAmountsFlow.collectAsState(false)
     val addresses by vm.subAddresses.observeAsState(listOf())
     var editingAddress by remember { mutableStateOf<Subaddress?>(null) }
 
@@ -142,8 +139,7 @@ fun SubAddressesScreen(
                                     modifier = Modifier.clickable { editingAddress = address }
                                 )
                                 Text(
-                                    if (hideAmounts) Formats.maskAmount(address.totalAmount)
-                                    else Formats.getDisplayAmount(address.totalAmount),
+                                    Formats.getDisplayAmount(address.totalAmount),
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.SemiBold
                                 )
