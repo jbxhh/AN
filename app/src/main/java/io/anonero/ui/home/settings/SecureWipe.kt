@@ -288,6 +288,10 @@ fun SecureWipe(
                                 }
                             }
                     }
+                } else {
+                    wipeSubmitting = false
+                    error = "无法读取当前钱包助记词，安全删除尚未启动"
+                    requestClearScreen(false)
                 }
             } else {
                 wipeSubmitting = false
