@@ -381,7 +381,7 @@ fun SecureWipe(
                     .commit()) { "无法保存安全删除状态" }
 
                 anonWalletHandler.prepareForSecureWipeRequest()
-                currentActivity.stopNotificationService()
+                (currentActivity as? MainActivity)?.stopNotificationService()
 
                 secureWipeViewModel.wipe(passPhrase, currentActivity)
                     .invokeOnCompletion { cause ->
