@@ -247,6 +247,12 @@ class MainActivity : ComponentActivity() {
                         Timber.tag(TAG).d("destination changed to ${destination.route}")
                     }
                     val showLockScreen by walletState.pinLockVisibleFlow.asLiveData().observeAsState(walletState.pinLockVisible)
+                    val deletionWorkflowActive = context.getSharedPreferences(
+                        AnonConfig.APP_PREFERENCES, MODE_PRIVATE
+                    ).let { appPreferences ->
+                        appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, false) ||
+                            appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
+                    }
                     Box(modifier = androidx.compose.ui.Modifier.fillMaxSize()) {
                         NavHost(
                             navController = navController, popExitTransition = {
@@ -260,7 +266,7 @@ class MainActivity : ComponentActivity() {
                             //home bottom navigation
                             homeGraph(navController)
                         }
-                        if (showLockScreen) {
+                        if (showLockScreen && !deletionWorkflowActive) {
                             LockScreen(
                                 mode = LockScreenMode.LOCK_SCREEN,
                                 modifier = androidx.compose.ui.Modifier.fillMaxSize(),
