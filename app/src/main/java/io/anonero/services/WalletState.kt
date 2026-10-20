@@ -123,10 +123,16 @@ class WalletState(private val prefs: SharedPreferences) {
     /** True while a manual rescan request is being prepared/handed to native refresh. */
     val isManualResyncInProgress: Boolean
         get() = manualResyncInProgress.get()
-    /** The active rescan may be retargeted only after its native handoff has finished. */
+    /**
+     * A node switch must wait only for reset preflight, not for the whole scan.
+     * The native rescan request is already queued when manualResyncScanPrepared
+     * becomes true, so a switch can pause refresh and reconnect to another daemon
+     * while startRefresh is still running. Once the worker exits, reset priority
+     * remains retargetable until the real scan-completion callback releases it.
+     */
     val canRetargetNodeDuringResync: Boolean
         get() = resetPriorityActive.get() &&
-            !manualResyncInProgress.get() &&
+            (!manualResyncInProgress.get() || manualResyncScanPrepared.get()) &&
             !walletWipeInProgress.get()
     /** Scan start position cached from trusted app state; does not call JNI. */
     val currentScanStartHeight: Long
