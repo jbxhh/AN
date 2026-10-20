@@ -87,6 +87,11 @@ class AnonWalletHandler(
         }
     }
 
+    /** Finalize the sticky state gate after every secure-delete cleanup phase succeeded. */
+    fun releaseSecureWipePriority() {
+        walletState.releaseWalletWipeRequest()
+    }
+
     init {
         scope.launch {
             torService.socksFlow.collect { socket ->
