@@ -264,6 +264,22 @@ class AnonWalletHandler(
         }
         walletState.setLoading(true)
 
+        // Publish the configured endpoint before waiting for Tor. This lets the node
+        // list show the selected node immediately, while its status correctly remains
+        // Disconnected until the native wallet reports a real connection. This is UI
+        // state only: do not set the native daemon or start refresh before SOCKS is ready.
+        val configuredHost = prefs.getString(NodeFields.RPC_HOST.value, "").orEmpty().trim()
+        val configuredPort = prefs.getInt(NodeFields.RPC_PORT.value, Node.defaultRpcPort)
+        if (configuredHost.isNotBlank() && configuredPort in 1..65535) {
+            walletState.updateDaemon(
+                DaemonInfo(
+                    daemon = "$configuredHost:$configuredPort",
+                    connectionStatus = Wallet.ConnectionStatus.ConnectionStatus_Disconnected,
+                    daemonHeight = 0L
+                )
+            )
+        }
+
         try {
             // Allow Tor time to bootstrap, including a restart if SOCKS is stalled,
             // but never leave wallet startup showing "loading" indefinitely.
@@ -399,7 +415,10 @@ class AnonWalletHandler(
                 }
             if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
             val node = Node.fromJson(nodeObj)
-            updateDaemon(node)
+            // initializeWalletLocked() immediately calls wallet.init() below. Do not
+            // start a refresh in updateDaemon() before that init; the duplicate native
+            // refresh can contend with first connection and slow the startup handshake.
+            updateDaemon(node, restartRefresh = false)
             if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
             walletState.setLoading(true)
         }
