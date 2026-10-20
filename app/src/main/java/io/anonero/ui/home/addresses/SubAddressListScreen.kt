@@ -141,14 +141,12 @@ fun SubAddressesScreen(
                                     color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.clickable { editingAddress = address }
                                 )
-                                if (address.totalAmount > 0L) {
-                                    Text(
-                                        if (hideAmounts) Formats.maskAmount(address.totalAmount)
-                                        else Formats.getDisplayAmount(address.totalAmount),
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
+                                Text(
+                                    if (hideAmounts) Formats.maskAmount(address.totalAmount)
+                                    else Formats.getDisplayAmount(address.totalAmount),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             }
                         },
                         supportingContent = {
