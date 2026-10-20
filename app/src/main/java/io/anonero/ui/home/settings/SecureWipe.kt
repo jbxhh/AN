@@ -112,6 +112,7 @@ class SecureWipeViewModel(
             !wipeTaskStarted.compareAndSet(false, true)
         ) return null
 
+        anonWalletHandler.markSecureWipeRequestStartedInProcess()
         anonWalletHandler.markSecureWipeCleanupStarted()
         return anonWalletHandler.scope.launch(Dispatchers.IO) {
             val recoveryPrefs = activity.getSharedPreferences(
@@ -213,10 +214,10 @@ class SecureWipeViewModel(
                 _wipeProgress.postValue(1f)
                 _wipeProgressMessage.postValue("钱包已成功安全删除")
             } catch (e: Exception) {
-                // If the wallet file still exists, the native deletion did not finish.
-                // Keep the request sticky but clear the interrupted-task marker so the
-                // next attempt re-prompts for the deletion password instead of deleting
-                // an open wallet directory behind its native handle.
+                // If the wallet file still exists, native deletion did not finish.
+                // Keep the request sticky but clear the pending marker so a fresh process
+                // resumes cleanup through the progress screen, without touching a possibly
+                // still-open native wallet directory in this process.
                 val walletFileStillExists = runCatching {
                     AnonConfig.getDefaultWalletFile(activity).exists()
                 }.getOrDefault(true)
