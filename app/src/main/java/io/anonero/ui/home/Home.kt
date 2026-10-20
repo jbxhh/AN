@@ -106,12 +106,35 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
     // is still bootstrapping Tor. Recheck startup from Home so an initialized wallet
     // gets the same refresh kick as the manual same-node Connect action.
     LaunchedEffect(Unit) {
+        val appPreferences = context.getSharedPreferences(
+            AnonConfig.APP_PREFERENCES,
+            android.content.Context.MODE_PRIVATE
+        )
+        val wipeRequested = appPreferences.getBoolean(
+            AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
+        )
+        val wipePending = appPreferences.getBoolean(
+            AnonConfig.PREF_WALLET_WIPE_PENDING, false
+        )
         val configuredNode = context.getSharedPreferences(
             AnonConfig.PREFS,
             android.content.Context.MODE_PRIVATE
         ).getString(NodeFields.RPC_HOST.value, "")
-        if (!configuredNode.isNullOrBlank()) {
+        if (!wipeRequested && !wipePending && !configuredNode.isNullOrBlank()) {
             appViewModel.startService()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val appPreferences = context.getSharedPreferences(
+            AnonConfig.APP_PREFERENCES,
+            android.content.Context.MODE_PRIVATE
+        )
+        if (appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, false)) {
+            bottomNavController.navigate(SecureWipeRoute) {
+                popUpTo(TransactionsRoute) { inclusive = false }
+                launchSingleTop = true
+            }
         }
     }
 
