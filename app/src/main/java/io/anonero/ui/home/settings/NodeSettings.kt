@@ -359,19 +359,24 @@ class NodeSettingsViewModel(
                         return@withWalletInitializationLock
                     }
 
-                    // An active manual rescan already has a native request queued. Retarget
-                    // the daemon without enqueueing a second rescan when the new connection
-                    // initializes; preserve the exact scan baseline across the switch.
+                    // Capture the existing scan before touching the native daemon. A node
+                    // switch must continue the current scan, not rewind to its original start
+                    // height and queue a new native rescan.
                     val continueActiveResync =
                         allowActiveResyncScan && walletState.isResyncPriorityActive
                     val scanStartHeightBeforeConnect =
                         if (walletState.isWalletScanActive || continueActiveResync) {
                             walletState.currentScanStartHeight
                         } else null
-                    // Match the upstream node-switch path: stop scheduling refresh cycles
-                    // without blocking the connect coroutine indefinitely on a native refresh
-                    // drain. The initialization mutex still serializes daemon mutation and init.
-                    wallet.pauseRefresh()
+                    val forceFreshScan = prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+                    val continueExistingScan =
+                        (walletState.isWalletScanActive || continueActiveResync) &&
+                            (!forceFreshScan || walletState.isForcedRestoreScanStarted)
+
+                    // Drain the current native refresh cycle before changing daemon/proxy.
+                    // Mutating the daemon while refresh is still using the old endpoint can
+                    // stall the switch and race native wallet scan state.
+                    wallet.pauseRefreshAndWait()
                     refreshPausedForConnect = true
                     check(canContinueNodeConnect(allowActiveResyncScan)) {
                         "区块重置准备优先执行，节点连接已让路"
@@ -397,7 +402,6 @@ class NodeSettingsViewModel(
                     }
                     walletState.setLoading(true)
 
-                    val forceFreshScan = prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
                     val selectedRestoreHeightBeforeInit = if (forceFreshScan) {
                         walletState.pendingSelectedRestoreHeight(wallet)
                     } else {
@@ -416,12 +420,24 @@ class NodeSettingsViewModel(
                     }
 
                     if (forceFreshScan && selectedRestoreHeightBeforeInit != null) {
-                        val reappliedHeight =
-                            walletState.preservePendingRestoreHeightAfterInit(wallet)
-                        check(reappliedHeight == selectedRestoreHeightBeforeInit) {
+                        // Native init can replace a new seed restore height with the daemon
+                        // tip. Reapply that preference, but never rewind the live progress
+                        // snapshot if the forced restore scan was already running.
+                        wallet.setRestoreHeight(selectedRestoreHeightBeforeInit)
+                        check(wallet.getRestoreHeight().coerceAtLeast(0L) == selectedRestoreHeightBeforeInit) {
                             "Selected restore height changed during node connection"
                         }
-                    } else if (restartExistingScan && selectedRestoreHeightBeforeInit != null) {
+                        check(wallet.store()) { "Unable to preserve selected restore height after node switch" }
+                        if (!continueExistingScan) {
+                            val reappliedHeight =
+                                walletState.preservePendingRestoreHeightAfterInit(wallet)
+                            check(reappliedHeight == selectedRestoreHeightBeforeInit) {
+                                "Selected restore height changed during node connection"
+                            }
+                        }
+                    } else if (restartExistingScan && selectedRestoreHeightBeforeInit != null &&
+                        !continueExistingScan
+                    ) {
                         wallet.setRestoreHeight(selectedRestoreHeightBeforeInit)
                         check(wallet.getRestoreHeight().coerceAtLeast(0L) == selectedRestoreHeightBeforeInit) {
                             "Wallet scan baseline changed while reconnecting to a node"
@@ -432,38 +448,58 @@ class NodeSettingsViewModel(
                     val actualRestoreHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
                     prefs.edit(commit = true) { putLong(RESTORE_HEIGHT, actualRestoreHeight) }
                     wallet.setTrustedDaemon(true)
-                    val forceStartAtSelectedHeight =
-                        forceFreshScan || (restartExistingScan && !continueActiveResync)
-                    val resumeScan = walletState.beginWalletScan(
-                        wallet = wallet,
-                        scanStartHeight = actualRestoreHeight,
-                        forceStartAtSelectedHeight = forceStartAtSelectedHeight
-                    )
-                    walletState.publishWalletSnapshot(wallet)
+                    var resumeScan = false
+                    if (!continueExistingScan) {
+                        val forceStartAtSelectedHeight = forceFreshScan ||
+                            (restartExistingScan && !continueActiveResync)
+                        resumeScan = walletState.beginWalletScan(
+                            wallet = wallet,
+                            scanStartHeight = actualRestoreHeight,
+                            forceStartAtSelectedHeight = forceStartAtSelectedHeight
+                        )
+                        walletState.publishWalletSnapshot(wallet)
+                    } else {
+                        // Preserve _walletHeight, _scanStartHeight and persisted in-progress
+                        // markers. Clearing only the displayed estimate lets the first live
+                        // height from the new daemon rebuild progress without rewinding scanning.
+                        walletState.clearSyncProgress()
+                        walletState.setLoading(true)
+                    }
+
                     if (canContinueNodeConnect(allowActiveResyncScan)) {
                         if (forceFreshScan) {
-                            // The forced-restore path queues its scan when the daemon is ready.
+                            // A pending fresh restore queues its first scan once the daemon
+                            // is ready. An already active forced scan must not be queued twice.
                             wallet.startRefresh()
                         } else {
-                            if (!continueActiveResync && (resumeScan || restartExistingScan)) {
+                            if (!continueExistingScan &&
+                                !continueActiveResync &&
+                                (resumeScan || restartExistingScan)
+                            ) {
                                 wallet.rescanBlockchainAsync()
                             }
                             wallet.startRefresh()
                         }
                         refreshPausedForConnect = false
                     }
-                    try {
-                        if (canContinueNodeConnect(allowActiveResyncScan)) wallet.refreshHistory()
-                    } catch (e: Exception) {
-                        Timber.tag(TAG).w(e, "Initial history refresh failed after node connection")
+
+                    if (continueExistingScan) {
+                        // Do not perform synchronous history/output reads while the native
+                        // scanner is active. They contend with refresh and make node switching
+                        // appear hung. The height poll recomputes progress against the new node.
+                        walletState.checkSyncProgressOnStartup(wallet)
+                    } else {
+                        try {
+                            if (canContinueNodeConnect(allowActiveResyncScan)) wallet.refreshHistory()
+                        } catch (e: Exception) {
+                            Timber.tag(TAG).w(e, "Initial history refresh failed after node connection")
+                        }
+                        if (canContinueNodeConnect(allowActiveResyncScan)) {
+                            walletState.update()
+                            walletState.setLoading(!wallet.isSynchronized && !walletState.isSyncing)
+                        }
                     }
-                    if (canContinueNodeConnect(allowActiveResyncScan)) {
-                        walletState.update()
-                        walletHandler.markWalletServiceStarted(wallet)
-                        // Retain the indeterminate loader until a real sync-progress sample
-                        // arrives; do not end it merely because wallet.init() returned.
-                        walletState.setLoading(!wallet.isSynchronized && !walletState.isSyncing)
-                    }
+                    walletHandler.markWalletServiceStarted(wallet)
                 }
             } catch (e: CancellationException) {
                 throw e
