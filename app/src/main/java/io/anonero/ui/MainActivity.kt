@@ -180,9 +180,11 @@ class MainActivity : ComponentActivity() {
             val context = LocalContext.current
             var walletExist by remember {
                 mutableStateOf(
-                    !context.getSharedPreferences(AnonConfig.APP_PREFERENCES, MODE_PRIVATE)
-                        .getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false) &&
-                        AnonConfig.isWalletFileExist()
+                    context.getSharedPreferences(AnonConfig.APP_PREFERENCES, MODE_PRIVATE).let { appPreferences ->
+                        appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false) ||
+                            appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, false) ||
+                            AnonConfig.isWalletFileExist()
+                    }
                 )
             }
             var useTor by remember { mutableStateOf(true) }
@@ -216,6 +218,7 @@ class MainActivity : ComponentActivity() {
                                 .remove(AnonConfig.PREF_WALLET_WIPE_PENDING)
                                 .remove(AnonConfig.PREF_WALLET_WIPE_REQUESTED)
                                 .commit()) { "Unable to finalize interrupted secure deletion" }
+                            walletState.releaseWalletWipeRequest()
                         }
                         val stillPending = appPreferences.getBoolean(
                             AnonConfig.PREF_WALLET_WIPE_PENDING, false
