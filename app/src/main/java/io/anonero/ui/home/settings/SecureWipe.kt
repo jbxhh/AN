@@ -135,6 +135,7 @@ class SecureWipeViewModel(
                 .remove(AnonConfig.PREF_WALLET_WIPE_PENDING)
                 .remove(AnonConfig.PREF_WALLET_WIPE_REQUESTED)
                 .commit()) { "Unable to finalize secure-wipe marker" }
+            anonWalletHandler.releaseSecureWipePriority()
             _wipeProgress.postValue(.8f)
             _wipeProgressMessage.postValue("日志已清除")
             delay(1200)
@@ -155,6 +156,7 @@ fun SecureWipe(
 ) {
 
     val prefs = koinInject<SharedPreferences>(named(WALLET_PREFERENCES))
+    val anonWalletHandler = koinInject<AnonWalletHandler>()
     val secureWipeViewModel = koinViewModel<SecureWipeViewModel>()
     val focusRequester = remember { FocusRequester() }
     val errorShake = rememberShakeController()
@@ -203,6 +205,7 @@ fun SecureWipe(
                 check(preferences.edit()
                     .putBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, true)
                     .commit()) { "Unable to persist secure-wipe request" }
+                anonWalletHandler.prepareForSecureWipeRequest()
             }
         }
     }
@@ -219,8 +222,9 @@ fun SecureWipe(
     }
 
     fun clearWallet() {
+        error = null
         scope.launch(Dispatchers.IO) {
-            requestClearScreen(true)
+            requestClearScreen(false)
             val hash = prefs.getString(PREFS_PASSPHRASE_HASH, "")
             val hashedPass =
                 KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
@@ -252,7 +256,9 @@ fun SecureWipe(
                                 } else {
                                     Timber.tag(TAG).e(it)
                                     activity.runOnUiThread {
-                                        error = it.message
+                                        error = it.message ?: "安全删除未完成，删除优先级仍然保留"
+                                        passPhrase = ""
+                                        passPhraseDialog = true
                                         requestClearScreen(false)
                                     }
                                 }
