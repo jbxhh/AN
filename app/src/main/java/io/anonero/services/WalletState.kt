@@ -90,6 +90,9 @@ class WalletState(private val prefs: SharedPreferences) {
     // Native operations already started before reset priority was raised must drain first.
     private val ordinaryWalletOperationsInFlight = AtomicLong(0L)
     private val walletWipeInProgress = AtomicBoolean(false)
+    // Sticky gate raised as soon as the user enters secure deletion. It survives a
+    // failed wipe attempt until the persisted request is explicitly finalized.
+    private val walletWipeRequestReserved = AtomicBoolean(false)
     // Wallet scan progress needs the live daemon target as soon as a scan starts.
     // Keep this request off the UI thread and avoid duplicate startup height RPCs.
     private val scanHeightScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -838,9 +841,35 @@ class WalletState(private val prefs: SharedPreferences) {
         }
     }
 
+    /**
+     * Reserve the highest-priority wallet gate as soon as secure deletion is requested,
+     * before the user submits the deletion passphrase. Normal wallet reads, refresh,
+     * node changes and resync preparation must yield while the request is pending.
+     */
+    @Synchronized
+    fun reserveWalletWipeRequest(): Boolean {
+        if (walletWipeRequestReserved.get()) return true
+        walletWipeRequestReserved.set(true)
+        walletWipeInProgress.set(true)
+        if (!manualResyncNativeWorkerStarted.get()) {
+            activeManualResyncReservation.set(null)
+            resetPriorityActive.set(false)
+            manualResyncScanPrepared.set(false)
+            manualResyncInProgress.set(false)
+            clearSyncProgress()
+            setLoading(false)
+        }
+        return true
+    }
+
     /** Secure deletion is the only operation above reset and can cancel its preflight. */
     @Synchronized
     fun beginWalletWipe(): Boolean {
+        if (walletWipeRequestReserved.get()) {
+            // The request reservation already raised walletWipeInProgress.
+            walletWipeInProgress.set(true)
+            return true
+        }
         if (!walletWipeInProgress.compareAndSet(false, true)) return false
         if (!manualResyncNativeWorkerStarted.get()) {
             activeManualResyncReservation.set(null)
@@ -855,6 +884,13 @@ class WalletState(private val prefs: SharedPreferences) {
 
     @Synchronized
     fun endWalletWipe() {
+        if (!walletWipeRequestReserved.get()) walletWipeInProgress.set(false)
+    }
+
+    /** Release the sticky gate only after wallet, settings, nodes and logs are cleared. */
+    @Synchronized
+    fun releaseWalletWipeRequest() {
+        walletWipeRequestReserved.set(false)
         walletWipeInProgress.set(false)
     }
 
@@ -1655,7 +1691,7 @@ class WalletState(private val prefs: SharedPreferences) {
         activeManualResyncReservation.set(null)
         resetPriorityActive.set(false)
         clearSyncProgress()
-        walletWipeInProgress.set(false)
+        walletWipeInProgress.set(walletWipeRequestReserved.get())
     }
 
     fun toggleHideAmounts() {
