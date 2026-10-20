@@ -821,22 +821,36 @@ private fun TransactionDirectionIndicator(
     val isIncoming = tx.direction == TransactionInfo.Direction.Direction_In
     val tint = if (isIncoming) MaterialTheme.colorScheme.primary else LocalContentColor.current
     val directionIcon = if (isIncoming) AnonIcons.ArrowDownLeft else AnonIcons.ArrowUpRight
+    val confirmations = tx.confirmations
+    val confirmationThreshold = TransactionInfo.CONFIRMATION.toLong()
 
-    // Incoming and outgoing transactions show a spinner instead of an arrow
-    // until the model's existing confirmation threshold is reached.
-    val confirming = !tx.isConfirmed && !tx.isFailed
+    // Match the upstream transaction list: the confirmation ring (with its count)
+    // replaces the direction arrow until 10 confirmations; then the arrow returns.
     Box(
         modifier = Modifier.size(iconSize),
         contentAlignment = Alignment.Center
     ) {
-        if (confirming) {
-            // The spinner replaces the direction arrow until the transaction
-            // reaches the existing confirmation threshold.
-            CircularProgressIndicator(
+        if (confirmations < confirmationThreshold) {
+            Box(
                 modifier = Modifier.size(iconSize),
-                color = tint,
-                strokeWidth = 1.5.dp
-            )
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(iconSize),
+                    color = tint,
+                    strokeWidth = 1.5.dp,
+                    progress = {
+                        confirmations.coerceIn(0L, confirmationThreshold).toFloat() /
+                            confirmationThreshold.toFloat()
+                    }
+                )
+                Text(
+                    text = confirmations.coerceAtLeast(0L).toString(),
+                    modifier = Modifier.align(Alignment.Center),
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.sp),
+                    color = tint
+                )
+            }
         } else {
             Icon(
                 imageVector = directionIcon,
