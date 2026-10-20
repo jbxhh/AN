@@ -137,9 +137,6 @@ wallet_source = wallet_source.replace(
 anchor = "std::string WalletImpl::getSubaddressLabel(uint32_t accountIndex, uint32_t addressIndex) const"
 if wallet_source.count(anchor) != 1:
     raise SystemExit(f"{wallet_cpp_path}: expected one getSubaddressLabel anchor")
-method = """anchor = "std::string WalletImpl::getSubaddressLabel(uint32_t accountIndex, uint32_t addressIndex) const"
-if wallet_source.count(anchor) != 1:
-    raise SystemExit(f"{wallet_cpp_path}: expected one getSubaddressLabel anchor")
 method = """std::string WalletImpl::addSubaddressAndGetAddress(uint32_t accountIndex)
 {
     if (checkBackgroundSync("cannot add subaddress"))
