@@ -23,6 +23,7 @@ object AnonConfig {
     const val PREFS = "anonPref"
     const val APP_PREFERENCES = "anonero_prefs"
     const val PREF_WALLET_WIPE_PENDING = "wallet_wipe_pending"
+    const val PREF_WALLET_WIPE_REQUESTED = "wallet_wipe_requested"
     var context: AnonApplication? = null
     private var walletFound: Boolean = false
 
