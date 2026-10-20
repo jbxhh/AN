@@ -76,6 +76,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.qualifier.named
@@ -98,8 +100,79 @@ class SecureWipeViewModel(
 
     private val _wipeProgress = MutableLiveData(0.1f)
     val wipeProgress: LiveData<Float> = _wipeProgress
+    private val wipeTaskStarted = AtomicBoolean(false)
+
+    /**
+     * Resume a deletion request after process death. At this point the old process and
+     * native wallet handle are gone, so recovery must finish through the persisted
+     * cleanup workflow and must never ask the user for the password again.
+     */
+    fun resumeInterruptedWipe(activity: Activity): Job? {
+        if (anonWalletHandler.isSecureWipeInProgress() ||
+            !wipeTaskStarted.compareAndSet(false, true)
+        ) return null
+
+        anonWalletHandler.markSecureWipeCleanupStarted()
+        return anonWalletHandler.scope.launch(Dispatchers.IO) {
+            val recoveryPrefs = activity.getSharedPreferences(
+                AnonConfig.APP_PREFERENCES, android.content.Context.MODE_PRIVATE
+            )
+            try {
+                check(recoveryPrefs.edit()
+                    .putBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, true)
+                    .putBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, true)
+                    .commit()) { "无法保存安全删除恢复状态" }
+
+                (activity as? MainActivity)?.stopNotificationService()
+                _wipeProgress.postValue(.15f)
+                _wipeProgressMessage.postValue("正在恢复安全删除钱包")
+
+                // A process restart releases native handles. Finish removing the wallet
+                // directory before clearing the remaining wallet and app configuration.
+                val walletDir = File(activity.filesDir, "wallets")
+                check(!walletDir.exists() || walletDir.deleteRecursively()) {
+                    "无法清除钱包文件"
+                }
+                _wipeProgress.postValue(.45f)
+                _wipeProgressMessage.postValue("钱包数据已清除")
+
+                check(sharedPreferences.edit().clear().commit()) {
+                    "无法清除钱包密码设置"
+                }
+                _wipeProgress.postValue(.6f)
+                _wipeProgressMessage.postValue("正在清除节点配置")
+                nodesRepository.clearAll()
+                _wipeProgress.postValue(.75f)
+                _wipeProgressMessage.postValue("正在清除日志")
+                logRepository.clear()
+                AnonConfig.disposeState()
+
+                check(recoveryPrefs.edit()
+                    .remove(AnonConfig.PREF_WALLET_WIPE_PENDING)
+                    .remove(AnonConfig.PREF_WALLET_WIPE_REQUESTED)
+                    .commit()) { "无法完成安全删除状态清理" }
+                anonWalletHandler.releaseSecureWipePriority()
+                _wipeProgress.postValue(1f)
+                _wipeProgressMessage.postValue("钱包已成功安全删除")
+                activity.applicationContext.sendBroadcast(
+                    Intent(MainActivity.ACTION_WALLET_CLEARED)
+                        .setPackage(activity.packageName)
+                )
+            } catch (e: Exception) {
+                // Keep the sticky request and priority gate. A fresh process can retry
+                // recovery; this screen shows the failure instead of requesting a password.
+                Timber.tag(TAG).e(e, "Unable to resume interrupted secure deletion")
+                _wipeProgressMessage.postValue(
+                    "安全删除恢复失败：" + (e.message ?: "请重启应用继续删除")
+                )
+            } finally {
+                anonWalletHandler.markSecureWipeCleanupFinished()
+            }
+        }
+    }
 
     fun wipe(passPhrase: String, activity: Activity): Job {
+        wipeTaskStarted.set(true)
         // Set this before launching on IO; startup recovery must not race any phase
         // of native close plus preference/node/log cleanup.
         anonWalletHandler.markSecureWipeCleanupStarted()
@@ -193,16 +266,18 @@ fun SecureWipe(
     val wipePending = appPreferences?.getBoolean(
         AnonConfig.PREF_WALLET_WIPE_PENDING, false
     ) ?: false
+    val wipeRequestPersisted = appPreferences?.getBoolean(
+        AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
+    ) ?: false
     var passPhraseDialog by remember {
-        mutableStateOf(!anonWalletHandler.isSecureWipeInProgress() && !wipePending)
+        mutableStateOf(
+            !anonWalletHandler.isSecureWipeInProgress() &&
+                !wipePending && !wipeRequestPersisted
+        )
     }
     var passPhrase by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var wipeSubmitting by remember { mutableStateOf(false) }
-
-    val wipeRequestPersisted = appPreferences?.getBoolean(
-        AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
-    ) ?: false
 
     BackHandler(
         enabled = wipeSubmitting || wipeRequestPersisted || wipePending ||
@@ -235,6 +310,16 @@ fun SecureWipe(
     LaunchedEffect(progressMessage) {
         if (progressMessage != null)
             requestClearScreen.invoke(false)
+    }
+
+    LaunchedEffect(wipeRequestPersisted, wipePending, wipeSubmitting) {
+        if ((wipeRequestPersisted || wipePending) &&
+            !wipeSubmitting &&
+            !anonWalletHandler.isSecureWipeInProgress() &&
+            activity != null
+        ) {
+            secureWipeViewModel.resumeInterruptedWipe(activity)
+        }
     }
 
     fun clearWallet() {
@@ -318,7 +403,8 @@ fun SecureWipe(
                                 wipeSubmitting = false
                                 error = cause.message ?: "安全删除未完成，删除优先级仍然保留"
                                 passPhrase = ""
-                                passPhraseDialog = true
+                                // Deletion has already started: remain on the progress screen.
+                                passPhraseDialog = false
                                 requestClearScreen(false)
                             }
                         }
@@ -328,7 +414,13 @@ fun SecureWipe(
                 withContext(Dispatchers.Main) {
                     wipeSubmitting = false
                     passPhrase = ""
-                    passPhraseDialog = true
+                    val appPrefsNow = currentActivity.getSharedPreferences(
+                        AnonConfig.APP_PREFERENCES, android.content.Context.MODE_PRIVATE
+                    )
+                    val deletionAlreadyStarted =
+                        appPrefsNow.getBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, false) ||
+                            appPrefsNow.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
+                    passPhraseDialog = !deletionAlreadyStarted
                     error = e.message ?: "无法启动安全删除"
                 }
             }
@@ -465,7 +557,7 @@ fun SecureWipe(
             Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if ((progressMessage != null || wipePending || wipeSubmitting) && error == null)
+            if ((progressMessage != null || wipePending || wipeRequestPersisted || wipeSubmitting) && error == null)
                 Box(
                     contentAlignment = Alignment.Center
                 ) {
@@ -474,7 +566,7 @@ fun SecureWipe(
                         modifier = Modifier.size(320.dp)
                     )
                     Text(
-                        progressMessage ?: if (wipePending) {
+                        progressMessage ?: if (wipePending || wipeRequestPersisted) {
                             "正在恢复安全删除钱包"
                         } else {
                             "正在验证删除密码"
