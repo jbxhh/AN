@@ -1112,11 +1112,12 @@ class WalletState(private val prefs: SharedPreferences) {
      * This is intentionally asynchronous: reading live daemon heights must not block
      * navigation, but the loading indicator stays visible until the first real snapshot.
      */
-    fun checkSyncProgressOnStartup(wallet: Wallet? = getWallet) {
-        val currentWallet = wallet ?: return
-        if (!currentWallet.isInitialized || !_scanTracking.get()) return
+    fun checkSyncProgressOnStartup(wallet: Wallet? = getWallet): Boolean {
+        val currentWallet = wallet ?: return false
+        if (!currentWallet.isInitialized || !_scanTracking.get()) return false
         if (_syncProgress.value == null) setLoading(true)
         requestLatestDaemonHeightAsync(currentWallet)
+        return true
     }
 
     private fun requestLatestDaemonHeightAsync(wallet: Wallet) {
