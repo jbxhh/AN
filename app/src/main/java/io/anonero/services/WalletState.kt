@@ -90,8 +90,8 @@ class WalletState(private val prefs: SharedPreferences) {
     // Native operations already started before reset priority was raised must drain first.
     private val ordinaryWalletOperationsInFlight = AtomicLong(0L)
     private val walletWipeInProgress = AtomicBoolean(false)
-    // Sticky gate raised as soon as the user enters secure deletion. It survives a
-    // failed wipe attempt until the persisted request is explicitly finalized.
+    // Sticky gate raised only after the deletion passphrase is verified and the
+    // request is accepted. It remains active through retries until cleanup is complete.
     private val walletWipeRequestReserved = AtomicBoolean(false)
     // Wallet scan progress needs the live daemon target as soon as a scan starts.
     // Keep this request off the UI thread and avoid duplicate startup height RPCs.
