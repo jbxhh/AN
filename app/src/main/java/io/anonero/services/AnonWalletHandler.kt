@@ -171,7 +171,12 @@ class AnonWalletHandler(
                     wallet.startRefresh()
                     if (!wipeInProgress.get() && !walletState.isResyncPriorityActive) {
                         walletState.update()
-                        walletState.setLoading(false)
+                        // Re-entering an already initialized wallet bypasses initializeWalletLocked()
+                        // and beginWalletScan(). Kick the live daemon-height check explicitly so
+                        // blocks received while the app was closed show progress without requiring
+                        // the user to press the ordinary Refresh action.
+                        val checkingSyncProgress = walletState.checkSyncProgressOnStartup(wallet)
+                        if (!checkingSyncProgress) walletState.setLoading(false)
                     }
                     true
                 } else {
