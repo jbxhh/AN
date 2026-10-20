@@ -199,6 +199,7 @@ fun SecureWipe(
                 check(preferences.edit()
                     .putBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, true)
                     .commit()) { "Unable to persist secure-wipe request" }
+                (activity as? MainActivity)?.stopNotificationService()
                 anonWalletHandler.prepareForSecureWipeRequest()
             }
         }
