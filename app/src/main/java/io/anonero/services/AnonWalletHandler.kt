@@ -254,7 +254,11 @@ class AnonWalletHandler(
                     // otherwise we must run the same daemon init path as manual Connect.
                     wallet.startRefresh()
                     walletState.update()
-                    walletState.setLoading(false)
+                    // The daemon may have reconnected while Tor/bootstrap was in progress.
+                    // This fast path bypasses initializeWalletLocked(), so explicitly check
+                    // for blocks missed while the app was away before clearing the loader.
+                    val checkingSyncProgress = walletState.checkSyncProgressOnStartup(wallet)
+                    if (!checkingSyncProgress) walletState.setLoading(false)
                 } else {
                     initializeWalletLocked(wallet)
                 }
