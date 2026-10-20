@@ -258,6 +258,11 @@ class Wallet {
     }
 
 
+    /**
+     * Interrupt the currently running native refresh cycle once. The background refresh
+     * thread remains alive and can be resumed with startRefresh().
+     */
+    external fun stop()
     external fun startRefresh()
     external fun pauseRefresh()
     external fun pauseRefreshAndWait()
