@@ -44,7 +44,6 @@ import io.anonero.services.TorService
 import io.anonero.services.WalletState
 import io.anonero.store.LogRepository
 import io.anonero.store.NodesRepository
-import java.io.File
 import io.anonero.services.startAnonService
 import io.anonero.ui.home.LockScreen
 import io.anonero.ui.home.LockScreenMode
@@ -204,29 +203,9 @@ class MainActivity : ComponentActivity() {
                         val appPreferences = context.getSharedPreferences(
                             AnonConfig.APP_PREFERENCES, MODE_PRIVATE
                         )
-                        val wipePending = appPreferences.getBoolean(
-                            AnonConfig.PREF_WALLET_WIPE_PENDING, false
-                        )
-                        if (wipePending && !anonWalletHandler.isSecureWipeInProgress()) {
-                            // If no process-wide wipe job is running, recover an interrupted
-                            // operation before enabling wallet or onboarding screens.
-                            stopNotificationService()
-                            val walletDir = File(context.filesDir, "wallets")
-                            check(!walletDir.exists() || walletDir.deleteRecursively()) {
-                                "Unable to recover interrupted secure deletion"
-                            }
-                            check(anonPrefs.edit().clear().commit()) {
-                                "Unable to clear wallet preferences during wipe recovery"
-                            }
-                            nodesRepository.clearAll()
-                            logRepository.clear()
-                            AnonConfig.disposeState()
-                            check(appPreferences.edit()
-                                .remove(AnonConfig.PREF_WALLET_WIPE_PENDING)
-                                .remove(AnonConfig.PREF_WALLET_WIPE_REQUESTED)
-                                .commit()) { "Unable to finalize interrupted secure deletion" }
-                            walletState.releaseWalletWipeRequest()
-                        }
+                        // Keep an accepted deletion request visible to the SecureWipe progress
+                        // screen. That screen resumes interrupted cleanup without asking for
+                        // the deletion password again; startup must not silently skip progress.
                         val stillPending = appPreferences.getBoolean(
                             AnonConfig.PREF_WALLET_WIPE_PENDING, false
                         )
