@@ -66,7 +66,8 @@ class AnonWalletHandler(
     }
 
     private fun secureWipePriorityActive(): Boolean =
-        wipeInProgress.get() || hasPersistentSecureWipeRequest()
+        wipeInProgress.get() || walletState.isWalletWipeInProgress ||
+            hasPersistentSecureWipeRequest()
 
     /**
      * Raise the sticky deletion gate and pause the foreground refresh before the
