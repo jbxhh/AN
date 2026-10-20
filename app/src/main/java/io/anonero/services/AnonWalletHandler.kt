@@ -55,12 +55,44 @@ class AnonWalletHandler(
     /** True while the process-wide secure-wipe native operation is running. */
     fun isSecureWipeInProgress(): Boolean = wipeInProgress.get()
 
+    private fun hasPersistentSecureWipeRequest(): Boolean {
+        val context = AnonConfig.context ?: return false
+        val appPreferences = context.getSharedPreferences(
+            AnonConfig.APP_PREFERENCES,
+            android.content.Context.MODE_PRIVATE
+        )
+        return appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, false) ||
+            appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
+    }
+
+    private fun secureWipePriorityActive(): Boolean =
+        wipeInProgress.get() || hasPersistentSecureWipeRequest()
+
+    /**
+     * Raise the sticky deletion gate and pause the foreground refresh before the
+     * password is submitted. Never restart refresh after a failed deletion attempt.
+     */
+    suspend fun prepareForSecureWipeRequest() {
+        walletState.reserveWalletWipeRequest()
+        runCatching {
+            walletState.awaitPendingNativeQueries()
+            walletInitializationMutex.withLock {
+                val wallet = WalletManager.instance?.wallet
+                if (wallet?.isInitialized == true && !walletState.backgroundSync) {
+                    wallet.pauseRefreshAndWait()
+                }
+            }
+        }.onFailure {
+            Timber.tag(TAG).e(it, "Unable to pause wallet refresh while secure deletion has priority")
+        }
+    }
+
     init {
         scope.launch {
             torService.socksFlow.collect { socket ->
                 val candidateWallet = WalletManager.instance?.wallet
                 if (
-                    !wipeInProgress.get() &&
+                    !secureWipePriorityActive() &&
                     !walletState.isResyncPriorityActive &&
                     prefs.getBoolean(WALLET_USE_TOR, false) &&
                     candidateWallet?.isInitialized == true
@@ -70,7 +102,7 @@ class AnonWalletHandler(
                     walletInitializationMutex.withLock {
                         val currentWallet = WalletManager.instance?.wallet
                         if (
-                            !wipeInProgress.get() &&
+                            !secureWipePriorityActive() &&
                             !walletState.isResyncPriorityActive &&
                             prefs.getBoolean(WALLET_USE_TOR, false) &&
                             currentWallet === candidateWallet &&
@@ -127,7 +159,7 @@ class AnonWalletHandler(
     }
 
     suspend fun startService() {
-        if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
+        if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
         // Do not queue another automatic startup behind a user-initiated connection.
         // Home and onboarding may both call startService; queued retries used to run
         // immediately after each other and compete for the same native wallet handle.
@@ -137,7 +169,7 @@ class AnonWalletHandler(
         }
         serviceStartMutex.lock()
         try {
-            if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
+            if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
             if (isManualNodeConnectionInProgress()) {
                 Timber.tag(TAG).i("Skipping queued automatic service start; manual node connection has priority")
                 return
@@ -149,9 +181,9 @@ class AnonWalletHandler(
     }
 
     private suspend fun startServiceLocked() {
-        if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
+        if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
         val wallet = WalletManager.instance?.wallet ?: return
-        if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
+        if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
         walletState.prepareScanPreferenceIdentity(wallet)
         if (
             serviceStartedWallet === wallet &&
@@ -163,7 +195,7 @@ class AnonWalletHandler(
             // Otherwise this startRefresh() could race a reset that has already published
             // progress and is about to pause the normal refresh worker.
             val reused = walletInitializationMutex.withLock {
-                if (wipeInProgress.get() || walletState.isResyncPriorityActive) {
+                if (secureWipePriorityActive() || walletState.isResyncPriorityActive) {
                     false
                 } else if (
                     serviceStartedWallet === wallet &&
@@ -172,7 +204,7 @@ class AnonWalletHandler(
                         Wallet.ConnectionStatus.ConnectionStatus_Connected
                 ) {
                     wallet.startRefresh()
-                    if (!wipeInProgress.get() && !walletState.isResyncPriorityActive) {
+                    if (!secureWipePriorityActive() && !walletState.isResyncPriorityActive) {
                         walletState.update()
                         // Re-entering an already initialized wallet bypasses initializeWalletLocked()
                         // and beginWalletScan(). Kick the live daemon-height check explicitly so
@@ -187,7 +219,7 @@ class AnonWalletHandler(
                 }
             }
             if (reused) return
-            if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
+            if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
         }
 
         handler = MoneroHandlerThread(wallet, walletState, this)
@@ -216,12 +248,12 @@ class AnonWalletHandler(
                     ?: throw IllegalStateException(
                         "Tor 尚未在约 3 分钟内就绪，请在节点设置中再次点击连接"
                     )
-                if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
+                if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
                 val proxyAddress = "${readySocket.address}:${readySocket.port.value}"
                 WalletManager.instance?.setProxy(proxyAddress)
                 wallet.setProxy(proxyAddress)
             } else if (!proxyHost.isNullOrBlank() && proxyPort != -1) {
-                if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
+                if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
                 val proxyAddress = "${proxyHost}:${proxyPort}"
                 WalletManager.instance?.setProxy(proxyAddress)
                 wallet.setProxy(proxyAddress)
@@ -231,7 +263,7 @@ class AnonWalletHandler(
                 setProxy(null, null)
             }
 
-            if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
+            if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
             // Tor may have become ready while the user was opening Node Management.
             // Re-check before locking/initializing so automatic startup cannot steal
             // the native init slot from the manual connection request.
@@ -240,7 +272,7 @@ class AnonWalletHandler(
                 return
             }
             walletInitializationMutex.withLock {
-                if (wipeInProgress.get() || walletState.isResyncPriorityActive) return@withLock
+                if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return@withLock
                 if (isManualNodeConnectionInProgress()) {
                     Timber.tag(TAG).i("Skipping automatic wallet init because manual node connection took priority")
                     return@withLock
@@ -251,7 +283,7 @@ class AnonWalletHandler(
                     wallet.fullStatus.connectionStatus ==
                         Wallet.ConnectionStatus.ConnectionStatus_Connected
                 ) {
-                    if (wipeInProgress.get() || walletState.isResyncPriorityActive) return@withLock
+                    if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return@withLock
                     // The service may have started this wallet previously but its daemon
                     // can be disconnected now. Only reuse it when the connection is live;
                     // otherwise we must run the same daemon init path as manual Connect.
@@ -267,10 +299,10 @@ class AnonWalletHandler(
                 }
             }
         } catch (e: CancellationException) {
-            if (wipeInProgress.get()) return
+            if (secureWipePriorityActive()) return
             throw e
         } catch (e: Exception) {
-            if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
+            if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
             Timber.tag(TAG).e(e, "Wallet service startup failed")
             walletState.clearSyncProgress()
             walletState.setConnectionStatus(Wallet.ConnectionStatus.ConnectionStatus_Disconnected)
@@ -287,7 +319,7 @@ class AnonWalletHandler(
 
     /** Mark a user-triggered connection while it prepares Tor and waits for native init. */
     private fun canRunNodeChange(allowActiveResyncScan: Boolean): Boolean =
-        !wipeInProgress.get() &&
+        !secureWipePriorityActive() &&
             (!walletState.isResyncPriorityActive ||
                 (allowActiveResyncScan && walletState.canRetargetNodeDuringResync))
 
@@ -313,14 +345,14 @@ class AnonWalletHandler(
     }
 
     private fun initializeWalletLocked(wallet: Wallet) {
-        if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
+        if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
         val host = prefs.getString(NodeFields.RPC_HOST.value, "")
         val rpcPort = prefs.getInt(NodeFields.RPC_PORT.value, Node.defaultRpcPort)
         val rpcUsername = prefs.getString(NodeFields.RPC_USERNAME.value, "")
         val rpcPassphrase = prefs.getString(NodeFields.RPC_PASSWORD.value, "")
 
         if (host?.isNotEmpty() == true) {
-            if (wipeInProgress.get()) return
+            if (secureWipePriorityActive()) return
             val nodeObj = JSONObject()
                 .apply {
                     put(NodeFields.RPC_HOST.value, host)
@@ -337,14 +369,14 @@ class AnonWalletHandler(
                     put(NodeFields.RPC_NETWORK.value, AnonConfig.getNetworkType().toString())
                     put(NodeFields.NODE_NAME.value, "anon")
                 }
-            if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
+            if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
             val node = Node.fromJson(nodeObj)
             updateDaemon(node)
-            if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
+            if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
             walletState.setLoading(true)
         }
 
-        if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
+        if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
         // Native init may replace a fresh seed restore's selected scan height with the
         // daemon tip. Capture it before init and reapply it before starting the scan.
         val forceFreshScan = prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
@@ -352,7 +384,7 @@ class AnonWalletHandler(
             if (forceFreshScan) walletState.pendingSelectedRestoreHeight(wallet) else null
 
         val initialized = wallet.init(0)
-        if (wipeInProgress.get() || walletState.isResyncPriorityActive) return
+        if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
         if (initialized && wallet.isInitialized) {
             if (forceFreshScan && selectedRestoreHeightBeforeInit != null) {
                 val reappliedHeight = walletState.preservePendingRestoreHeightAfterInit(wallet)
@@ -419,7 +451,7 @@ class AnonWalletHandler(
                 else wallet?.pauseRefresh()
             }
             if (!canRunNodeChange(allowActiveResyncScan)) {
-                if (!wipeInProgress.get()) walletState.setLoading(false)
+                if (!secureWipePriorityActive()) walletState.setLoading(false)
                 return
             }
             if (node != null) {
@@ -450,7 +482,7 @@ class AnonWalletHandler(
             if (canRunNodeChange(allowActiveResyncScan)) walletState.setLoading(false)
         } catch (e: Exception) {
             if (!canRunNodeChange(allowActiveResyncScan)) {
-                if (!wipeInProgress.get()) walletState.setLoading(false)
+                if (!secureWipePriorityActive()) walletState.setLoading(false)
                 return
             }
             walletState.updateDaemon(
@@ -576,7 +608,7 @@ class AnonWalletHandler(
                     runCatching { wallet.setListener(handler) }
                         .onFailure { Timber.tag(TAG).e(it, "Unable to restore wallet listener after failed wipe") }
                 }
-                if (refreshPaused) {
+                if (refreshPaused && !hasPersistentSecureWipeRequest()) {
                     runCatching { wallet.startRefresh() }
                         .onFailure { Timber.tag(TAG).e(it, "Unable to resume wallet refresh after failed wipe") }
                 }
