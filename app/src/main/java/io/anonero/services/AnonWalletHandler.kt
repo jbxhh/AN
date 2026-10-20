@@ -48,6 +48,9 @@ class AnonWalletHandler(
     // Covers post-native cleanup too, so Activity recreation cannot race the final
     // settings/node/log cleanup after AnonWalletHandler.wipe() has returned.
     private val secureWipeCleanupTasks = AtomicInteger(0)
+    // Sticky for this process after a validated delete request. It distinguishes a
+    // genuine process restart from an Activity/ViewModel recreation after a failure.
+    private val secureWipeRequestStartedInProcess = AtomicBoolean(false)
     private val serviceStartMutex = Mutex()
     private val walletInitializationMutex = Mutex()
     private val manualNodeConnectionRequests = AtomicInteger(0)
@@ -55,9 +58,14 @@ class AnonWalletHandler(
 
     val scope get() = _scope
 
-    /** True while either native deletion or its process-wide cleanup job is running. */
+    /** True while deletion is active or a validated request is unresolved in this process. */
     fun isSecureWipeInProgress(): Boolean =
-        wipeInProgress.get() || secureWipeCleanupTasks.get() > 0
+        wipeInProgress.get() || secureWipeCleanupTasks.get() > 0 ||
+            secureWipeRequestStartedInProcess.get()
+
+    fun markSecureWipeRequestStartedInProcess() {
+        secureWipeRequestStartedInProcess.set(true)
+    }
 
     fun markSecureWipeCleanupStarted() {
         secureWipeCleanupTasks.incrementAndGet()
@@ -86,6 +94,7 @@ class AnonWalletHandler(
      * password is submitted. Never restart refresh after a failed deletion attempt.
      */
     suspend fun prepareForSecureWipeRequest() {
+        secureWipeRequestStartedInProcess.set(true)
         walletState.reserveWalletWipeRequest()
         runCatching {
             walletState.awaitPendingNativeQueries()
@@ -103,6 +112,7 @@ class AnonWalletHandler(
     /** Finalize the sticky state gate after every secure-delete cleanup phase succeeded. */
     fun releaseSecureWipePriority() {
         walletState.releaseWalletWipeRequest()
+        secureWipeRequestStartedInProcess.set(false)
     }
 
     init {
