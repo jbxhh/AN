@@ -116,7 +116,7 @@ subaddress_balance_method = """std::vector<uint64_t> WalletImpl::subaddressBalan
 {
     const size_t addressCount = m_wallet->get_num_subaddresses(accountIndex);
     std::vector<uint64_t> result(addressCount, 0);
-    const auto balances = m_wallet->balance_per_subaddress(accountIndex, false);
+    const auto balances = m_wallet->balance_per_subaddress(accountIndex, true);
     for (const auto &entry : balances)
     {
         if (entry.first < result.size())
