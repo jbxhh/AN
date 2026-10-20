@@ -119,53 +119,64 @@ class SecureWipeViewModel(
                 AnonConfig.APP_PREFERENCES, android.content.Context.MODE_PRIVATE
             )
             try {
-                check(recoveryPrefs.edit()
-                    .putBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, true)
-                    .putBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, true)
-                    .commit()) { "无法保存安全删除恢复状态" }
+                while (true) {
+                    try {
+                        check(recoveryPrefs.edit()
+                            .putBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, true)
+                            .putBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, true)
+                            .commit()) { "Unable to persist secure-delete recovery state" }
 
-                (activity as? MainActivity)?.stopNotificationService()
-                _wipeProgress.postValue(.15f)
-                _wipeProgressMessage.postValue("正在恢复安全删除钱包")
+                        (activity as? MainActivity)?.stopNotificationService()
+                        _wipeProgress.postValue(.15f)
+                        _wipeProgressMessage.postValue("正在恢复安全删除钱包")
 
-                // A process restart releases native handles. Finish removing the wallet
-                // directory before clearing the remaining wallet and app configuration.
-                val walletDir = File(activity.filesDir, "wallets")
-                check(!walletDir.exists() || walletDir.deleteRecursively()) {
-                    "无法清除钱包文件"
+                        // The previous process has ended, releasing its native wallet handle.
+                        val walletDir = File(activity.filesDir, "wallets")
+                        check(!walletDir.exists() || walletDir.deleteRecursively()) {
+                            "Wallet files could not be deleted"
+                        }
+                        _wipeProgress.postValue(.45f)
+                        _wipeProgressMessage.postValue("正在清除钱包设置")
+
+                        check(sharedPreferences.edit().clear().commit()) {
+                            "Unable to clear wallet PIN and passphrase preferences"
+                        }
+                        _wipeProgress.postValue(.6f)
+                        _wipeProgressMessage.postValue("正在清除节点配置")
+                        nodesRepository.clearAll()
+                        _wipeProgress.postValue(.75f)
+                        _wipeProgressMessage.postValue("正在清除日志")
+                        logRepository.clear()
+                        AnonConfig.disposeState()
+
+                        check(recoveryPrefs.edit()
+                            .remove(AnonConfig.PREF_WALLET_WIPE_PENDING)
+                            .remove(AnonConfig.PREF_WALLET_WIPE_REQUESTED)
+                            .commit()) { "Unable to finalize secure-delete state" }
+
+                        anonWalletHandler.releaseSecureWipePriority()
+                        _wipeProgress.postValue(1f)
+                        _wipeProgressMessage.postValue("钱包已成功安全删除")
+                        activity.applicationContext.sendBroadcast(
+                            Intent(MainActivity.ACTION_WALLET_CLEARED)
+                                .setPackage(activity.packageName)
+                        )
+                        return@launch
+                    } catch (e: Exception) {
+                        // Log for diagnostics only. Never display deletion exceptions.
+                        // Reassert both flags if a failed commit partly removed them.
+                        Timber.tag(TAG).e(e, "Secure-delete recovery failed; retrying")
+                        runCatching {
+                            recoveryPrefs.edit()
+                                .putBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, true)
+                                .putBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, true)
+                                .commit()
+                        }
+                        _wipeProgress.postValue(.2f)
+                        _wipeProgressMessage.postValue("正在继续安全删除钱包")
+                        delay(1_000)
+                    }
                 }
-                _wipeProgress.postValue(.45f)
-                _wipeProgressMessage.postValue("钱包数据已清除")
-
-                check(sharedPreferences.edit().clear().commit()) {
-                    "无法清除钱包密码设置"
-                }
-                _wipeProgress.postValue(.6f)
-                _wipeProgressMessage.postValue("正在清除节点配置")
-                nodesRepository.clearAll()
-                _wipeProgress.postValue(.75f)
-                _wipeProgressMessage.postValue("正在清除日志")
-                logRepository.clear()
-                AnonConfig.disposeState()
-
-                check(recoveryPrefs.edit()
-                    .remove(AnonConfig.PREF_WALLET_WIPE_PENDING)
-                    .remove(AnonConfig.PREF_WALLET_WIPE_REQUESTED)
-                    .commit()) { "无法完成安全删除状态清理" }
-                anonWalletHandler.releaseSecureWipePriority()
-                _wipeProgress.postValue(1f)
-                _wipeProgressMessage.postValue("钱包已成功安全删除")
-                activity.applicationContext.sendBroadcast(
-                    Intent(MainActivity.ACTION_WALLET_CLEARED)
-                        .setPackage(activity.packageName)
-                )
-            } catch (e: Exception) {
-                // Keep the sticky request and priority gate. A fresh process can retry
-                // recovery; this screen shows the failure instead of requesting a password.
-                Timber.tag(TAG).e(e, "Unable to resume interrupted secure deletion")
-                _wipeProgressMessage.postValue(
-                    "安全删除恢复失败：" + (e.message ?: "请重启应用继续删除")
-                )
             } finally {
                 anonWalletHandler.markSecureWipeCleanupFinished()
             }
@@ -174,63 +185,79 @@ class SecureWipeViewModel(
 
     fun wipe(passPhrase: String, activity: Activity): Job {
         wipeTaskStarted.set(true)
-        // Set this before launching on IO; startup recovery must not race any phase
-        // of native close plus preference/node/log cleanup.
+        anonWalletHandler.markSecureWipeRequestStartedInProcess()
         anonWalletHandler.markSecureWipeCleanupStarted()
         return anonWalletHandler.scope.launch(Dispatchers.IO) {
             val recoveryPrefs = activity.getSharedPreferences(
                 AnonConfig.APP_PREFERENCES, android.content.Context.MODE_PRIVATE
             )
+            var nativeWalletDeletionCompleted = false
             try {
-                check(recoveryPrefs.edit()
-                    .putBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, true)
-                    .commit()) { "Unable to persist secure-wipe recovery marker" }
+                // A validated request is non-cancellable. Retry until all steps complete;
+                // only progress messages are published to the UI.
+                while (true) {
+                    try {
+                        check(recoveryPrefs.edit()
+                            .putBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, true)
+                            .putBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, true)
+                            .commit()) { "Unable to persist secure-delete state" }
 
-                (activity as MainActivity).stopNotificationService()
-                _wipeProgress.postValue(.3f)
-                _wipeProgressMessage.postValue("正在安全删除钱包")
-                // The request gate is already raised. Start native deletion immediately.
-                anonWalletHandler.wipe(passPhrase)
-                _wipeProgress.postValue(.5f)
-                _wipeProgressMessage.postValue("钱包数据已清除")
-                _wipeProgress.postValue(.6f)
-                _wipeProgressMessage.postValue("正在清除设置")
-                check(sharedPreferences.edit().clear().commit()) {
-                    "Unable to clear wallet PIN and passphrase preferences"
-                }
-                _wipeProgress.postValue(.7f)
-                _wipeProgressMessage.postValue("正在清除节点配置")
-                nodesRepository.clearAll()
-                _wipeProgressMessage.postValue("正在清除日志")
-                logRepository.clear()
-                AnonConfig.disposeState()
-                _wipeProgress.postValue(.8f)
-                _wipeProgressMessage.postValue("日志已清除")
-                check(recoveryPrefs.edit()
-                    .remove(AnonConfig.PREF_WALLET_WIPE_PENDING)
-                    .remove(AnonConfig.PREF_WALLET_WIPE_REQUESTED)
-                    .commit()) { "Unable to finalize secure-wipe marker" }
-                anonWalletHandler.releaseSecureWipePriority()
-                _wipeProgress.postValue(1f)
-                _wipeProgressMessage.postValue("钱包已成功安全删除")
-            } catch (e: Exception) {
-                // If the wallet file still exists, native deletion did not finish.
-                // Keep the request sticky but clear the pending marker so a fresh process
-                // resumes cleanup through the progress screen, without touching a possibly
-                // still-open native wallet directory in this process.
-                val walletFileStillExists = runCatching {
-                    AnonConfig.getDefaultWalletFile(activity).exists()
-                }.getOrDefault(true)
-                if (walletFileStillExists) {
-                    runCatching {
-                        recoveryPrefs.edit()
-                            .putBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
-                            .commit()
-                    }.onFailure {
-                        Timber.tag(TAG).e(it, "Unable to reset interrupted wipe marker")
+                        (activity as? MainActivity)?.stopNotificationService()
+
+                        if (!nativeWalletDeletionCompleted) {
+                            _wipeProgress.postValue(.3f)
+                            _wipeProgressMessage.postValue("正在安全删除钱包")
+                            // If close succeeded but file removal failed, the handler can
+                            // resume cleanup when no native wallet handle remains.
+                            anonWalletHandler.wipe(passPhrase)
+                            nativeWalletDeletionCompleted = true
+                            _wipeProgress.postValue(.5f)
+                            _wipeProgressMessage.postValue("钱包数据已清除")
+                        }
+
+                        _wipeProgress.postValue(.6f)
+                        _wipeProgressMessage.postValue("正在清除钱包设置")
+                        check(sharedPreferences.edit().clear().commit()) {
+                            "Unable to clear wallet PIN and passphrase preferences"
+                        }
+                        _wipeProgress.postValue(.7f)
+                        _wipeProgressMessage.postValue("正在清除节点配置")
+                        nodesRepository.clearAll()
+                        _wipeProgress.postValue(.78f)
+                        _wipeProgressMessage.postValue("正在清除日志")
+                        logRepository.clear()
+                        AnonConfig.disposeState()
+
+                        check(recoveryPrefs.edit()
+                            .remove(AnonConfig.PREF_WALLET_WIPE_PENDING)
+                            .remove(AnonConfig.PREF_WALLET_WIPE_REQUESTED)
+                            .commit()) { "Unable to finalize secure-delete state" }
+
+                        anonWalletHandler.releaseSecureWipePriority()
+                        _wipeProgress.postValue(1f)
+                        _wipeProgressMessage.postValue("钱包已成功安全删除")
+                        return@launch
+                    } catch (e: Exception) {
+                        // Diagnostics stay in logs. Keep the screen on progress while
+                        // transient failures are retried automatically.
+                        Timber.tag(TAG).e(e, "Secure deletion failed; automatically retrying")
+                        runCatching {
+                            recoveryPrefs.edit()
+                                .putBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, true)
+                                .putBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, true)
+                                .commit()
+                        }
+                        _wipeProgress.postValue(if (nativeWalletDeletionCompleted) .65f else .3f)
+                        _wipeProgressMessage.postValue(
+                            if (nativeWalletDeletionCompleted) {
+                                "正在继续清除钱包设置"
+                            } else {
+                                "正在继续安全删除钱包"
+                            }
+                        )
+                        delay(1_000)
                     }
                 }
-                throw e
             } finally {
                 anonWalletHandler.markSecureWipeCleanupFinished()
             }
