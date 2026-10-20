@@ -39,6 +39,7 @@ import androidx.navigation.compose.rememberNavController
 import io.anonero.AnonConfig
 import io.anonero.R
 import io.anonero.services.AnonNeroService
+import io.anonero.services.AnonWalletHandler
 import io.anonero.services.TorService
 import io.anonero.services.WalletState
 import io.anonero.store.LogRepository
@@ -85,6 +86,7 @@ class MainActivity : ComponentActivity() {
 
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
     private val walletState: WalletState by inject()
+    private val anonWalletHandler: AnonWalletHandler by inject()
     private val torService: TorService by inject()
     val anonPrefs: SharedPreferences by inject(named(WALLET_PREFERENCES))
     private val nodesRepository: NodesRepository by inject()
@@ -196,9 +198,9 @@ class MainActivity : ComponentActivity() {
                         val wipePending = appPreferences.getBoolean(
                             AnonConfig.PREF_WALLET_WIPE_PENDING, false
                         )
-                        if (wipePending) {
-                            // If the app process was interrupted, no native wallet handle remains.
-                            // Finish deleting before enabling either wallet access or onboarding.
+                        if (wipePending && !anonWalletHandler.isSecureWipeInProgress()) {
+                            // If no process-wide wipe job is running, recover an interrupted
+                            // operation before enabling wallet or onboarding screens.
                             stopNotificationService()
                             val walletDir = File(context.filesDir, "wallets")
                             check(!walletDir.exists() || walletDir.deleteRecursively()) {
@@ -218,7 +220,7 @@ class MainActivity : ComponentActivity() {
                         val stillPending = appPreferences.getBoolean(
                             AnonConfig.PREF_WALLET_WIPE_PENDING, false
                         )
-                        walletExist = !stillPending && AnonConfig.getDefaultWalletFile(context).exists()
+                        walletExist = stillPending || AnonConfig.getDefaultWalletFile(context).exists()
                         useTor = anonPrefs.getBoolean(WALLET_USE_TOR, true)
                     } catch (e: Exception) {
                         // A corrupt/unavailable preference or wallet path must not leave
