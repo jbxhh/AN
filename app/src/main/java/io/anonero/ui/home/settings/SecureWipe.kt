@@ -205,7 +205,8 @@ fun SecureWipe(
     ) ?: false
 
     BackHandler(
-        enabled = wipeRequestPersisted || wipePending || anonWalletHandler.isSecureWipeInProgress()
+        enabled = wipeSubmitting || wipeRequestPersisted || wipePending ||
+            anonWalletHandler.isSecureWipeInProgress()
     ) {
         // Once a correct deletion password started the request, it cannot be cancelled.
     }
@@ -275,6 +276,13 @@ fun SecureWipe(
                 return@launch
             }
 
+            withContext(Dispatchers.Main) {
+                // Password and wallet seed are now validated. Hide the prompt before
+                // the priority gate is raised so no cancel path races deletion startup.
+                passPhraseDialog = false
+                requestClearScreen(false)
+            }
+
             try {
                 // Correct password is verified. Only now does deletion become the
                 // highest-priority, non-cancellable wallet operation.
@@ -288,11 +296,6 @@ fun SecureWipe(
 
                 anonWalletHandler.prepareForSecureWipeRequest()
                 currentActivity.stopNotificationService()
-
-                withContext(Dispatchers.Main) {
-                    passPhraseDialog = false
-                    requestClearScreen(false)
-                }
 
                 secureWipeViewModel.wipe(passPhrase, currentActivity)
                     .invokeOnCompletion { cause ->
@@ -324,6 +327,8 @@ fun SecureWipe(
                 Timber.tag(TAG).e(e, "Unable to begin secure deletion")
                 withContext(Dispatchers.Main) {
                     wipeSubmitting = false
+                    passPhrase = ""
+                    passPhraseDialog = true
                     error = e.message ?: "无法启动安全删除"
                 }
             }
@@ -418,7 +423,9 @@ fun SecureWipe(
             // Before a correct password is accepted, this is only a confirmation screen.
             // Once the request marker is persisted, cancellation is no longer offered.
             dismissButton = {
-                if (!wipeRequestPersisted && !wipePending && !anonWalletHandler.isSecureWipeInProgress()) {
+                if (!wipeSubmitting && !wipeRequestPersisted && !wipePending &&
+                    !anonWalletHandler.isSecureWipeInProgress()
+                ) {
                     Button(
                         onClick = {
                             passPhraseDialog = false
@@ -458,7 +465,7 @@ fun SecureWipe(
             Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if ((progressMessage != null || wipePending) && error == null)
+            if ((progressMessage != null || wipePending || wipeSubmitting) && error == null)
                 Box(
                     contentAlignment = Alignment.Center
                 ) {
@@ -467,7 +474,11 @@ fun SecureWipe(
                         modifier = Modifier.size(320.dp)
                     )
                     Text(
-                        progressMessage ?: "正在恢复安全删除钱包",
+                        progressMessage ?: if (wipePending) {
+                            "正在恢复安全删除钱包"
+                        } else {
+                            "正在验证删除密码"
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.align(
                             Alignment.Center
