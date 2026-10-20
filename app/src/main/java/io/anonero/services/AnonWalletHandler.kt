@@ -571,10 +571,26 @@ class AnonWalletHandler(
             "Wallet wipe is already in progress"
         }
 
-        val wallet = WalletManager.instance?.wallet
+        val walletManager = WalletManager.instance
+        val wallet = walletManager?.wallet
             ?: run {
-                wipeInProgress.set(false)
-                throw IllegalStateException("Wallet is not open; cannot safely close it")
+                // A previous retry may already have closed/unmanaged the native wallet
+                // but failed to remove its files. With no native handle left, retry the
+                // on-disk cleanup directly instead of looping forever on "wallet not open".
+                try {
+                    val context = AnonConfig.context
+                        ?: throw IllegalStateException("Application context unavailable")
+                    val walletDir = java.io.File(context.filesDir, "wallets")
+                    val removed = !walletDir.exists() || walletDir.deleteRecursively()
+                    check(removed && !java.io.File(walletDir, "anon").exists()) {
+                        "Wallet files could not be deleted"
+                    }
+                    walletManager?.setDaemon(null)
+                    walletState.resetAfterWalletWipe()
+                    return true
+                } finally {
+                    wipeInProgress.set(false)
+                }
             }
         if (!walletState.beginWalletWipe()) {
             wipeInProgress.set(false)
