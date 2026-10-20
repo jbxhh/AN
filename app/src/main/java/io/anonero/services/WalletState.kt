@@ -1107,11 +1107,24 @@ class WalletState(private val prefs: SharedPreferences) {
      * The wallet height is never copied from the daemon: progress is computed
      * from the listener-confirmed processed height against this real target.
      */
+    /**
+     * Re-check sync state whenever an already-open wallet is entered again.
+     * This is intentionally asynchronous: reading live daemon heights must not block
+     * navigation, but the loading indicator stays visible until the first real snapshot.
+     */
+    fun checkSyncProgressOnStartup(wallet: Wallet? = getWallet) {
+        val currentWallet = wallet ?: return
+        if (!currentWallet.isInitialized || !_scanTracking.get()) return
+        if (_syncProgress.value == null) setLoading(true)
+        requestLatestDaemonHeightAsync(currentWallet)
+    }
+
     private fun requestLatestDaemonHeightAsync(wallet: Wallet) {
         if (!daemonHeightQueryInFlight.compareAndSet(false, true)) return
 
         scanHeightScope.launch {
             var attempts = 0
+            var initialDaemonSnapshotResolved = false
             try {
                 // Keep retrying while the restore/scan is active. One early RPC can
                 // return zero while Tor or the daemon is still coming online; a one-shot
@@ -1120,7 +1133,10 @@ class WalletState(private val prefs: SharedPreferences) {
                     !walletWipeInProgress.get() &&
                     getWallet === wallet &&
                     wallet.isInitialized &&
-                    !wallet.isSynchronized &&
+                    // Even a wallet previously marked synchronized must perform one fresh
+                    // daemon-height check on entry. Otherwise blocks received while the app
+                    // was closed are not detected until a later refreshed()/manual refresh.
+                    (!wallet.isSynchronized || !initialDaemonSnapshotResolved) &&
                     !manualResyncInProgress.get() &&
                     (_scanTracking.get() || prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) &&
                     _syncProgress.value == null
@@ -1157,6 +1173,10 @@ class WalletState(private val prefs: SharedPreferences) {
 
                             updateDaemonTargetHeight(latestTargetHeight)
                             if (latestDaemonHeight > 0L) {
+                                // Mark the startup snapshot resolved only after a real
+                                // connected-daemon height is available. A disconnected wallet
+                                // keeps retrying even if its persisted scan marker says complete.
+                                initialDaemonSnapshotResolved = true
                                 updateBlockHeights(wallet, latestDaemonHeight)
                                 updateSyncProgressFromWallet(wallet, latestDaemonHeight)
                             }
@@ -1172,7 +1192,7 @@ class WalletState(private val prefs: SharedPreferences) {
                     if (walletWipeInProgress.get() ||
                         getWallet !== wallet ||
                         !wallet.isInitialized ||
-                        wallet.isSynchronized ||
+                        (wallet.isSynchronized && initialDaemonSnapshotResolved) ||
                         (!_scanTracking.get() &&
                             !prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false))
                     ) {
