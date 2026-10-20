@@ -194,7 +194,7 @@ fun SecureWipe(
         AnonConfig.PREF_WALLET_WIPE_PENDING, false
     ) ?: false
     var passPhraseDialog by remember {
-        mutableStateOf(progressMessage == null && !wipePending)
+        mutableStateOf(!anonWalletHandler.isSecureWipeInProgress() && !wipePending)
     }
     var passPhrase by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
