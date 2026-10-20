@@ -340,8 +340,27 @@ fun SecureWipe(
         }
     }
     LaunchedEffect(progressMessage) {
-        if (progressMessage != null)
+        if (progressMessage != null) {
             requestClearScreen.invoke(false)
+        }
+
+        // Leave the app only after every secure-delete and cleanup step succeeded.
+        // This also covers deletion recovery after the app process was interrupted.
+        if (progressMessage == "钱包已成功安全删除") {
+            val completedActivity = activity
+            if (completedActivity != null &&
+                !completedActivity.isFinishing &&
+                !completedActivity.isDestroyed
+            ) {
+                completedActivity.startActivity(
+                    Intent(Intent.ACTION_MAIN).apply {
+                        addCategory(Intent.CATEGORY_HOME)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                )
+                completedActivity.finishAndRemoveTask()
+            }
+        }
     }
 
     LaunchedEffect(wipeRequestPersisted, wipePending, wipeSubmitting) {
