@@ -107,6 +107,10 @@ class SecureWipeViewModel(
      * native wallet handle are gone, so recovery must finish through the persisted
      * cleanup workflow and must never ask the user for the password again.
      */
+    fun showWipeProgress(message: String) {
+        _wipeProgressMessage.postValue(message)
+    }
+
     fun resumeInterruptedWipe(activity: Activity): Job? {
         if (anonWalletHandler.isSecureWipeInProgress() ||
             !wipeTaskStarted.compareAndSet(false, true)
@@ -396,57 +400,77 @@ fun SecureWipe(
                 requestClearScreen(false)
             }
 
-            try {
-                // Correct password is verified. Only now does deletion become the
-                // highest-priority, non-cancellable wallet operation.
-                val recoveryPrefs = currentActivity.getSharedPreferences(
-                    AnonConfig.APP_PREFERENCES,
-                    android.content.Context.MODE_PRIVATE
-                )
-                check(recoveryPrefs.edit()
-                    .putBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, true)
-                    .commit()) { "无法保存安全删除状态" }
+            // From this point onward the password and wallet seed are verified. No
+            // error message or password prompt is allowed; keep retrying startup until
+            // the process-wide deletion worker has accepted the task.
+            anonWalletHandler.markSecureWipeRequestStartedInProcess()
+            secureWipeViewModel.showWipeProgress("正在启动安全删除")
+            val recoveryPrefs = currentActivity.getSharedPreferences(
+                AnonConfig.APP_PREFERENCES, android.content.Context.MODE_PRIVATE
+            )
+            var taskStarted = false
+            while (!taskStarted) {
+                try {
+                    check(recoveryPrefs.edit()
+                        .putBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, true)
+                        .putBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, true)
+                        .commit()) { "Unable to persist secure-delete request" }
 
-                anonWalletHandler.prepareForSecureWipeRequest()
-                (currentActivity as? MainActivity)?.stopNotificationService()
+                    anonWalletHandler.prepareForSecureWipeRequest()
+                    (currentActivity as? MainActivity)?.stopNotificationService()
 
-                secureWipeViewModel.wipe(passPhrase, currentActivity)
-                    .invokeOnCompletion { cause ->
-                        if (cause == null) {
-                            if (!currentActivity.isFinishing && !currentActivity.isDestroyed) {
-                                currentActivity.runOnUiThread {
-                                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                    var monitorWipeJob: ((Job) -> Unit)? = null
+                    monitorWipeJob = { job ->
+                        job.invokeOnCompletion { cause ->
+                            if (cause == null) {
+                                if (!currentActivity.isFinishing && !currentActivity.isDestroyed) {
+                                    currentActivity.runOnUiThread {
+                                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                                    }
                                 }
-                            }
-                            currentActivity.applicationContext.sendBroadcast(
-                                Intent(MainActivity.ACTION_WALLET_CLEARED)
-                                    .setPackage(currentActivity.packageName)
-                            )
-                        } else {
-                            Timber.tag(TAG).e(cause, "Secure deletion did not finish")
-                            currentActivity.runOnUiThread {
-                                wipeSubmitting = false
-                                error = cause.message ?: "安全删除未完成，删除优先级仍然保留"
-                                passPhrase = ""
-                                // Deletion has already started: remain on the progress screen.
-                                passPhraseDialog = false
-                                requestClearScreen(false)
+                                currentActivity.applicationContext.sendBroadcast(
+                                    Intent(MainActivity.ACTION_WALLET_CLEARED)
+                                        .setPackage(currentActivity.packageName)
+                                )
+                            } else {
+                                // The worker normally retries internally forever. If its
+                                // job is cancelled externally, start it again without ever
+                                // returning to password confirmation or showing an error.
+                                Timber.tag(TAG).e(cause, "Secure-delete worker ended; restarting")
+                                currentActivity.runOnUiThread {
+                                    error = null
+                                    wipeSubmitting = true
+                                    passPhraseDialog = false
+                                    secureWipeViewModel.showWipeProgress("正在继续安全删除钱包")
+                                    requestClearScreen(false)
+                                }
+                                anonWalletHandler.scope.launch {
+                                    delay(1_000)
+                                    monitorWipeJob?.invoke(
+                                        secureWipeViewModel.wipe(passPhrase, currentActivity)
+                                    )
+                                }
                             }
                         }
                     }
-            } catch (e: Exception) {
-                Timber.tag(TAG).e(e, "Unable to begin secure deletion")
-                withContext(Dispatchers.Main) {
-                    wipeSubmitting = false
-                    passPhrase = ""
-                    val appPrefsNow = currentActivity.getSharedPreferences(
-                        AnonConfig.APP_PREFERENCES, android.content.Context.MODE_PRIVATE
-                    )
-                    val deletionAlreadyStarted =
-                        appPrefsNow.getBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, false) ||
-                            appPrefsNow.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
-                    passPhraseDialog = !deletionAlreadyStarted
-                    error = e.message ?: "无法启动安全删除"
+                    monitorWipeJob?.invoke(secureWipeViewModel.wipe(passPhrase, currentActivity))
+                    taskStarted = true
+                } catch (e: Exception) {
+                    Timber.tag(TAG).e(e, "Unable to start secure deletion; retrying")
+                    runCatching {
+                        recoveryPrefs.edit()
+                            .putBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, true)
+                            .putBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, true)
+                            .commit()
+                    }
+                    withContext(Dispatchers.Main) {
+                        error = null
+                        passPhraseDialog = false
+                        wipeSubmitting = true
+                        secureWipeViewModel.showWipeProgress("正在继续安全删除钱包")
+                        requestClearScreen(false)
+                    }
+                    delay(1_000)
                 }
             }
         }
