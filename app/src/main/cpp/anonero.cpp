@@ -1229,6 +1229,14 @@ Java_io_anonero_model_Wallet_getMaximumAllowedAmount(JNIEnv *env, jclass clazz) 
 }
 
 JNIEXPORT void JNICALL
+Java_io_anonero_model_Wallet_stop(JNIEnv *env, jobject instance) {
+    Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
+    // Monero's stop() interrupts one active refresh iteration without destroying the
+    // background refresh thread. Node switching resumes it after the daemon is changed.
+    wallet->stop();
+}
+
+JNIEXPORT void JNICALL
 Java_io_anonero_model_Wallet_startRefresh(JNIEnv *env, jobject instance) {
     Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
     wallet->startRefresh();
