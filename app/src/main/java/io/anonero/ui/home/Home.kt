@@ -89,10 +89,20 @@ import io.anonero.AnonConfig
 @SuppressLint("BatteryLife")
 @Composable
 fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHostController?) {
-    var showBottomNavigation by remember { mutableStateOf(true) }
+    val context = LocalContext.current
+    val appPreferences = remember(context) {
+        context.getSharedPreferences(
+            AnonConfig.APP_PREFERENCES,
+            android.content.Context.MODE_PRIVATE
+        )
+    }
+    val wipeRequestedAtStart = remember(context) {
+        appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, false) ||
+            appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
+    }
+    var showBottomNavigation by remember { mutableStateOf(!wipeRequestedAtStart) }
     var resyncReturnBottomNavigation by remember { mutableStateOf(true) }
     val bottomNavController = rememberNavController()
-    val context = LocalContext.current
     val navBackStackEntry by bottomNavController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: TransactionsRoute
     var showBatteryManagerDialog by remember { mutableStateOf(false) }
@@ -100,7 +110,7 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
     val appViewModel = koinInject<io.anonero.ui.viewmodels.AppViewModel>()
     val toastState = rememberToasterState()
     val prefs = context.getSharedPreferences("anonero_prefs", android.content.Context.MODE_PRIVATE)
-    val startDestination: Any = TransactionsRoute
+    val startDestination: Any = if (wipeRequestedAtStart) SecureWipeRoute else TransactionsRoute
 
     // A restored wallet can reach Home while the first background connection attempt
     // is still bootstrapping Tor. Recheck startup from Home so an initialized wallet
@@ -122,19 +132,6 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
         ).getString(NodeFields.RPC_HOST.value, "")
         if (!wipeRequested && !wipePending && !configuredNode.isNullOrBlank()) {
             appViewModel.startService()
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        val appPreferences = context.getSharedPreferences(
-            AnonConfig.APP_PREFERENCES,
-            android.content.Context.MODE_PRIVATE
-        )
-        if (appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, false)) {
-            bottomNavController.navigate(SecureWipeRoute) {
-                popUpTo(TransactionsRoute) { inclusive = false }
-                launchSingleTop = true
-            }
         }
     }
 
