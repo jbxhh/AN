@@ -219,34 +219,24 @@ class AnonWalletHandler(
             wallet.fullStatus.connectionStatus ==
                 Wallet.ConnectionStatus.ConnectionStatus_Connected
         ) {
-            // Even the connected-wallet fast path must share the init mutex with reset.
-            // Otherwise this startRefresh() could race a reset that has already published
-            // progress and is about to pause the normal refresh worker.
-            val reused = walletInitializationMutex.withLock {
+            // Home can request automatic startup again when its route is recreated.
+            // The service is already running in this state; restarting native refresh
+            // here causes an unnecessary refresh every time the user returns Home.
+            // Keep the initialization mutex so reset and secure wipe retain priority.
+            val alreadyRunning = walletInitializationMutex.withLock {
                 if (secureWipePriorityActive() || walletState.isResyncPriorityActive) {
                     false
-                } else if (
-                    serviceStartedWallet === wallet &&
-                    wallet.isInitialized &&
-                    wallet.fullStatus.connectionStatus ==
-                        Wallet.ConnectionStatus.ConnectionStatus_Connected
-                ) {
-                    wallet.startRefresh()
-                    if (!secureWipePriorityActive() && !walletState.isResyncPriorityActive) {
-                        walletState.update()
-                        // Re-entering an already initialized wallet bypasses initializeWalletLocked()
-                        // and beginWalletScan(). Kick the live daemon-height check explicitly so
-                        // blocks received while the app was closed show progress without requiring
-                        // the user to press the ordinary Refresh action.
-                        val checkingSyncProgress = walletState.checkSyncProgressOnStartup(wallet)
-                        if (!checkingSyncProgress) walletState.setLoading(false)
-                    }
-                    true
                 } else {
-                    false
+                    serviceStartedWallet === wallet &&
+                        wallet.isInitialized &&
+                        wallet.fullStatus.connectionStatus ==
+                            Wallet.ConnectionStatus.ConnectionStatus_Connected
                 }
             }
-            if (reused) return
+            if (alreadyRunning) {
+                Timber.tag(TAG).d("Skipping duplicate automatic startup for the active wallet")
+                return
+            }
             if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
         }
 
@@ -328,10 +318,9 @@ class AnonWalletHandler(
                         Wallet.ConnectionStatus.ConnectionStatus_Connected
                 ) {
                     if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return@withLock
-                    // The service may have started this wallet previously but its daemon
-                    // can be disconnected now. Only reuse it when the connection is live;
-                    // otherwise we must run the same daemon init path as manual Connect.
-                    wallet.startRefresh()
+                    // Another startup/connect path restored this already-running wallet
+                    // while this call was waiting for Tor. Reuse its refresh worker rather
+                    // than restarting refresh a second time.
                     walletState.update()
                     // The daemon may have reconnected while Tor/bootstrap was in progress.
                     // This fast path bypasses initializeWalletLocked(), so explicitly check
