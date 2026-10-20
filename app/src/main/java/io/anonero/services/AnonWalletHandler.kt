@@ -45,6 +45,9 @@ class AnonWalletHandler(
 
     private var handler: MoneroHandlerThread? = null
     private val wipeInProgress = AtomicBoolean(false)
+    // Covers post-native cleanup too, so Activity recreation cannot race the final
+    // settings/node/log cleanup after AnonWalletHandler.wipe() has returned.
+    private val secureWipeCleanupTasks = AtomicInteger(0)
     private val serviceStartMutex = Mutex()
     private val walletInitializationMutex = Mutex()
     private val manualNodeConnectionRequests = AtomicInteger(0)
@@ -52,8 +55,17 @@ class AnonWalletHandler(
 
     val scope get() = _scope
 
-    /** True while the process-wide secure-wipe native operation is running. */
-    fun isSecureWipeInProgress(): Boolean = wipeInProgress.get()
+    /** True while either native deletion or its process-wide cleanup job is running. */
+    fun isSecureWipeInProgress(): Boolean =
+        wipeInProgress.get() || secureWipeCleanupTasks.get() > 0
+
+    fun markSecureWipeCleanupStarted() {
+        secureWipeCleanupTasks.incrementAndGet()
+    }
+
+    fun markSecureWipeCleanupFinished() {
+        secureWipeCleanupTasks.updateAndGet { current -> (current - 1).coerceAtLeast(0) }
+    }
 
     private fun hasPersistentSecureWipeRequest(): Boolean {
         val context = AnonConfig.context ?: return false
@@ -235,7 +247,7 @@ class AnonWalletHandler(
         // Keep the listener installed even when a manual request wins the race:
         // the manual connect path starts scanning but relies on this listener to
         // publish block progress and connection changes.
-        if (walletState.isResyncPriorityActive) return
+        if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
         if (isManualNodeConnectionInProgress()) {
             Timber.tag(TAG).i("Skipping automatic wallet startup while manual node connection is pending")
             return
