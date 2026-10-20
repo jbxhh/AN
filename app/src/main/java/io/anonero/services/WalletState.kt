@@ -1154,12 +1154,16 @@ class WalletState(private val prefs: SharedPreferences) {
     /**
      * Re-check sync state whenever an already-open wallet is entered again.
      * This is intentionally asynchronous: reading live daemon heights must not block
-     * navigation, but the loading indicator stays visible until the first real snapshot.
+     * navigation. Show the startup loader only for an active, unfinished scan; an
+     * already-synchronized wallet must remain idle unless the daemon check finds a
+     * real backlog, which will publish sync progress by itself.
      */
     fun checkSyncProgressOnStartup(wallet: Wallet? = getWallet): Boolean {
         val currentWallet = wallet ?: return false
         if (!currentWallet.isInitialized || !_scanTracking.get()) return false
-        if (_syncProgress.value == null) setLoading(true)
+        if (_syncProgress.value == null && !currentWallet.isSynchronized) {
+            setLoading(true)
+        }
         requestLatestDaemonHeightAsync(currentWallet)
         return true
     }
