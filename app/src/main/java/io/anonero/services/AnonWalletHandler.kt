@@ -436,31 +436,24 @@ class AnonWalletHandler(
             val actualRestoreHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
             prefs.edit(commit = true) { putLong(RESTORE_HEIGHT, actualRestoreHeight) }
             wallet.setTrustedDaemon(true)
-            val resumeScan = walletState.beginWalletScan(
-                wallet = wallet,
-                scanStartHeight = actualRestoreHeight,
-                forceStartAtSelectedHeight = forceFreshScan
-            )
-            walletState.publishWalletSnapshot(wallet)
             if (forceFreshScan) {
                 Timber.tag(TAG).i(
                     "Starting fresh wallet scan from selected restore height: %d",
                     actualRestoreHeight
                 )
-                // Queue the selected-height rescan before starting the refresh worker.
-                // Starting an ordinary refresh first lets it scan part of the chain;
-                // maybeStartForcedRestoreScan() would then pause it and restart from
-                // the restore height, making first sync visibly run twice.
+                // Queue the selected-height rescan before beginWalletScan() starts its
+                // asynchronous daemon-height query. Otherwise that query can schedule
+                // maybeStartForcedRestoreScan() before the queue marker is set.
                 if (!walletState.backgroundSync) {
                     try {
                         wallet.rescanBlockchainAsync()
                         walletState.markForcedRestoreScanStarted()
                         Timber.tag(TAG).i(
-                            "Queued fresh restore rescan before starting refresh"
+                            "Queued fresh restore rescan before progress tracking"
                         )
                     } catch (e: Exception) {
-                        // If the native wallet is not ready to accept the request yet,
-                        // retain the existing connected-daemon retry path.
+                        // If native scanning cannot accept the request yet, the existing
+                        // connected-daemon callback path will retry it.
                         Timber.tag(TAG).w(
                             e,
                             "Fresh restore rescan deferred until daemon is ready"
@@ -471,6 +464,15 @@ class AnonWalletHandler(
                         "Fresh restore rescan deferred while background sync is active"
                     )
                 }
+            }
+
+            val resumeScan = walletState.beginWalletScan(
+                wallet = wallet,
+                scanStartHeight = actualRestoreHeight,
+                forceStartAtSelectedHeight = forceFreshScan
+            )
+            walletState.publishWalletSnapshot(wallet)
+            if (forceFreshScan) {
                 wallet.startRefresh()
             } else {
                 if (resumeScan) wallet.rescanBlockchainAsync()
