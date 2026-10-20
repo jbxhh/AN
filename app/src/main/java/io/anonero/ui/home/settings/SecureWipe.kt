@@ -200,8 +200,14 @@ fun SecureWipe(
     var error by remember { mutableStateOf<String?>(null) }
     var wipeSubmitting by remember { mutableStateOf(false) }
 
-    BackHandler {
-        progressMessage != null
+    val wipeRequestPersisted = appPreferences?.getBoolean(
+        AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
+    ) ?: false
+
+    BackHandler(
+        enabled = wipeRequestPersisted || wipePending || anonWalletHandler.isSecureWipeInProgress()
+    ) {
+        // Once a correct deletion password started the request, it cannot be cancelled.
     }
 
 
@@ -219,18 +225,6 @@ fun SecureWipe(
         label = "blur-radius"
     )
 
-    LaunchedEffect(activity) {
-        appPreferences?.let { preferences ->
-            withContext(Dispatchers.IO) {
-                check(preferences.edit()
-                    .putBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, true)
-                    .commit()) { "Unable to persist secure-wipe request" }
-                (activity as? MainActivity)?.stopNotificationService()
-                anonWalletHandler.prepareForSecureWipeRequest()
-            }
-        }
-    }
-
     LaunchedEffect(passPhraseDialog) {
         if (passPhraseDialog) {
             delay(100)
@@ -247,69 +241,92 @@ fun SecureWipe(
         wipeSubmitting = true
         error = null
         scope.launch(Dispatchers.IO) {
-            requestClearScreen(false)
             val hash = prefs.getString(PREFS_PASSPHRASE_HASH, "")
-            val hashedPass =
-                KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
-            if (hash == hashedPass) {
-                val seed = getWalletSeed(passPhrase)?.split(" ")
-                if (seed != null) {
-                    passPhraseDialog = false
-                    HapticFeedbackConstants.CONTEXT_CLICK
-                    activity?.let { activity ->
-                        secureWipeViewModel.wipe(passPhrase, activity)
-                            .invokeOnCompletion {
-                                val walletFileRemoved = runCatching {
-                                    !AnonConfig.getDefaultWalletFile(activity).exists()
-                                }.getOrDefault(false)
-                                if (it == null || walletFileRemoved) {
-                                    // This callback belongs to the process-wide wipe job; do not
-                                    // depend on the composable scope surviving navigation changes.
-                                    if (!activity.isFinishing && !activity.isDestroyed) {
-                                        activity.runOnUiThread {
-                                            view.performHapticFeedback(
-                                                HapticFeedbackConstants.CONTEXT_CLICK
-                                            )
-                                        }
-                                    }
-                                    activity.applicationContext.sendBroadcast(
-                                        Intent(MainActivity.ACTION_WALLET_CLEARED)
-                                            .setPackage(activity.packageName)
-                                    )
-                                } else {
-                                    Timber.tag(TAG).e(it)
-                                    activity.runOnUiThread {
-                                        wipeSubmitting = false
-                                        error = it.message ?: "安全删除未完成，删除优先级仍然保留"
-                                        passPhrase = ""
-                                        passPhraseDialog = true
-                                        requestClearScreen(false)
-                                    }
-                                }
-                            }
-                    }
-                } else {
+            val hashedPass = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
+            if (hash != hashedPass) {
+                withContext(Dispatchers.Main) {
                     wipeSubmitting = false
-                    error = "无法读取当前钱包助记词，安全删除尚未启动"
                     requestClearScreen(false)
+                    errorShake.shake(ShakeConfig(6, translateX = 5f))
+                    repeat(6) {
+                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                        delay(50)
+                    }
+                    error = null
                 }
-            } else {
-                wipeSubmitting = false
-                requestClearScreen(false)
-                errorShake.shake(
-                    ShakeConfig(
-                        6, translateX = 5f
-                    )
-                )
-                repeat(6) {
-                    delay(50)
-                    view.performHapticFeedback(
-                        HapticFeedbackConstants.CONTEXT_CLICK
-                    )
-                }
-                delay(100)
+                return@launch
             }
 
+            val seed = getWalletSeed(passPhrase)?.split(" ")
+            if (seed == null) {
+                withContext(Dispatchers.Main) {
+                    wipeSubmitting = false
+                    error = "无法读取当前钱包助记词，安全删除尚未启动"
+                }
+                return@launch
+            }
+
+            val currentActivity = activity
+            if (currentActivity == null) {
+                withContext(Dispatchers.Main) {
+                    wipeSubmitting = false
+                    error = "页面状态已失效，请重新打开安全删除页面"
+                }
+                return@launch
+            }
+
+            try {
+                // Correct password is verified. Only now does deletion become the
+                // highest-priority, non-cancellable wallet operation.
+                val recoveryPrefs = currentActivity.getSharedPreferences(
+                    AnonConfig.APP_PREFERENCES,
+                    android.content.Context.MODE_PRIVATE
+                )
+                check(recoveryPrefs.edit()
+                    .putBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, true)
+                    .commit()) { "无法保存安全删除状态" }
+
+                anonWalletHandler.prepareForSecureWipeRequest()
+                currentActivity.stopNotificationService()
+
+                withContext(Dispatchers.Main) {
+                    passPhraseDialog = false
+                    requestClearScreen(false)
+                }
+
+                secureWipeViewModel.wipe(passPhrase, currentActivity)
+                    .invokeOnCompletion { cause ->
+                        val walletFileRemoved = runCatching {
+                            !AnonConfig.getDefaultWalletFile(currentActivity).exists()
+                        }.getOrDefault(false)
+                        if (cause == null || walletFileRemoved) {
+                            if (!currentActivity.isFinishing && !currentActivity.isDestroyed) {
+                                currentActivity.runOnUiThread {
+                                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                                }
+                            }
+                            currentActivity.applicationContext.sendBroadcast(
+                                Intent(MainActivity.ACTION_WALLET_CLEARED)
+                                    .setPackage(currentActivity.packageName)
+                            )
+                        } else {
+                            Timber.tag(TAG).e(cause, "Secure deletion did not finish")
+                            currentActivity.runOnUiThread {
+                                wipeSubmitting = false
+                                error = cause.message ?: "安全删除未完成，删除优先级仍然保留"
+                                passPhrase = ""
+                                passPhraseDialog = true
+                                requestClearScreen(false)
+                            }
+                        }
+                    }
+            } catch (e: Exception) {
+                Timber.tag(TAG).e(e, "Unable to begin secure deletion")
+                withContext(Dispatchers.Main) {
+                    wipeSubmitting = false
+                    error = e.message ?: "无法启动安全删除"
+                }
+            }
         }
     }
 
@@ -398,8 +415,33 @@ fun SecureWipe(
                         clearWallet()
                     }) { Text(stringResource(id = R.string.confirm)) }
             },
-            // Once requested, secure deletion cannot return to the wallet.
-            dismissButton = {}
+            // Before a correct password is accepted, this is only a confirmation screen.
+            // Once the request marker is persisted, cancellation is no longer offered.
+            dismissButton = {
+                if (!wipeRequestPersisted && !wipePending && !anonWalletHandler.isSecureWipeInProgress()) {
+                    Button(
+                        onClick = {
+                            passPhraseDialog = false
+                            onBackPress.invoke()
+                        },
+                        shape = MaterialTheme.shapes.small,
+                        border = BorderStroke(
+                            1.dp,
+                            color = MaterialTheme.colorScheme.onSecondary
+                        ),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.background
+                        )
+                    ) {
+                        Text(
+                            stringResource(id = R.string.cancel),
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = MaterialTheme.colorScheme.onSecondary.copy(alpha = 0.8f)
+                            )
+                        )
+                    }
+                }
+            }
         )
 
 
