@@ -435,9 +435,7 @@ class NodeSettingsViewModel(
                                 "Selected restore height changed during node connection"
                             }
                         }
-                    } else if (restartExistingScan && selectedRestoreHeightBeforeInit != null &&
-                        !continueExistingScan
-                    ) {
+                    } else if (restartExistingScan && selectedRestoreHeightBeforeInit != null) {
                         wallet.setRestoreHeight(selectedRestoreHeightBeforeInit)
                         check(wallet.getRestoreHeight().coerceAtLeast(0L) == selectedRestoreHeightBeforeInit) {
                             "Wallet scan baseline changed while reconnecting to a node"
