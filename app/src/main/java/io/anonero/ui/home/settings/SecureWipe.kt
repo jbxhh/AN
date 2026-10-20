@@ -76,6 +76,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.qualifier.named
@@ -133,6 +134,7 @@ class SecureWipeViewModel(
             AnonConfig.disposeState()
             check(recoveryPrefs.edit()
                 .remove(AnonConfig.PREF_WALLET_WIPE_PENDING)
+                .remove(AnonConfig.PREF_WALLET_WIPE_REQUESTED)
                 .commit()) { "Unable to finalize secure-wipe marker" }
             _wipeProgress.postValue(.8f)
             _wipeProgressMessage.postValue("日志已清除")
@@ -156,15 +158,26 @@ fun SecureWipe(
     val prefs = koinInject<SharedPreferences>(named(WALLET_PREFERENCES))
     val secureWipeViewModel = koinViewModel<SecureWipeViewModel>()
     val focusRequester = remember { FocusRequester() }
-    var passPhraseDialog by remember { mutableStateOf(true) }
-    var passPhrase by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
     val errorShake = rememberShakeController()
     val scope = rememberCoroutineScope()
     val progressMessage by secureWipeViewModel.wipeProgressMessage.observeAsState(null)
     val wipeProgress by secureWipeViewModel.wipeProgress.observeAsState(.1f)
     val view = LocalView.current
     val activity = LocalActivity.current
+    val appPreferences = remember(activity) {
+        activity?.getSharedPreferences(
+            AnonConfig.APP_PREFERENCES,
+            android.content.Context.MODE_PRIVATE
+        )
+    }
+    val wipePending = appPreferences?.getBoolean(
+        AnonConfig.PREF_WALLET_WIPE_PENDING, false
+    ) ?: false
+    var passPhraseDialog by remember {
+        mutableStateOf(progressMessage == null && !wipePending)
+    }
+    var passPhrase by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
 
     BackHandler {
         progressMessage != null
@@ -185,8 +198,18 @@ fun SecureWipe(
         label = "blur-radius"
     )
 
-    LaunchedEffect(true) {
-        scope.launch {
+    LaunchedEffect(activity) {
+        appPreferences?.let { preferences ->
+            withContext(Dispatchers.IO) {
+                check(preferences.edit()
+                    .putBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, true)
+                    .commit()) { "Unable to persist secure-wipe request" }
+            }
+        }
+    }
+
+    LaunchedEffect(passPhraseDialog) {
+        if (passPhraseDialog) {
             delay(100)
             focusRequester.requestFocus()
         }
@@ -234,6 +257,7 @@ fun SecureWipe(
                     }
                 }
             } else {
+                requestClearScreen(false)
                 errorShake.shake(
                     ShakeConfig(
                         6, translateX = 5f
@@ -317,7 +341,7 @@ fun SecureWipe(
                     )
             },
             onDismissRequest = {
-                passPhraseDialog = false
+                // Secure deletion is a persisted request and cannot be dismissed here.
             },
             confirmButton = {
                 Button(
@@ -335,34 +359,8 @@ fun SecureWipe(
                         clearWallet()
                     }) { Text(stringResource(id = R.string.confirm)) }
             },
-            dismissButton = {
-                Button(
-                    onClick = {
-                        scope.launch {
-                            passPhraseDialog = false
-                            delay(300)
-                            onBackPress.invoke()
-                        }
-                    },
-                    shape = MaterialTheme.shapes.small,
-                    border = BorderStroke(
-                        1.dp,
-                        color = MaterialTheme.colorScheme.onSecondary
-                    ),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.background,
-                    )
-                ) {
-                    Text(
-                        stringResource(id = R.string.cancel),
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            color = MaterialTheme.colorScheme.onSecondary.copy(
-                                alpha = 0.8f
-                            )
-                        )
-                    )
-                }
-            }
+            // Once requested, secure deletion cannot return to the wallet.
+            dismissButton = {}
         )
 
 
@@ -379,7 +377,7 @@ fun SecureWipe(
             Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (progressMessage != null && error == null)
+            if ((progressMessage != null || wipePending) && error == null)
                 Box(
                     contentAlignment = Alignment.Center
                 ) {
@@ -388,7 +386,7 @@ fun SecureWipe(
                         modifier = Modifier.size(320.dp)
                     )
                     Text(
-                        progressMessage ?: "",
+                        progressMessage ?: "正在恢复安全删除钱包",
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.align(
                             Alignment.Center
