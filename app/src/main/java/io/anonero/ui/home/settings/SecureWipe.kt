@@ -375,14 +375,9 @@ fun SecureWipe(
                 return@launch
             }
 
-            val seed = getWalletSeed(passPhrase)?.split(" ")
-            if (seed == null) {
-                withContext(Dispatchers.Main) {
-                    wipeSubmitting = false
-                    error = "无法读取当前钱包助记词，安全删除尚未启动"
-                }
-                return@launch
-            }
+            // The persisted deletion-passphrase hash is authoritative. Do not block
+            // secure deletion on reading/exporting the wallet seed; it is not needed to erase
+            // the wallet once the user has verified the deletion password.
 
             val currentActivity = activity
             if (currentActivity == null) {
