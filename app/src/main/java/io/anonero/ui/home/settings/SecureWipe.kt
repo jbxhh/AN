@@ -113,32 +113,26 @@ class SecureWipeViewModel(
             _wipeProgressMessage.postValue("正在安全删除钱包")
             // Enter the handler's priority gate immediately after persisting the marker.
             anonWalletHandler.wipe(passPhrase)
-            delay(1000)
             _wipeProgress.postValue(.5f)
             _wipeProgressMessage.postValue("钱包数据已清除")
-            delay(1200)
             _wipeProgress.postValue(.6f)
             _wipeProgressMessage.postValue("正在清除设置")
             check(sharedPreferences.edit().clear().commit()) {
                 "Unable to clear wallet PIN and passphrase preferences"
             }
-            delay(800)
             _wipeProgress.postValue(.7f)
             _wipeProgressMessage.postValue("正在清除节点配置")
             nodesRepository.clearAll()
-            delay(1200)
             _wipeProgressMessage.postValue("正在清除日志")
-            delay(1000)
             logRepository.clear()
             AnonConfig.disposeState()
+            _wipeProgress.postValue(.8f)
+            _wipeProgressMessage.postValue("日志已清除")
             check(recoveryPrefs.edit()
                 .remove(AnonConfig.PREF_WALLET_WIPE_PENDING)
                 .remove(AnonConfig.PREF_WALLET_WIPE_REQUESTED)
                 .commit()) { "Unable to finalize secure-wipe marker" }
             anonWalletHandler.releaseSecureWipePriority()
-            _wipeProgress.postValue(.8f)
-            _wipeProgressMessage.postValue("日志已清除")
-            delay(1200)
             _wipeProgress.postValue(1f)
             _wipeProgressMessage.postValue("钱包已成功安全删除")
         }
