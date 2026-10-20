@@ -255,11 +255,13 @@ class NodeSettingsViewModel(
     suspend fun connect(node: Node) {
         uriValidationError.postValue(null)
 
-        // A reset request reserves priority before its native handoff. Queue this node
-        // switch until that finite preparation stage finishes instead of silently rejecting
-        // the tap. Once the reset scan is handed to native refresh, node switching can
-        // pause/drain the active refresh and resume from the same scan baseline.
-        while (walletState.isManualResyncInProgress && !walletState.isWalletWipeInProgress) {
+        // Wait only while reset setup owns the native wallet. After the native scan
+        // request has been handed off, node switching is allowed during the scan.
+        while (
+            walletState.isManualResyncInProgress &&
+            !walletState.canRetargetNodeDuringResync &&
+            !walletState.isWalletWipeInProgress
+        ) {
             delay(50L)
         }
         if (walletState.isWalletWipeInProgress) {
@@ -352,8 +354,15 @@ class NodeSettingsViewModel(
                         return@withWalletInitializationLock
                     }
 
+                    // An active manual rescan already has a native request queued. Retarget
+                    // the daemon without enqueueing a second rescan when the new connection
+                    // initializes; preserve the exact scan baseline across the switch.
+                    val continueActiveResync =
+                        allowActiveResyncScan && walletState.isResyncPriorityActive
                     val scanStartHeightBeforeConnect =
-                        if (walletState.isWalletScanActive) walletState.currentScanStartHeight else null
+                        if (walletState.isWalletScanActive || continueActiveResync) {
+                            walletState.currentScanStartHeight
+                        } else null
                     // Match the upstream node-switch path: stop scheduling refresh cycles
                     // without blocking the connect coroutine indefinitely on a native refresh
                     // drain. The initialization mutex still serializes daemon mutation and init.
@@ -418,7 +427,8 @@ class NodeSettingsViewModel(
                     val actualRestoreHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
                     prefs.edit(commit = true) { putLong(RESTORE_HEIGHT, actualRestoreHeight) }
                     wallet.setTrustedDaemon(true)
-                    val forceStartAtSelectedHeight = forceFreshScan || restartExistingScan
+                    val forceStartAtSelectedHeight =
+                        forceFreshScan || (restartExistingScan && !continueActiveResync)
                     val resumeScan = walletState.beginWalletScan(
                         wallet = wallet,
                         scanStartHeight = actualRestoreHeight,
@@ -430,7 +440,9 @@ class NodeSettingsViewModel(
                             // The forced-restore path queues its scan when the daemon is ready.
                             wallet.startRefresh()
                         } else {
-                            if (resumeScan || restartExistingScan) wallet.rescanBlockchainAsync()
+                            if (!continueActiveResync && (resumeScan || restartExistingScan)) {
+                                wallet.rescanBlockchainAsync()
+                            }
                             wallet.startRefresh()
                         }
                         refreshPausedForConnect = false
@@ -453,7 +465,8 @@ class NodeSettingsViewModel(
             } catch (e: Exception) {
                 if (refreshPausedForConnect &&
                     !walletState.isWalletWipeInProgress &&
-                    !walletState.isManualResyncInProgress
+                    (!walletState.isManualResyncInProgress ||
+                        walletState.canRetargetNodeDuringResync)
                 ) {
                     runCatching {
                         WalletManager.instance?.wallet
