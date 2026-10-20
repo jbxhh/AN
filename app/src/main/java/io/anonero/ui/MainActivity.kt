@@ -223,8 +223,16 @@ class MainActivity : ComponentActivity() {
                         val stillPending = appPreferences.getBoolean(
                             AnonConfig.PREF_WALLET_WIPE_PENDING, false
                         )
-                        walletExist = stillPending || AnonConfig.getDefaultWalletFile(context).exists()
-                        useTor = anonPrefs.getBoolean(WALLET_USE_TOR, true)
+                        val wipeRequested = appPreferences.getBoolean(
+                            AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
+                        )
+                        walletExist = stillPending || wipeRequested ||
+                            AnonConfig.getDefaultWalletFile(context).exists()
+                        useTor = if (stillPending || wipeRequested) {
+                            false
+                        } else {
+                            anonPrefs.getBoolean(WALLET_USE_TOR, true)
+                        }
                     } catch (e: Exception) {
                         // A corrupt/unavailable preference or wallet path must not leave
                         // the system splash screen waiting forever.
@@ -274,10 +282,6 @@ class MainActivity : ComponentActivity() {
                                     // The PIN has already been verified by LockScreen. Dismiss
                                     // the overlay immediately; background-sync shutdown and refresh
                                     // recovery must never trap the user on the PIN screen.
-                                    walletState.dismissPinLockScreen()
-                                    if (shortCut != LockScreenShortCut.HOME) {
-                                        walletState.emitUnlockShortcut(shortCut)
-                                    }
                                     val appPreferences = getSharedPreferences(
                                         AnonConfig.APP_PREFERENCES, MODE_PRIVATE
                                     )
@@ -286,6 +290,10 @@ class MainActivity : ComponentActivity() {
                                     ) || appPreferences.getBoolean(
                                         AnonConfig.PREF_WALLET_WIPE_PENDING, false
                                     )
+                                    walletState.dismissPinLockScreen()
+                                    if (!wipeRequested && shortCut != LockScreenShortCut.HOME) {
+                                        walletState.emitUnlockShortcut(shortCut)
+                                    }
                                     if (!wipeRequested) scope.launch(Dispatchers.IO) {
                                         val resumed = runCatching {
                                             walletState.exitBackgroundSync(pin)
