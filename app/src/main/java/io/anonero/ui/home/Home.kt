@@ -171,7 +171,8 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
     }
 
     LaunchedEffect(true) {
-        if (!context.isIgnoringBatteryOptimizations()) {
+        // Do not put unrelated permission dialogs over an active secure-delete flow.
+        if (!wipeRequestedAtStart && !context.isIgnoringBatteryOptimizations()) {
             showBatteryManagerDialog = true
         }
     }
