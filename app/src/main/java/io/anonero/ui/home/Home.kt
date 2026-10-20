@@ -137,6 +137,10 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
 
     LaunchedEffect(Unit) {
         walletState.unlockShortcut.collect { shortcut ->
+            val wipeRequested = appPreferences.getBoolean(
+                AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
+            ) || appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
+            if (wipeRequested) return@collect
             when (shortcut) {
                 LockScreenShortCut.HOME -> bottomNavController.navigate(TransactionsRoute) {
                     popUpTo(TransactionsRoute) { inclusive = true }
