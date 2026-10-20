@@ -350,6 +350,11 @@ class NodeSettingsViewModel(
                         wallet.startRefresh()
                         walletState.update()
                         walletState.setLoading(!wallet.isSynchronized && !walletState.isSyncing)
+                        // The refreshed callback from this explicit connect can be suppressed
+                        // while the request owns the node-switch gate. Poll the live daemon
+                        // height after restarting refresh so scan progress does not wait for
+                        // another native callback or a manual Refresh tap.
+                        walletState.checkSyncProgressOnStartup(wallet)
                         walletHandler.markWalletServiceStarted(wallet)
                         return@withWalletInitializationLock
                     }
