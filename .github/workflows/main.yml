@@ -6,6 +6,7 @@ on:
     branches: [main, fix/native-api-compatible-base]
     paths:
       - 'app/**'
+      - 'external-libs/patches/**'
       - 'external-libs/Makefile'
       - 'external-libs/build.sh'
       - 'external-libs/Containerfile'
@@ -226,7 +227,8 @@ jobs:
           grep -Fq "struct CoinsInfo" "$api"
           grep -Fq "preferred_inputs" "$api"
           grep -Fq "addSubaddressAndGetAddress(uint32_t accountIndex)" "$api"
-          echo "Verified custom wallet API: Polyseed + coin control + CoinsInfo"
+          grep -Fq "subaddressBalances(uint32_t accountIndex) const" "$api"
+          echo "Verified custom wallet API: Polyseed + coin control + CoinsInfo + subaddress balances"
 
       - name: Prepare cached Monero header and version
         if: steps.validate-arm64-cache.outputs.valid != 'true'

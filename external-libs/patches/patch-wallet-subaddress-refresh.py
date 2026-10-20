@@ -70,6 +70,16 @@ insert_after_line(
     "virtual bool setOutputFrozen(const std::string &publicKey, bool frozen) = 0;",
 )
 insert_after_line(
+    api_path,
+    "virtual uint64_t balance(uint32_t accountIndex = 0) const = 0;",
+    "virtual std::vector<uint64_t> subaddressBalances(uint32_t accountIndex) const = 0;",
+)
+insert_after_line(
+    impl_header_path,
+    "uint64_t balance(uint32_t accountIndex = 0) const override;",
+    "std::vector<uint64_t> subaddressBalances(uint32_t accountIndex) const override;",
+)
+insert_after_line(
     impl_header_path,
     "void setSubaddressLabel(uint32_t accountIndex, uint32_t addressIndex, const std::string &label) override;",
     "bool setOutputFrozen(const std::string &publicKey, bool frozen) override;",
@@ -102,7 +112,32 @@ wallet_source, replaced = add_pattern.subn(replacement, wallet_source, count=1)
 if replaced != 1:
     raise SystemExit(f"{wallet_cpp_path}: expected one addSubaddress implementation, found {replaced}")
 
+subaddress_balance_method = """std::vector<uint64_t> WalletImpl::subaddressBalances(uint32_t accountIndex) const
+{
+    const size_t addressCount = m_wallet->get_num_subaddresses(accountIndex);
+    std::vector<uint64_t> result(addressCount, 0);
+    const auto balances = m_wallet->balance_per_subaddress(accountIndex, false);
+    for (const auto &entry : balances)
+    {
+        if (entry.first < result.size())
+            result[entry.first] = entry.second;
+    }
+    return result;
+}
+
+"""
+if wallet_source.count("uint64_t WalletImpl::unlockedBalance") != 1:
+    raise SystemExit(f"{wallet_cpp_path}: expected one unlockedBalance anchor")
+wallet_source = wallet_source.replace(
+    "uint64_t WalletImpl::unlockedBalance",
+    subaddress_balance_method + "uint64_t WalletImpl::unlockedBalance",
+    1,
+)
+
 anchor = "std::string WalletImpl::getSubaddressLabel(uint32_t accountIndex, uint32_t addressIndex) const"
+if wallet_source.count(anchor) != 1:
+    raise SystemExit(f"{wallet_cpp_path}: expected one getSubaddressLabel anchor")
+method = """anchor = "std::string WalletImpl::getSubaddressLabel(uint32_t accountIndex, uint32_t addressIndex) const"
 if wallet_source.count(anchor) != 1:
     raise SystemExit(f"{wallet_cpp_path}: expected one getSubaddressLabel anchor")
 method = """std::string WalletImpl::addSubaddressAndGetAddress(uint32_t accountIndex)

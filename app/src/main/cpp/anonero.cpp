@@ -1082,6 +1082,25 @@ Java_io_anonero_model_Wallet_getBalanceAll(JNIEnv *env, jobject instance) {
     return wallet->balanceAll();
 }
 
+JNIEXPORT jlongArray JNICALL
+Java_io_anonero_model_Wallet_getSubaddressBalancesJ(JNIEnv *env, jobject instance,
+                                                    jint accountIndex) {
+    Monero::Wallet *wallet = getHandle<Monero::Wallet>(env, instance);
+    const std::vector<uint64_t> balances =
+            wallet->subaddressBalances(static_cast<uint32_t>(accountIndex));
+    jlongArray result = env->NewLongArray(static_cast<jsize>(balances.size()));
+    if (result == nullptr || balances.empty()) return result;
+
+    std::vector<jlong> javaBalances;
+    javaBalances.reserve(balances.size());
+    for (const uint64_t balance : balances) {
+        javaBalances.push_back(static_cast<jlong>(balance));
+    }
+    env->SetLongArrayRegion(
+            result, 0, static_cast<jsize>(javaBalances.size()), javaBalances.data());
+    return result;
+}
+
 JNIEXPORT jlong JNICALL
 Java_io_anonero_model_Wallet_getUnlockedBalance(JNIEnv *env, jobject instance,
                                                 jint accountIndex) {

@@ -122,17 +122,23 @@ class Wallet {
 
     fun getSubaddressObject(subAddressIndex: Int): Subaddress {
         val subaddress = getSubaddressObject(accountIndex, subAddressIndex)
-        var amount: Long = 0
-        history?.let { history ->
-            for (info in history.all) {
-                if (info.addressIndex == subAddressIndex && info.direction == TransactionInfo.Direction.Direction_In) {
-                    amount += info.amount
-                }
+        subaddress.amount = getSubaddressBalancesJ(accountIndex)
+            .getOrElse(subAddressIndex) { 0L }
+        return subaddress
+    }
+
+    /**
+     * Return one snapshot of native current balances indexed by subaddress index.
+     * This reflects spent outputs correctly; summing historical incoming transfers
+     * would show received funds forever after they were spent.
+     */
+    fun getSubaddressObjectsWithBalances(): List<Subaddress> {
+        val balances = getSubaddressBalancesJ(accountIndex)
+        return (0 until numSubAddresses).map { addressIndex ->
+            getSubaddressObject(accountIndex, addressIndex).apply {
+                amount = balances.getOrElse(addressIndex) { 0L }
             }
         }
-
-        subaddress.amount = amount
-        return subaddress
     }
 
     external fun getPath(): String?
@@ -238,6 +244,8 @@ class Wallet {
     external fun viewOnlyBalance(): Long
 
     external fun getBalanceAll(): Long
+
+    private external fun getSubaddressBalancesJ(accountIndex: Int): LongArray
 
     val unlockedBalance: Long
         get() = getUnlockedBalance(accountIndex)

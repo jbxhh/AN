@@ -28,7 +28,7 @@ fun Wallet.getLatestSubAddress(): Subaddress = synchronized(this) {
 
 fun Wallet.getAllUsedSubAddresses(): List<Subaddress> = synchronized(this) {
     // A read-only snapshot: refreshing the label list must not create native addresses.
-    val subAddresses = (0 until numSubAddresses).map { getSubaddressObject(it) }
+    val subAddresses = getSubaddressObjectsWithBalances()
     // Keep the primary address in the list even when it has received funds.
     // The UI decides whether to render its amount; filtering the funded primary address
     // here makes all non-zero amount labels disappear when child subaddresses are empty.
