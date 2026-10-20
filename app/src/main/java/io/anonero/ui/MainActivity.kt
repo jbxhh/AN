@@ -187,7 +187,14 @@ class MainActivity : ComponentActivity() {
                     }
                 )
             }
-            var useTor by remember { mutableStateOf(true) }
+            var useTor by remember {
+                mutableStateOf(
+                    !context.getSharedPreferences(AnonConfig.APP_PREFERENCES, MODE_PRIVATE).let { appPreferences ->
+                        appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false) ||
+                            appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, false)
+                    } && anonPrefs.getBoolean(WALLET_USE_TOR, true)
+                )
+            }
             val onboardViewModel = koinViewModel<OnboardViewModel>()
             val scope = rememberCoroutineScope()
 
