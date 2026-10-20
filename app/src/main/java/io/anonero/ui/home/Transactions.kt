@@ -93,6 +93,7 @@ import io.anonero.AnonConfig
 import io.anonero.R
 import io.anonero.icons.AnonIcons
 import io.anonero.model.TransactionInfo
+import io.anonero.model.Wallet
 import io.anonero.model.WalletManager
 import io.anonero.services.WalletState
 import io.anonero.ui.components.WalletProgressIndicator
@@ -462,6 +463,7 @@ fun TransactionScreen(
     val showIndefiniteLoading by walletState.isLoading.asLiveData().observeAsState(false)
     val syncProgress by walletState.syncProgress.asLiveData().observeAsState(null)
     val walletStatus by walletState.walletStatus.asLiveData().observeAsState(null)
+    val walletConnectionStatus by walletState.walletConnectionStatus.asLiveData().observeAsState(null)
     var syncBacklogSeen by remember { mutableStateOf(false) }
     var initialHistoryRefreshDone by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState();
@@ -478,6 +480,15 @@ fun TransactionScreen(
     LaunchedEffect(walletState) {
         withContext(Dispatchers.IO) {
             walletState.publishWalletSnapshot()
+        }
+    }
+
+    // Starting the wallet service and attaching this screen are asynchronous. Once the
+    // native wallet is connected, explicitly check the live daemon height so a restored
+    // wallet enters block-sync progress without requiring a pull-to-refresh gesture.
+    LaunchedEffect(walletConnectionStatus) {
+        if (walletConnectionStatus == Wallet.ConnectionStatus.ConnectionStatus_Connected) {
+            walletState.checkSyncProgressOnStartup()
         }
     }
 
