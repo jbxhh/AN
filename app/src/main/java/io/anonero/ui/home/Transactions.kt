@@ -817,6 +817,7 @@ fun TransactionScreen(
 private fun TransactionDirectionIndicator(
     tx: TransactionInfo,
     iconSize: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier,
 ) {
     val isIncoming = tx.direction == TransactionInfo.Direction.Direction_In
     val tint = if (isIncoming) MaterialTheme.colorScheme.primary else LocalContentColor.current
@@ -827,7 +828,7 @@ private fun TransactionDirectionIndicator(
     // Match the upstream transaction list: the confirmation ring (with its count)
     // replaces the direction arrow until 10 confirmations; then the arrow returns.
     Box(
-        modifier = Modifier.size(iconSize),
+        modifier = Modifier.size(iconSize).then(modifier),
         contentAlignment = Alignment.Center
     ) {
         if (confirmations < confirmationThreshold) {
@@ -869,7 +870,41 @@ fun TransactionItem(tx: TransactionInfo, hideAmounts: Boolean = false, amountCen
     val amountText = if (hideAmounts) Formats.maskAmount(amount)
     else Formats.getDisplayAmount(amount)
 
-    if (amountCenter && showTime) {
+    if (!amountCenter && !showTime) {
+        // Match q's home-list placement: pending confirmation ring at the left
+        // edge, amount held at the right; after 10 confirmations, replace the ring
+        // with the direction arrow beside the amount.
+        val confirming = tx.confirmations < TransactionInfo.CONFIRMATION.toLong()
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 28.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Start
+        ) {
+            if (confirming) {
+                TransactionDirectionIndicator(
+                    tx = tx,
+                    iconSize = 28.dp,
+                    modifier = Modifier.offset(x = (-8).dp, y = 2.dp)
+                )
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            if (!confirming) {
+                TransactionDirectionIndicator(
+                    tx = tx,
+                    iconSize = 25.dp,
+                    modifier = Modifier.offset(x = 6.dp, y = 2.dp)
+                )
+            }
+            Spacer(modifier = Modifier.size(10.dp))
+            Text(
+                amountText,
+                textAlign = TextAlign.End,
+                style = MaterialTheme.typography.titleLarge
+            )
+        }
+    } else if (amountCenter && showTime) {
         Box(
             modifier = modifier
                 .fillMaxWidth()
