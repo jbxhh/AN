@@ -100,41 +100,66 @@ class SecureWipeViewModel(
     val wipeProgress: LiveData<Float> = _wipeProgress
 
     fun wipe(passPhrase: String, activity: Activity): Job {
+        // Set this before launching on IO; startup recovery must not race any phase
+        // of native close plus preference/node/log cleanup.
+        anonWalletHandler.markSecureWipeCleanupStarted()
         return anonWalletHandler.scope.launch(Dispatchers.IO) {
             val recoveryPrefs = activity.getSharedPreferences(
                 AnonConfig.APP_PREFERENCES, android.content.Context.MODE_PRIVATE
             )
-            check(recoveryPrefs.edit()
-                .putBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, true)
-                .commit()) { "Unable to persist secure-wipe recovery marker" }
+            try {
+                check(recoveryPrefs.edit()
+                    .putBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, true)
+                    .commit()) { "Unable to persist secure-wipe recovery marker" }
 
-            (activity as MainActivity).stopNotificationService()
-            _wipeProgress.postValue(.3f)
-            _wipeProgressMessage.postValue("正在安全删除钱包")
-            // Enter the handler's priority gate immediately after persisting the marker.
-            anonWalletHandler.wipe(passPhrase)
-            _wipeProgress.postValue(.5f)
-            _wipeProgressMessage.postValue("钱包数据已清除")
-            _wipeProgress.postValue(.6f)
-            _wipeProgressMessage.postValue("正在清除设置")
-            check(sharedPreferences.edit().clear().commit()) {
-                "Unable to clear wallet PIN and passphrase preferences"
+                (activity as MainActivity).stopNotificationService()
+                _wipeProgress.postValue(.3f)
+                _wipeProgressMessage.postValue("正在安全删除钱包")
+                // The request gate is already raised. Start native deletion immediately.
+                anonWalletHandler.wipe(passPhrase)
+                _wipeProgress.postValue(.5f)
+                _wipeProgressMessage.postValue("钱包数据已清除")
+                _wipeProgress.postValue(.6f)
+                _wipeProgressMessage.postValue("正在清除设置")
+                check(sharedPreferences.edit().clear().commit()) {
+                    "Unable to clear wallet PIN and passphrase preferences"
+                }
+                _wipeProgress.postValue(.7f)
+                _wipeProgressMessage.postValue("正在清除节点配置")
+                nodesRepository.clearAll()
+                _wipeProgressMessage.postValue("正在清除日志")
+                logRepository.clear()
+                AnonConfig.disposeState()
+                _wipeProgress.postValue(.8f)
+                _wipeProgressMessage.postValue("日志已清除")
+                check(recoveryPrefs.edit()
+                    .remove(AnonConfig.PREF_WALLET_WIPE_PENDING)
+                    .remove(AnonConfig.PREF_WALLET_WIPE_REQUESTED)
+                    .commit()) { "Unable to finalize secure-wipe marker" }
+                anonWalletHandler.releaseSecureWipePriority()
+                _wipeProgress.postValue(1f)
+                _wipeProgressMessage.postValue("钱包已成功安全删除")
+            } catch (e: Exception) {
+                // If the wallet file still exists, the native deletion did not finish.
+                // Keep the request sticky but clear the interrupted-task marker so the
+                // next attempt re-prompts for the deletion password instead of deleting
+                // an open wallet directory behind its native handle.
+                val walletFileStillExists = runCatching {
+                    AnonConfig.getDefaultWalletFile(activity).exists()
+                }.getOrDefault(true)
+                if (walletFileStillExists) {
+                    runCatching {
+                        recoveryPrefs.edit()
+                            .putBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
+                            .commit()
+                    }.onFailure {
+                        Timber.tag(TAG).e(it, "Unable to reset interrupted wipe marker")
+                    }
+                }
+                throw e
+            } finally {
+                anonWalletHandler.markSecureWipeCleanupFinished()
             }
-            _wipeProgress.postValue(.7f)
-            _wipeProgressMessage.postValue("正在清除节点配置")
-            nodesRepository.clearAll()
-            _wipeProgressMessage.postValue("正在清除日志")
-            logRepository.clear()
-            AnonConfig.disposeState()
-            _wipeProgress.postValue(.8f)
-            _wipeProgressMessage.postValue("日志已清除")
-            check(recoveryPrefs.edit()
-                .remove(AnonConfig.PREF_WALLET_WIPE_PENDING)
-                .remove(AnonConfig.PREF_WALLET_WIPE_REQUESTED)
-                .commit()) { "Unable to finalize secure-wipe marker" }
-            anonWalletHandler.releaseSecureWipePriority()
-            _wipeProgress.postValue(1f)
-            _wipeProgressMessage.postValue("钱包已成功安全删除")
         }
     }
 
@@ -173,6 +198,7 @@ fun SecureWipe(
     }
     var passPhrase by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var wipeSubmitting by remember { mutableStateOf(false) }
 
     BackHandler {
         progressMessage != null
@@ -217,6 +243,8 @@ fun SecureWipe(
     }
 
     fun clearWallet() {
+        if (wipeSubmitting) return
+        wipeSubmitting = true
         error = null
         scope.launch(Dispatchers.IO) {
             requestClearScreen(false)
@@ -251,6 +279,7 @@ fun SecureWipe(
                                 } else {
                                     Timber.tag(TAG).e(it)
                                     activity.runOnUiThread {
+                                        wipeSubmitting = false
                                         error = it.message ?: "安全删除未完成，删除优先级仍然保留"
                                         passPhrase = ""
                                         passPhraseDialog = true
@@ -261,6 +290,7 @@ fun SecureWipe(
                     }
                 }
             } else {
+                wipeSubmitting = false
                 requestClearScreen(false)
                 errorShake.shake(
                     ShakeConfig(
@@ -359,6 +389,7 @@ fun SecureWipe(
                         containerColor = MaterialTheme.colorScheme.errorContainer,
 
                         ),
+                    enabled = !wipeSubmitting,
                     onClick = {
                         clearWallet()
                     }) { Text(stringResource(id = R.string.confirm)) }
