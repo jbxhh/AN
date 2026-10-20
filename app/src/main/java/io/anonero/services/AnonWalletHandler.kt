@@ -447,6 +447,30 @@ class AnonWalletHandler(
                     "Starting fresh wallet scan from selected restore height: %d",
                     actualRestoreHeight
                 )
+                // Queue the selected-height rescan before starting the refresh worker.
+                // Starting an ordinary refresh first lets it scan part of the chain;
+                // maybeStartForcedRestoreScan() would then pause it and restart from
+                // the restore height, making first sync visibly run twice.
+                if (!walletState.backgroundSync) {
+                    try {
+                        wallet.rescanBlockchainAsync()
+                        walletState.markForcedRestoreScanStarted()
+                        Timber.tag(TAG).i(
+                            "Queued fresh restore rescan before starting refresh"
+                        )
+                    } catch (e: Exception) {
+                        // If the native wallet is not ready to accept the request yet,
+                        // retain the existing connected-daemon retry path.
+                        Timber.tag(TAG).w(
+                            e,
+                            "Fresh restore rescan deferred until daemon is ready"
+                        )
+                    }
+                } else {
+                    Timber.tag(TAG).i(
+                        "Fresh restore rescan deferred while background sync is active"
+                    )
+                }
                 wallet.startRefresh()
             } else {
                 if (resumeScan) wallet.rescanBlockchainAsync()

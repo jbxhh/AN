@@ -1585,6 +1585,18 @@ class WalletState(private val prefs: SharedPreferences) {
      * The native wallet is about to be reinitialized after a real refresh failure.
      * Only this lifecycle event may release the queued-restore guard for retry.
      */
+    /**
+     * Records that the native fresh-restore rescan was queued before startRefresh().
+     * This prevents the first refreshed callback from queuing a second rescan.
+     */
+    fun markForcedRestoreScanStarted() {
+        if (!walletWipeInProgress.get() &&
+            prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+        ) {
+            forcedRestoreScanStarted.set(true)
+        }
+    }
+
     fun prepareForcedRestoreScanRetry() {
         if (prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) {
             forcedRestoreScanStarted.set(false)
