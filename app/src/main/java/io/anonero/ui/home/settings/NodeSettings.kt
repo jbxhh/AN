@@ -373,9 +373,12 @@ class NodeSettingsViewModel(
                         (walletState.isWalletScanActive || continueActiveResync) &&
                             (!forceFreshScan || walletState.isForcedRestoreScanStarted)
 
-                    // Drain the current native refresh cycle before changing daemon/proxy.
-                    // Mutating the daemon while refresh is still using the old endpoint can
-                    // stall the switch and race native wallet scan state.
+                    // Interrupt the in-flight native RPC/refresh once, then wait for the
+                    // current cycle to unwind before changing daemon/proxy. A plain pause only
+                    // prevents the next cycle and can leave this switch blocked behind a slow
+                    // request to the old node.
+                    runCatching { wallet.stop() }
+                        .onFailure { Timber.tag(TAG).w(it, "Unable to interrupt current refresh before node switch") }
                     wallet.pauseRefreshAndWait()
                     refreshPausedForConnect = true
                     check(canContinueNodeConnect(allowActiveResyncScan)) {
