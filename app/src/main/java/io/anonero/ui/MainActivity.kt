@@ -41,6 +41,9 @@ import io.anonero.R
 import io.anonero.services.AnonNeroService
 import io.anonero.services.TorService
 import io.anonero.services.WalletState
+import io.anonero.store.LogRepository
+import io.anonero.store.NodesRepository
+import java.io.File
 import io.anonero.services.startAnonService
 import io.anonero.ui.home.LockScreen
 import io.anonero.ui.home.LockScreenMode
@@ -84,6 +87,8 @@ class MainActivity : ComponentActivity() {
     private val walletState: WalletState by inject()
     private val torService: TorService by inject()
     val anonPrefs: SharedPreferences by inject(named(WALLET_PREFERENCES))
+    private val nodesRepository: NodesRepository by inject()
+    private val logRepository: LogRepository by inject()
 
     // Local prefs to record which wallet we've already prompted notification permission for
     private val localPrefs by lazy { getSharedPreferences("anonero_prefs", MODE_PRIVATE) }
@@ -185,16 +190,51 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(key1 = true) {
                 scope.launch(Dispatchers.IO) {
                     try {
-                        val wipePending = context.getSharedPreferences(
+                        val appPreferences = context.getSharedPreferences(
                             AnonConfig.APP_PREFERENCES, MODE_PRIVATE
-                        ).getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
-                        walletExist = !wipePending && AnonConfig.getDefaultWalletFile(context).exists()
+                        )
+                        val wipePending = appPreferences.getBoolean(
+                            AnonConfig.PREF_WALLET_WIPE_PENDING, false
+                        )
+                        if (wipePending) {
+                            // If the app process was interrupted, no native wallet handle remains.
+                            // Finish deleting before enabling either wallet access or onboarding.
+                            stopNotificationService()
+                            val walletDir = File(context.filesDir, "wallets")
+                            check(!walletDir.exists() || walletDir.deleteRecursively()) {
+                                "Unable to recover interrupted secure deletion"
+                            }
+                            check(anonPrefs.edit().clear().commit()) {
+                                "Unable to clear wallet preferences during wipe recovery"
+                            }
+                            nodesRepository.clearAll()
+                            logRepository.clear()
+                            AnonConfig.disposeState()
+                            check(appPreferences.edit()
+                                .remove(AnonConfig.PREF_WALLET_WIPE_PENDING)
+                                .remove(AnonConfig.PREF_WALLET_WIPE_REQUESTED)
+                                .commit()) { "Unable to finalize interrupted secure deletion" }
+                        }
+                        val stillPending = appPreferences.getBoolean(
+                            AnonConfig.PREF_WALLET_WIPE_PENDING, false
+                        )
+                        walletExist = !stillPending && AnonConfig.getDefaultWalletFile(context).exists()
                         useTor = anonPrefs.getBoolean(WALLET_USE_TOR, true)
                     } catch (e: Exception) {
                         // A corrupt/unavailable preference or wallet path must not leave
                         // the system splash screen waiting forever.
                         Timber.tag(TAG).e(e, "Startup initialization failed; continuing with safe defaults")
-                        walletExist = false
+                        val appPreferences = context.getSharedPreferences(
+                            AnonConfig.APP_PREFERENCES, MODE_PRIVATE
+                        )
+                        val wipeStillPending = appPreferences.getBoolean(
+                            AnonConfig.PREF_WALLET_WIPE_PENDING, false
+                        )
+                        val wipeWasRequested = appPreferences.getBoolean(
+                            AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
+                        )
+                        // Fail closed: do not route to onboarding or a usable wallet when recovery fails.
+                        walletExist = wipeStillPending || wipeWasRequested
                         useTor = false
                     } finally {
                         isAppReady = true
@@ -233,7 +273,15 @@ class MainActivity : ComponentActivity() {
                                     if (shortCut != LockScreenShortCut.HOME) {
                                         walletState.emitUnlockShortcut(shortCut)
                                     }
-                                    scope.launch(Dispatchers.IO) {
+                                    val appPreferences = getSharedPreferences(
+                                        AnonConfig.APP_PREFERENCES, MODE_PRIVATE
+                                    )
+                                    val wipeRequested = appPreferences.getBoolean(
+                                        AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
+                                    ) || appPreferences.getBoolean(
+                                        AnonConfig.PREF_WALLET_WIPE_PENDING, false
+                                    )
+                                    if (!wipeRequested) scope.launch(Dispatchers.IO) {
                                         val resumed = runCatching {
                                             walletState.exitBackgroundSync(pin)
                                         }.onFailure {
@@ -330,11 +378,17 @@ class MainActivity : ComponentActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         val wipePrefs = getSharedPreferences(AnonConfig.APP_PREFERENCES, MODE_PRIVATE)
-        if (wipePrefs.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)) return
+        if (
+            wipePrefs.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false) ||
+            wipePrefs.getBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, false)
+        ) return
 
         scope.launch {
             // Recheck after dispatching: a secure wipe may start between lifecycle callbacks.
-            if (!wipePrefs.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)) {
+            if (
+                !wipePrefs.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false) &&
+                !wipePrefs.getBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, false)
+            ) {
                 walletState.enterBackgroundSync()
             }
         }
