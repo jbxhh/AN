@@ -134,6 +134,9 @@ class WalletState(private val prefs: SharedPreferences) {
         get() = resetPriorityActive.get() &&
             (!manualResyncInProgress.get() || manualResyncScanPrepared.get()) &&
             !walletWipeInProgress.get()
+    /** True after a forced seed-restore rescan has been accepted by native refresh. */
+    val isForcedRestoreScanStarted: Boolean
+        get() = forcedRestoreScanStarted.get()
     /** Scan start position cached from trusted app state; does not call JNI. */
     val currentScanStartHeight: Long
         get() = _scanStartHeight.get().coerceAtLeast(0L)
