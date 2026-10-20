@@ -60,7 +60,6 @@ import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import io.anonero.AnonConfig
 import io.anonero.services.AnonWalletHandler
 import io.anonero.store.LogRepository
@@ -101,7 +100,7 @@ class SecureWipeViewModel(
     val wipeProgress: LiveData<Float> = _wipeProgress
 
     fun wipe(passPhrase: String, activity: Activity): Job {
-        return viewModelScope.launch(Dispatchers.IO) {
+        return anonWalletHandler.scope.launch(Dispatchers.IO) {
             val recoveryPrefs = activity.getSharedPreferences(
                 AnonConfig.APP_PREFERENCES, android.content.Context.MODE_PRIVATE
             )
@@ -110,9 +109,9 @@ class SecureWipeViewModel(
                 .commit()) { "Unable to persist secure-wipe recovery marker" }
 
             (activity as MainActivity).stopNotificationService()
-            delay(400)
             _wipeProgress.postValue(.3f)
             _wipeProgressMessage.postValue("正在安全删除钱包")
+            // Enter the handler's priority gate immediately after persisting the marker.
             anonWalletHandler.wipe(passPhrase)
             delay(1000)
             _wipeProgress.postValue(.5f)
@@ -237,21 +236,25 @@ fun SecureWipe(
                                     !AnonConfig.getDefaultWalletFile(activity).exists()
                                 }.getOrDefault(false)
                                 if (it == null || walletFileRemoved) {
-                                    view.performHapticFeedback(
-                                        HapticFeedbackConstants.CONTEXT_CLICK
-                                    )
-                                    scope.launch(Dispatchers.Main) {
-                                        // Rebuild navigation even if non-wallet cleanup failed
-                                        // after the wallet file was already removed.
-                                        activity.sendBroadcast(
-                                            Intent(MainActivity.ACTION_WALLET_CLEARED)
-                                                .setPackage(activity.packageName)
-                                        )
+                                    // This callback belongs to the process-wide wipe job; do not
+                                    // depend on the composable scope surviving navigation changes.
+                                    if (!activity.isFinishing && !activity.isDestroyed) {
+                                        activity.runOnUiThread {
+                                            view.performHapticFeedback(
+                                                HapticFeedbackConstants.CONTEXT_CLICK
+                                            )
+                                        }
                                     }
+                                    activity.applicationContext.sendBroadcast(
+                                        Intent(MainActivity.ACTION_WALLET_CLEARED)
+                                            .setPackage(activity.packageName)
+                                    )
                                 } else {
                                     Timber.tag(TAG).e(it)
-                                    error = it.message
-                                    requestClearScreen(false)
+                                    activity.runOnUiThread {
+                                        error = it.message
+                                        requestClearScreen(false)
+                                    }
                                 }
                             }
                     }
