@@ -90,8 +90,8 @@ class AnonWalletHandler(
             hasPersistentSecureWipeRequest()
 
     /**
-     * Raise the sticky deletion gate and pause the foreground refresh before the
-     * password is submitted. Never restart refresh after a failed deletion attempt.
+     * Raise the sticky deletion gate after the deletion password is verified and
+     * pause the foreground refresh. Never restart refresh after a failed deletion attempt.
      */
     suspend fun prepareForSecureWipeRequest() {
         secureWipeRequestStartedInProcess.set(true)
