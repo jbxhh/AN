@@ -385,10 +385,7 @@ fun SecureWipe(
 
                 secureWipeViewModel.wipe(passPhrase, currentActivity)
                     .invokeOnCompletion { cause ->
-                        val walletFileRemoved = runCatching {
-                            !AnonConfig.getDefaultWalletFile(currentActivity).exists()
-                        }.getOrDefault(false)
-                        if (cause == null || walletFileRemoved) {
+                        if (cause == null) {
                             if (!currentActivity.isFinishing && !currentActivity.isDestroyed) {
                                 currentActivity.runOnUiThread {
                                     view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
