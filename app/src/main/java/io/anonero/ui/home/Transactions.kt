@@ -466,8 +466,10 @@ fun TransactionScreen(
     val walletConnectionStatus by walletState.walletConnectionStatus.asLiveData().observeAsState(null)
     var syncBacklogSeen by remember { mutableStateOf(false) }
     var initialHistoryRefreshDone by remember { mutableStateOf(false) }
-    val refreshState = rememberPullToRefreshState();
-    val view = LocalView.current;
+    val refreshState = rememberPullToRefreshState()
+    val syncProgressVisible = showIndefiniteLoading ||
+        syncProgress?.left?.let { it > 0L } == true
+    val view = LocalView.current
     val torConnected by torService.socksFlow.asLiveData().observeAsState(torService.socks != null)
     val useTor = anonPrefs.getBoolean(WALLET_USE_TOR, true)
     val hazeState = rememberHazeState()
@@ -529,9 +531,13 @@ fun TransactionScreen(
     }
 
     LaunchedEffect(true) {
-        scope.launch {
-            refreshState.snapTo(0f)
-        }
+        refreshState.snapTo(0f)
+    }
+
+    // If block sync starts while the user is pulling, clear the pull state immediately.
+    // Otherwise the custom indicator can remain visible over the wallet sync indicator.
+    LaunchedEffect(syncProgressVisible) {
+        if (syncProgressVisible) refreshState.snapTo(0f)
     }
 
     Scaffold(
@@ -705,7 +711,7 @@ fun TransactionScreen(
                 // distance, so it tracks the finger instead of waiting for list layout
                 // and visibility animations to catch up.
                 val pullDistance = refreshState.distanceFraction.coerceAtLeast(0f)
-                if (pullDistance > 0f) {
+                if (!syncProgressVisible && pullDistance > 0f) {
                     Column(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
