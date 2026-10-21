@@ -689,10 +689,14 @@ fun TransactionScreen(
                 ),
                            onRefresh = {
                 scope.launch {
-                    view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-
-                    walletState.refresh()
-
+                    try {
+                        view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                        walletState.refresh()
+                    } finally {
+                        // Always release the pull gesture, including when refresh exits
+                        // early because the wallet is disconnected or reset has priority.
+                        refreshState.animateToHidden()
+                    }
                 }
             },
             indicator = {
