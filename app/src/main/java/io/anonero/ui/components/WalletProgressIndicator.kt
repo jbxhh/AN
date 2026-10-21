@@ -69,14 +69,13 @@ fun WalletProgressIndicator(modifier: Modifier = Modifier, refreshIndicatorProgr
     val connectionStatus by walletState.connectionStatus.asLiveData().observeAsState(null)
     val isConnected = connectionStatus == Wallet.ConnectionStatus.ConnectionStatus_Connected
     val isNetworkConnected by networkConnected()
-    // Keep the existing progress area visible while waiting for the node/network,
-    // just as Q does. Do not require a connected daemon before showing a loader.
-    val showConnectionWaitIndicator = !isConnected || !isNetworkConnected
     val isSyncing = syncProgress?.left?.let { it > 0L } == true
 
+    // Disconnection alone is not a refresh operation. Show the indicator only while
+    // loading/scanning is actually pending, otherwise a finished wallet spins forever.
     AnimatedVisibility(
         showIndefiniteLoading || manualRefreshInProgress || isSyncing ||
-            showConnectionWaitIndicator || refreshIndicatorProgress != 0.0f,
+            refreshIndicatorProgress != 0.0f,
         modifier = modifier
             .animateContentSize()
     ) {
