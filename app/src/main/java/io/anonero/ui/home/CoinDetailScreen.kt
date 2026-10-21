@@ -113,8 +113,11 @@ fun CoinDetailScreen(
     val walletState = koinInject<WalletState>()
     val coins by walletState.coins.collectAsState(arrayListOf())
     val hideAmounts by walletState.hideAmountsFlow.collectAsState(false)
-    val coinIndex = coins.indexOfFirst { it.key == coinKey }
-    val coin = coins.getOrNull(coinIndex)
+    // The list hides spent outputs and numbers only the remaining visible entries.
+    // Use the same filtered order for numbering while resolving details by stable output key.
+    val visibleCoins = coins.filter { !it.spent }
+    val coin = coins.firstOrNull { it.key == coinKey }
+    val coinIndex = visibleCoins.indexOfFirst { it.key == coinKey }
     val scope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
     var busy by remember { mutableStateOf(false) }
