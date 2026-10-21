@@ -44,8 +44,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -733,26 +731,7 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
         }
     ) {
 
-        val walletState = koinInject<WalletState>()
-        val refreshState = rememberPullToRefreshState()
-        PullToRefreshBox(
-            isRefreshing = false,
-            state = refreshState,
-            modifier = Modifier.padding(it).fillMaxSize(),
-            onRefresh = {
-                scope.launch {
-                    try {
-                        walletState.refresh()
-                    } finally {
-                        // Release the pull gesture after every refresh attempt without
-                        // changing the existing node-page layout or adding an indicator.
-                        refreshState.animateToHidden()
-                    }
-                }
-            },
-            indicator = {}
-        ) {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(modifier = Modifier.padding(it)) {
             if (activeNode != null)
                 item(key = activeNode?.toNodeString() ?: "active") {
                     NodeListItem(
@@ -823,7 +802,6 @@ fun NodeSettings(onBackPress: () -> Unit = {}, navigateTo: (param: Any) -> Unit 
                             onEdit = { editingNode = it })
                     }
                 }
-            }
         }
     }
     }
