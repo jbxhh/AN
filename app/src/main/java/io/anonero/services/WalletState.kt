@@ -689,6 +689,33 @@ class WalletState(private val prefs: SharedPreferences) {
             Timber.tag(TAG).w(e, "Unable to read local wallet balance during startup")
         }
 
+        // Transaction history is stored with the local wallet and should be available
+        // as soon as the wallet file is opened. Publish it before daemon/Tor initialization
+        // so reopening the app does not require a manual pull-to-refresh to show history.
+        // A transient empty native snapshot must not erase records already shown for this
+        // same wallet handle.
+        val previousTransactions = _transactions.value
+        try {
+            wallet.refreshHistory()
+            val localTransactions = (wallet.history?.all?.sortedWith(comparator = { o1, o2 ->
+                o2.timestamp.compareTo(o1.timestamp)
+            }) ?: emptyList()).fastDistinctBy { it.getListKey() }
+            if (localTransactions.isEmpty() && previousTransactions.isNotEmpty()) {
+                Timber.tag(TAG).w(
+                    "Ignoring transient empty startup history snapshot; preserving %d known transactions",
+                    previousTransactions.size
+                )
+            } else {
+                _transactions.value = localTransactions
+            }
+            Timber.tag(TAG).i(
+                "Published local startup transaction history: transactions=%d",
+                _transactions.value.size
+            )
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "Unable to read local transaction history during startup")
+        }
+
         var address = try {
             // Subaddresses are derived locally from the wallet keys; a daemon connection
             // is not required to read an already-generated receive subaddress.
