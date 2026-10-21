@@ -54,6 +54,9 @@ class WalletState(private val prefs: SharedPreferences) {
     private var _blockUpdates = AtomicBoolean(false)
     val hideAmountsFlow = MutableStateFlow(false)
     private val _isLoading = MutableStateFlow(false)
+    // Keep the Home progress area active from an explicit pull until real scan progress
+    // takes over, or the node confirms that the wallet is already up to date.
+    private val _manualRefreshInProgress = MutableStateFlow(false)
     private var _isSyncing = AtomicBoolean(false)
     private val _backgroundSync = MutableStateFlow(false)
     // UI lock visibility is separate from the native background-sync operation state.
@@ -116,6 +119,7 @@ class WalletState(private val prefs: SharedPreferences) {
     val walletHeight: Flow<Long> = _walletHeight
     val unLockedBalance: Flow<Long?> = _unLockedBalance
     val isLoading: Flow<Boolean> = _isLoading
+    val manualRefreshInProgress: Flow<Boolean> = _manualRefreshInProgress
     val isSyncing get():Boolean = _isSyncing.get()
     val backgroundSync get():Boolean = _backgroundSync.value
     /** True from the user's reset click until scan completion; secure wipe overrides it. */
@@ -201,6 +205,7 @@ class WalletState(private val prefs: SharedPreferences) {
         _connectionStatus.value = null
         _previousConnectionStatus.set(null)
         _isLoading.value = false
+        _manualRefreshInProgress.value = false
         _isSyncing.set(false)
         _backgroundSync.value = false
         _pinLockVisible.value = false
@@ -1689,6 +1694,9 @@ class WalletState(private val prefs: SharedPreferences) {
     }
 
     fun syncUpdate(syncProgress: SyncProgress) {
+        // The native scan's real progress (including a confirmed no-backlog result)
+        // takes ownership of the progress area from the manual-refresh indicator.
+        _manualRefreshInProgress.value = false
         val progress = syncProgress.progress
         val done = syncProgress.left <= 0L
         if (done) {
@@ -1704,6 +1712,7 @@ class WalletState(private val prefs: SharedPreferences) {
     fun clearSyncProgress() {
         _syncProgress.value = null
         _isSyncing.set(false)
+        _manualRefreshInProgress.value = false
     }
 
     /** Clear process-wide UI state once the wallet file has been safely deleted. */
@@ -1713,6 +1722,7 @@ class WalletState(private val prefs: SharedPreferences) {
         refreshDeferredDuringResync.set(false)
         _blockUpdates.set(false)
         _isLoading.value = false
+        _manualRefreshInProgress.value = false
         _backgroundSync.value = false
         _pinLockVisible.value = false
         _transactions.value = emptyList()
@@ -1917,7 +1927,8 @@ class WalletState(private val prefs: SharedPreferences) {
         }
     }
 
-    suspend fun refresh() {
+    suspend fun refresh(manual: Boolean = false) {
+        if (manual) _manualRefreshInProgress.value = false
         if (walletWipeInProgress.get()) return
         if (isResyncPriorityActive) {
             // Keep explicit reset scanning exclusive; replay a manual refresh after it finishes.
@@ -1928,23 +1939,45 @@ class WalletState(private val prefs: SharedPreferences) {
         val wallet = getWallet
         if (wallet == null || !wallet.isInitialized || !beginOrdinaryWalletOperation()) return
 
+        if (manual) _manualRefreshInProgress.value = true
         setLoading(true)
         try {
             withContext(Dispatchers.IO) {
                 if (walletWipeInProgress.get() || isResyncPriorityActive) return@withContext
                 val connected = wallet.fullStatus.connectionStatus ==
                     Wallet.ConnectionStatus.ConnectionStatus_Connected
-                if (!connected) return@withContext
+                if (!connected) {
+                    // Leave the manual indicator active while the normal connection lifecycle
+                    // reconnects the daemon. setConnectionStatus() resumes native refresh.
+                    Timber.tag(TAG).i("Manual refresh waiting for daemon connection")
+                    return@withContext
+                }
 
                 val daemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
                 if (daemonHeight > 0L) updateBlockHeights(wallet, daemonHeight)
+
+                if (manual) {
+                    val scanAlreadyActive = _syncProgress.value?.left?.let { it > 0L } == true ||
+                        (_scanTracking.get() && !wallet.isSynchronized)
+                    if (!scanAlreadyActive) {
+                        // A manual pull must resume the native refresh worker as well as
+                        // refresh the cached history; history-only refresh can finish without
+                        // ever starting a scan for blocks received while the app was idle.
+                        wallet.startRefresh()
+                    }
+                }
+
                 wallet.refreshHistory()
                 update()
 
                 val latestDaemonHeight = wallet.getDaemonBlockChainHeight().coerceAtLeast(0L)
-                if (latestDaemonHeight > 0L) updateBlockHeights(wallet, latestDaemonHeight)
+                if (latestDaemonHeight > 0L) {
+                    updateBlockHeights(wallet, latestDaemonHeight)
+                    if (manual) updateSyncProgressFromWallet(wallet, latestDaemonHeight)
+                }
             }
         } catch (e: Exception) {
+            if (manual) _manualRefreshInProgress.value = false
             Timber.tag(TAG).e(e, "Wallet data refresh failed")
         } finally {
             if (!isResyncPriorityActive && !walletWipeInProgress.get()) {
