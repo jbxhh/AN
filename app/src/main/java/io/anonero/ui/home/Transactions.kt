@@ -467,8 +467,8 @@ fun TransactionScreen(
     var syncBacklogSeen by remember { mutableStateOf(false) }
     var initialHistoryRefreshDone by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState()
-    val syncProgressVisible = showIndefiniteLoading ||
-        syncProgress?.left?.let { it > 0L } == true
+    val blockSyncProgressVisible = syncProgress?.left?.let { it > 0L } == true
+    var manualPullRefreshInProgress by remember { mutableStateOf(false) }
     val view = LocalView.current
     val torConnected by torService.socksFlow.asLiveData().observeAsState(torService.socks != null)
     val useTor = anonPrefs.getBoolean(WALLET_USE_TOR, true)
@@ -534,10 +534,10 @@ fun TransactionScreen(
         refreshState.snapTo(0f)
     }
 
-    // If block sync starts while the user is pulling, clear the pull state immediately.
-    // Otherwise the custom indicator can remain visible over the wallet sync indicator.
-    LaunchedEffect(syncProgressVisible) {
-        if (syncProgressVisible) refreshState.snapTo(0f)
+    // Block-sync progress takes priority over the manual pull indicator.
+    // Clear any partial pull distance when a real scan begins to avoid stacked bars.
+    LaunchedEffect(blockSyncProgressVisible) {
+        if (blockSyncProgressVisible) refreshState.snapTo(0f)
     }
 
     Scaffold(
@@ -693,50 +693,21 @@ fun TransactionScreen(
                 .hazeSource(
                     state = hazeState,
                 ),
-                           onRefresh = {
+            onRefresh = {
                 scope.launch {
+                    manualPullRefreshInProgress = true
                     try {
                         view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                         walletState.refresh()
                     } finally {
-                        // Always release the pull gesture, including when refresh exits
-                        // early because the wallet is disconnected or reset has priority.
                         refreshState.animateToHidden()
+                        manualPullRefreshInProgress = false
                     }
                 }
             },
-            indicator = {
-                // Keep the pull indicator in the PullToRefreshBox overlay rather than
-                // inside the LazyColumn. Its vertical position follows the live drag
-                // distance, so it tracks the finger instead of waiting for list layout
-                // and visibility animations to catch up.
-                val pullDistance = refreshState.distanceFraction.coerceAtLeast(0f)
-                if (!syncProgressVisible && pullDistance > 0f) {
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .offset(y = (pullDistance * 56f).dp)
-                            .fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        LinearProgressIndicator(
-                            progress = { pullDistance.coerceIn(0f, 1f) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp),
-                            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                        )
-                        if (pullDistance > 0.2f && !showIndefiniteLoading) {
-                            Text(
-                                "拉动开始刷新",
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp)
-                            )
-                        }
-                    }
-                }
-            }
+            // Match upstream: render pull progress in the list's existing progress area,
+            // not as a separately offset overlay that follows a different animation.
+            indicator = {}
         ) {
                LazyColumn(
                 contentPadding = contentPadding,
@@ -744,15 +715,24 @@ fun TransactionScreen(
             ) {
                 stickyHeader(key = "progress") {
                     Column {
+                        WalletProgressIndicator(
+                            refreshIndicatorProgress = if (
+                                manualPullRefreshInProgress || blockSyncProgressVisible
+                            ) 0f else refreshState.distanceFraction
+                        )
                         AnimatedVisibility(
-                            visible = showIndefiniteLoading ||
-                                syncProgress?.left?.let { it > 0L } == true,
-                            enter = androidx.compose.animation.fadeIn(),
-                            exit = androidx.compose.animation.fadeOut(
-                                animationSpec = androidx.compose.animation.core.tween(300)
-                            )
+                            visible = !manualPullRefreshInProgress &&
+                                !blockSyncProgressVisible &&
+                                refreshState.distanceFraction > 0.2f &&
+                                !showIndefiniteLoading,
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            WalletProgressIndicator()
+                            Text(
+                                "拉动开始刷新",
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp)
+                            )
                         }
                     }
                 }
