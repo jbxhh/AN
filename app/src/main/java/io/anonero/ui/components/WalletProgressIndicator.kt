@@ -64,6 +64,7 @@ fun WalletProgressIndicator(modifier: Modifier = Modifier, refreshIndicatorProgr
     val walletState: WalletState by inject(WalletState::class.java)
 
     val showIndefiniteLoading by walletState.isLoading.asLiveData().observeAsState(false)
+    val manualRefreshInProgress by walletState.manualRefreshInProgress.asLiveData().observeAsState(false)
     val syncProgress by walletState.syncProgress.asLiveData().observeAsState(null)
     val connectionStatus by walletState.connectionStatus.asLiveData().observeAsState(null)
     val isConnected = connectionStatus == Wallet.ConnectionStatus.ConnectionStatus_Connected
@@ -71,7 +72,7 @@ fun WalletProgressIndicator(modifier: Modifier = Modifier, refreshIndicatorProgr
     val isSyncing = syncProgress?.left?.let { it > 0L } == true
 
     AnimatedVisibility(
-        showIndefiniteLoading || isSyncing || refreshIndicatorProgress != 0.0f,
+        showIndefiniteLoading || manualRefreshInProgress || isSyncing || refreshIndicatorProgress != 0.0f,
         modifier = modifier
             .animateContentSize()
     ) {
@@ -105,7 +106,13 @@ fun WalletProgressIndicator(modifier: Modifier = Modifier, refreshIndicatorProgr
                     color = MaterialTheme.colorScheme.primary
                 )
             }
-        } else if (refreshIndicatorProgress != 0.0f && isConnected && isNetworkConnected) {
+        } else if (
+            refreshIndicatorProgress != 0.0f &&
+            !manualRefreshInProgress &&
+            !showIndefiniteLoading &&
+            isConnected &&
+            isNetworkConnected
+        ) {
             LinearProgressIndicator(
                 modifier = Modifier
                     .fillMaxWidth()
