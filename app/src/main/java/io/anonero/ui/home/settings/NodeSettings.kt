@@ -373,13 +373,11 @@ class NodeSettingsViewModel(
                         (walletState.isWalletScanActive || continueActiveResync) &&
                             (!forceFreshScan || walletState.isForcedRestoreScanStarted)
 
-                    // Interrupt the in-flight native RPC/refresh once, then wait for the
-                    // current cycle to unwind before changing daemon/proxy. A plain pause only
-                    // prevents the next cycle and can leave this switch blocked behind a slow
-                    // request to the old node.
-                    runCatching { wallet.stop() }
-                        .onFailure { Timber.tag(TAG).w(it, "Unable to interrupt current refresh before node switch") }
-                    wallet.pauseRefreshAndWait()
+                    // Match Q's live node-switch sequence: pause the next refresh cycle
+                    // without waiting for the old node's current RPC to finish. The blocking
+                    // pauseRefreshAndWait() barrier made manual switching appear disabled while
+                    // a slow daemon request or a long scan callback was in flight.
+                    wallet.pauseRefresh()
                     refreshPausedForConnect = true
                     check(canContinueNodeConnect(allowActiveResyncScan)) {
                         "区块重置准备优先执行，节点连接已让路"
