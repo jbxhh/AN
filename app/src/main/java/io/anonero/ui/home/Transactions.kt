@@ -482,6 +482,9 @@ fun TransactionScreen(
     LaunchedEffect(walletState) {
         withContext(Dispatchers.IO) {
             walletState.publishWalletSnapshot()
+            // Re-publish balance, history, and status when Home is re-entered even if
+            // the wallet service is already running and skips its initialization path.
+            walletState.update()
         }
     }
 
