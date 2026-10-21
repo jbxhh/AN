@@ -429,22 +429,16 @@ class NodeSettingsViewModel(
                             )
                         }
                         Timber.tag(TAG).w(
-                            "wallet.init returned false while switching to %s:%d; resuming the existing wallet refresh",
+                            "wallet.init returned false while switching to %s:%d; retaining the already-open wallet and continuing refresh",
                             node.host,
                             node.rpcPort
                         )
-                        // init() updates the Kotlin flag from its return value. The native
-                        // wallet object was already open, so retain the existing handle state
-                        // and let refresh report whether the selected daemon is reachable.
+                        // init() mirrors its return value into this Kotlin flag. For an
+                        // already-open wallet, a reconnect-time false result must not make
+                        // the remaining scan/refresh flow treat the native handle as closed.
+                        // Match the known-working node-switch path and let callbacks decide
+                        // whether the newly selected daemon is reachable.
                         wallet.isInitialized = true
-                        wallet.setTrustedDaemon(true)
-                        wallet.startRefresh()
-                        refreshPausedForConnect = false
-                        walletHandler.markWalletServiceStarted(wallet)
-                        if (!walletState.checkSyncProgressOnStartup(wallet)) {
-                            walletState.setLoading(false)
-                        }
-                        return@withWalletInitializationLock
                     }
 
                     if (forceFreshScan && selectedRestoreHeightBeforeInit != null) {
