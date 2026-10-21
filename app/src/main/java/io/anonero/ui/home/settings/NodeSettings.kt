@@ -412,14 +412,39 @@ class NodeSettingsViewModel(
                     }
                     val restartExistingScan = scanStartHeightBeforeConnect != null
 
+                    // A daemon switch can make initJ() return false transiently even
+                    // though this is an already-open native wallet. Do not leave its refresh
+                    // worker paused in that case: preserve the existing handle and resume the
+                    // native connection callbacks. Only treat it as a hard init failure if no
+                    // open handle existed before this reconnect.
+                    val hadInitializedWallet = wallet.isInitialized
                     val initialized = wallet.init(0)
                     check(canContinueNodeConnect(allowActiveResyncScan)) {
                         "区块重置准备优先执行，节点连接已让路"
                     }
                     if (!initialized || !wallet.isInitialized) {
-                        throw IllegalStateException(
-                            wallet.status.errorString.ifBlank { "钱包初始化失败" }
+                        if (!hadInitializedWallet) {
+                            throw IllegalStateException(
+                                wallet.status.errorString.ifBlank { "钱包初始化失败" }
+                            )
+                        }
+                        Timber.tag(TAG).w(
+                            "wallet.init returned false while switching to %s:%d; resuming the existing wallet refresh",
+                            node.host,
+                            node.rpcPort
                         )
+                        // init() updates the Kotlin flag from its return value. The native
+                        // wallet object was already open, so retain the existing handle state
+                        // and let refresh report whether the selected daemon is reachable.
+                        wallet.isInitialized = true
+                        wallet.setTrustedDaemon(true)
+                        wallet.startRefresh()
+                        refreshPausedForConnect = false
+                        walletHandler.markWalletServiceStarted(wallet)
+                        if (!walletState.checkSyncProgressOnStartup(wallet)) {
+                            walletState.setLoading(false)
+                        }
+                        return@withWalletInitializationLock
                     }
 
                     if (forceFreshScan && selectedRestoreHeightBeforeInit != null) {
