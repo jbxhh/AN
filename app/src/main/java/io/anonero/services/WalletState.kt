@@ -1989,6 +1989,13 @@ class WalletState(private val prefs: SharedPreferences) {
                         _syncProgress.value == null
                 }.getOrDefault(false)
                 setLoading(waitingForScanProgress)
+                // An ordinary refresh of an already-synchronized wallet may not emit
+                // another native sync callback (for example, when the daemon height is
+                // temporarily unavailable). Do not leave the manual spinner latched on
+                // after the refresh operation has returned unless a real scan is pending.
+                if (manual && !waitingForScanProgress && _syncProgress.value == null) {
+                    _manualRefreshInProgress.value = false
+                }
             }
             endOrdinaryWalletOperation()
         }
