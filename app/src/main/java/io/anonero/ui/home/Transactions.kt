@@ -643,7 +643,7 @@ fun TransactionScreen(
                                         scope.launch {
                                             view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
 
-                                            walletState.refresh()
+                                            walletState.refresh(manual = true)
 
                                         }
                                     }
@@ -701,7 +701,7 @@ fun TransactionScreen(
                     manualPullRefreshInProgress = true
                     try {
                         view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                        walletState.refresh()
+                        walletState.refresh(manual = true)
                     } finally {
                         refreshState.animateToHidden()
                         manualPullRefreshInProgress = false
