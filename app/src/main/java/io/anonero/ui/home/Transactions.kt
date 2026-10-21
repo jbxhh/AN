@@ -720,7 +720,7 @@ fun TransactionScreen(
                     Column {
                         WalletProgressIndicator(
                             refreshIndicatorProgress = if (
-                                manualPullRefreshInProgress || blockSyncProgressVisible
+                                blockSyncProgressVisible
                             ) 0f else refreshState.distanceFraction
                         )
                         AnimatedVisibility(
