@@ -77,6 +77,7 @@ import io.anonero.AnonConfig
 import io.anonero.R
 import io.anonero.model.Wallet
 import io.anonero.model.WalletManager
+import io.anonero.model.node.DaemonInfo
 import io.anonero.model.node.Node
 import io.anonero.model.node.NodeFields
 import io.anonero.services.AnonWalletHandler
@@ -260,8 +261,7 @@ class NodeSettingsViewModel(
     suspend fun connect(node: Node) {
         val requestId = nodeRequestGeneration.incrementAndGet()
         requestedNode.value = node
-        // Publish immediate visual feedback; all JNI and blocking coordination below stays on IO.
-        walletState.setLoading(true)
+        // Publish immediate selection feedback; native work stays on IO below.
         uriValidationError.postValue(null)
 
         // Wait only while reset setup owns the native wallet. After the native scan
@@ -282,7 +282,6 @@ class NodeSettingsViewModel(
         val allowActiveResyncScan = walletState.canRetargetNodeDuringResync
         if (!walletHandler.beginManualNodeConnection(allowActiveResyncScan)) {
             if (nodeRequestGeneration.get() == requestId) requestedNode.value = null
-            if (!walletState.isWalletWipeInProgress) walletState.setLoading(false)
             uriValidationError.postValue(
                 if (walletState.isWalletWipeInProgress) {
                     "钱包正在安全删除，节点连接已取消"
@@ -292,6 +291,16 @@ class NodeSettingsViewModel(
             )
             return
         }
+        // State-only publication: immediately reflect the requested endpoint as disconnected
+        // until the native wallet confirms a real connection.
+        walletState.updateDaemon(
+            DaemonInfo(
+                daemon = "${node.host}:${node.rpcPort}",
+                connectionStatus = Wallet.ConnectionStatus.ConnectionStatus_Disconnected,
+                daemonHeight = 0L
+            )
+        )
+        walletState.setLoading(true)
         var refreshPausedForConnect = false
         // Suppress automatic native reconnects from the wallet listener while this
         // explicit request waits for Tor and serializes wallet initialization.
@@ -361,10 +370,12 @@ class NodeSettingsViewModel(
                         check(canContinueNodeConnect(allowActiveResyncScan)) {
                             "区块重置优先执行，节点连接已让路"
                         }
-                        wallet.startRefresh()
-                        refreshPausedForConnect = false
+                        // Read wallet state while refresh is still paused. Do not call
+                        // native status/balance accessors concurrently with a restarted refresh.
                         walletState.update()
                         walletState.setLoading(!wallet.isSynchronized && !walletState.isSyncing)
+                        wallet.startRefresh()
+                        refreshPausedForConnect = false
                         // The refreshed callback from this explicit connect can be suppressed
                         // while the request owns the node-switch gate. Poll the live daemon
                         // height after restarting refresh so scan progress does not wait for
