@@ -107,6 +107,7 @@ import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.java.KoinJavaComponent.inject
 import timber.log.Timber
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.time.Duration.Companion.seconds
 
 private const val TAG = "NodeSettings"
@@ -123,17 +124,21 @@ class NodeSettingsViewModel(
     private val uriValidationError = MutableLiveData<String?>()
     private val _nodes = MutableStateFlow<List<Node>>(emptyList())
     private val daemonInfo = walletState.daemonInfo
+    // Keeps the user's latest choice visible while native wallet work is serialized off the UI thread.
+    private val requestedNode = MutableStateFlow<Node?>(null)
+    private val nodeRequestGeneration = AtomicLong(0L)
     val nodes: StateFlow<List<Node>> = _nodes
 
 
-    val activeNode: StateFlow<Node?> = combine(nodes, daemonInfo) { nodeList, daemonInfo ->
-        if (daemonInfo?.daemon == null) {
-            return@combine null
-        }
-        val uri = "http://${daemonInfo.daemon}".toUri()
-        nodeList.find { node ->
-            node.host == uri.host &&
-                    node.rpcPort == uri.port
+    val activeNode: StateFlow<Node?> = combine(nodes, daemonInfo, requestedNode) { nodeList, daemonInfo, requestedNode ->
+        requestedNode ?: if (daemonInfo?.daemon == null) {
+            null
+        } else {
+            val uri = "http://${daemonInfo.daemon}".toUri()
+            nodeList.find { node ->
+                node.host == uri.host &&
+                        node.rpcPort == uri.port
+            }
         }
     }.stateIn(
         scope = viewModelScope,
@@ -253,6 +258,10 @@ class NodeSettingsViewModel(
     }
 
     suspend fun connect(node: Node) {
+        val requestId = nodeRequestGeneration.incrementAndGet()
+        requestedNode.value = node
+        // Publish immediate visual feedback; all JNI and blocking coordination below stays on IO.
+        walletState.setLoading(true)
         uriValidationError.postValue(null)
 
         // Wait only while reset setup owns the native wallet. After the native scan
@@ -265,12 +274,15 @@ class NodeSettingsViewModel(
             delay(50L)
         }
         if (walletState.isWalletWipeInProgress) {
+            if (nodeRequestGeneration.get() == requestId) requestedNode.value = null
             uriValidationError.postValue("钱包正在安全删除，节点连接已取消")
             return
         }
 
         val allowActiveResyncScan = walletState.canRetargetNodeDuringResync
         if (!walletHandler.beginManualNodeConnection(allowActiveResyncScan)) {
+            if (nodeRequestGeneration.get() == requestId) requestedNode.value = null
+            if (!walletState.isWalletWipeInProgress) walletState.setLoading(false)
             uriValidationError.postValue(
                 if (walletState.isWalletWipeInProgress) {
                     "钱包正在安全删除，节点连接已取消"
@@ -285,24 +297,11 @@ class NodeSettingsViewModel(
         // explicit request waits for Tor and serializes wallet initialization.
         try {
             withContext(Dispatchers.IO) {
+            if (requestId != nodeRequestGeneration.get()) return@withContext
             check(canContinueNodeConnect(allowActiveResyncScan)) {
                 "区块重置优先执行，节点连接已让路"
             }
-            val editor = prefs.edit()
-            try {
-                check(canContinueNodeConnect(allowActiveResyncScan)) {
-                    "区块重置优先执行，节点连接已让路"
-                }
-                editor.putString(NodeFields.RPC_HOST.value, node.host)
-                editor.putInt(NodeFields.RPC_PORT.value, node.rpcPort)
-                editor.putBoolean(NodeFields.RPC_SSL.value, node.usesSsl)
-                editor.putString(NodeFields.RPC_USERNAME.value, node.username)
-                editor.putString(NodeFields.RPC_PASSWORD.value, node.password)
-                editor.apply()
-
-                walletState.setLoading(true)
-
-                val useTor = prefs.getBoolean(WALLET_USE_TOR, true)
+            val useTor = prefs.getBoolean(WALLET_USE_TOR, true)
                 val proxyHost = prefs.getString(WALLET_PROXY, "")
                 val proxyPort = prefs.getInt(WALLET_PROXY_PORT, -1)
 
@@ -321,16 +320,32 @@ class NodeSettingsViewModel(
                 }
 
                 val nodeSwitch = nodeSwitch@{
+                    if (requestId != nodeRequestGeneration.get()) return@nodeSwitch
                     check(canContinueNodeConnect(allowActiveResyncScan)) {
                         "区块重置优先执行，节点连接已让路"
+                    }
+                    // Persist only the request that actually reaches the serialized native operation.
+                    prefs.edit {
+                        putString(NodeFields.RPC_HOST.value, node.host)
+                        putInt(NodeFields.RPC_PORT.value, node.rpcPort)
+                        putBoolean(NodeFields.RPC_SSL.value, node.usesSsl)
+                        putString(NodeFields.RPC_USERNAME.value, node.username)
+                        putString(NodeFields.RPC_PASSWORD.value, node.password)
                     }
                     val wallet = WalletManager.instance?.wallet
                         ?: throw IllegalStateException("钱包未打开")
                     val walletManager = WalletManager.instance
+
+                    // JNI wallet status reads are not safe to race the refresh/scanner thread.
+                    // This barrier runs on IO, so the screen keeps responding while native calls drain.
+                    if (wallet.isInitialized) wallet.pauseRefreshAndWait() else wallet.pauseRefresh()
+                    refreshPausedForConnect = true
+                    check(canContinueNodeConnect(allowActiveResyncScan)) {
+                        "区块重置优先执行，节点连接已让路"
+                    }
+
                     // Reuse the current wallet only when the selected daemon is
-                    // actually connected. A restored wallet can be initialized while its
-                    // daemon is disconnected; treating that as a successful same-node
-                    // connection skips setDaemon/init and leaves manual reconnect ineffective.
+                    // actually connected. Query fullStatus only after the refresh barrier above.
                     val sameNodeAlreadyInitialized = wallet.isInitialized &&
                         wallet.fullStatus.connectionStatus ==
                             Wallet.ConnectionStatus.ConnectionStatus_Connected &&
@@ -347,6 +362,7 @@ class NodeSettingsViewModel(
                             "区块重置优先执行，节点连接已让路"
                         }
                         wallet.startRefresh()
+                        refreshPausedForConnect = false
                         walletState.update()
                         walletState.setLoading(!wallet.isSynchronized && !walletState.isSyncing)
                         // The refreshed callback from this explicit connect can be suppressed
@@ -372,15 +388,8 @@ class NodeSettingsViewModel(
                         (walletState.isWalletScanActive || continueActiveResync) &&
                             (!forceFreshScan || walletState.isForcedRestoreScanStarted)
 
-                    // Match Q's live node-switch sequence: pause the next refresh cycle
-                    // without waiting for the old node's current RPC to finish. The blocking
-                    // pauseRefreshAndWait() barrier made manual switching appear disabled while
-                    // a slow daemon request or a long scan callback was in flight.
-                    wallet.pauseRefresh()
-                    refreshPausedForConnect = true
-                    check(canContinueNodeConnect(allowActiveResyncScan)) {
-                        "区块重置准备优先执行，节点连接已让路"
-                    }
+                    // Refresh was drained before the first native status read above.
+                    // Keep the pause in effect through daemon replacement and init.
                     val resolvedProxyAddress = proxyAddress
                     if (resolvedProxyAddress != null) {
                         WalletManager.instance?.setProxy(resolvedProxyAddress)
@@ -523,17 +532,13 @@ class NodeSettingsViewModel(
                     walletHandler.markWalletServiceStarted(wallet)
                 }
 
-                // During an active scan, startup may still hold the initialization mutex
-                // while reading history/state. Upstream permits manual daemon switching
-                // during refresh; do not make the user wait for those post-init reads.
-                val currentWallet = WalletManager.instance?.wallet
-                val switchingDuringScan = currentWallet?.isInitialized == true &&
-                    (walletState.isWalletScanActive || walletState.isSyncing ||
-                        (allowActiveResyncScan && walletState.canRetargetNodeDuringResync))
-                if (switchingDuringScan) {
-                    nodeSwitch()
-                } else {
-                    walletHandler.withWalletInitializationLock { nodeSwitch() }
+                // Always serialize native wallet access. The selected row and progress
+                // indicator already update immediately; a newer queued tap supersedes an
+                // older request that has not yet entered the native operation.
+                walletHandler.withWalletInitializationLock {
+                    if (requestId == nodeRequestGeneration.get()) {
+                        nodeSwitch()
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -562,6 +567,9 @@ class NodeSettingsViewModel(
             }
             }
         } finally {
+            if (nodeRequestGeneration.get() == requestId) {
+                requestedNode.value = null
+            }
             walletHandler.endManualNodeConnection()
         }
     }
