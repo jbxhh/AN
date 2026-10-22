@@ -306,6 +306,7 @@ class NodeSettingsViewModel(
         // explicit request waits for Tor and serializes wallet initialization.
         try {
             withContext(Dispatchers.IO) {
+            try {
             if (requestId != nodeRequestGeneration.get()) return@withContext
             check(canContinueNodeConnect(allowActiveResyncScan)) {
                 "区块重置优先执行，节点连接已让路"
