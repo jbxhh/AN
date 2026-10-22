@@ -16,7 +16,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.sync.Mutex
@@ -54,8 +53,6 @@ class AnonWalletHandler(
     private val serviceStartMutex = Mutex()
     private val walletInitializationMutex = Mutex()
     private val manualNodeConnectionRequests = AtomicInteger(0)
-    // Supersedes older deferred proxy requests when the user changes settings again.
-    private val pendingProxyApplySequence = AtomicInteger(0)
     @Volatile private var serviceStartedWallet: Wallet? = null
 
     val scope get() = _scope
@@ -593,42 +590,10 @@ class AnonWalletHandler(
             }
         }
 
-        // Each accepted request supersedes any older proxy application waiting
-        // for the rescan preflight to finish.
-        val requestVersion = pendingProxyApplySequence.incrementAndGet()
-        if (!canRunNodeChange(allowActiveResyncScan)) {
-            Timber.tag(TAG).i("Proxy settings saved; native application deferred while wallet rescan has priority")
-            if (allowActiveResyncScan && !secureWipePriorityActive()) {
-                scheduleDeferredProxyApply(requestVersion)
-            }
-            return
-        }
-
+        // Proxy changes are applied immediately, including while a wallet rescan is
+        // active. Unlike changing the daemon, this does not restart or retarget the scan.
+        // Secure deletion remains the only operation that blocks this native change.
         applyPersistedProxyToNative()
-    }
-
-    private fun scheduleDeferredProxyApply(requestVersion: Int) {
-        _scope.launch {
-            while (pendingProxyApplySequence.get() == requestVersion) {
-                if (secureWipePriorityActive()) return@launch
-
-                if (canRunNodeChange(allowActiveResyncScan = true)) {
-                    var applied = false
-                    walletInitializationMutex.withLock {
-                        if (
-                            pendingProxyApplySequence.get() == requestVersion &&
-                            canRunNodeChange(allowActiveResyncScan = true)
-                        ) {
-                            applyPersistedProxyToNative()
-                            applied = true
-                        }
-                    }
-                    if (applied) return@launch
-                }
-
-                delay(100)
-            }
-        }
     }
 
     private fun applyPersistedProxyToNative() {
