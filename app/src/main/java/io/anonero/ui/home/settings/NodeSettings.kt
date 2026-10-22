@@ -320,7 +320,7 @@ class NodeSettingsViewModel(
                     proxyAddress = "${proxyHost}:${proxyPort}"
                 }
 
-                walletHandler.withWalletInitializationLock {
+                val nodeSwitch = nodeSwitch@{
                     check(canContinueNodeConnect(allowActiveResyncScan)) {
                         "区块重置优先执行，节点连接已让路"
                     }
@@ -355,7 +355,7 @@ class NodeSettingsViewModel(
                         // another native callback or a manual Refresh tap.
                         walletState.checkSyncProgressOnStartup(wallet)
                         walletHandler.markWalletServiceStarted(wallet)
-                        return@withWalletInitializationLock
+                        return@nodeSwitch
                     }
 
                     // Capture the existing scan before touching the native daemon. A node
@@ -521,6 +521,19 @@ class NodeSettingsViewModel(
                         }
                     }
                     walletHandler.markWalletServiceStarted(wallet)
+                }
+
+                // During an active scan, startup may still hold the initialization mutex
+                // while reading history/state. Upstream permits manual daemon switching
+                // during refresh; do not make the user wait for those post-init reads.
+                val currentWallet = WalletManager.instance?.wallet
+                val switchingDuringScan = currentWallet?.isInitialized == true &&
+                    (walletState.isWalletScanActive || walletState.isSyncing ||
+                        (allowActiveResyncScan && walletState.canRetargetNodeDuringResync))
+                if (switchingDuringScan) {
+                    nodeSwitch()
+                } else {
+                    walletHandler.withWalletInitializationLock { nodeSwitch() }
                 }
             } catch (e: CancellationException) {
                 throw e
