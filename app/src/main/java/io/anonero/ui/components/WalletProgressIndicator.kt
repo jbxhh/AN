@@ -71,11 +71,16 @@ fun WalletProgressIndicator(modifier: Modifier = Modifier, refreshIndicatorProgr
     val isNetworkConnected by networkConnected()
     val isSyncing = syncProgress?.left?.let { it > 0L } == true
 
-    // Disconnection alone is not a refresh operation. Show the indicator only while
-    // loading/scanning is actually pending, otherwise a finished wallet spins forever.
+    // During first entry a wallet may still be waiting for its initial daemon
+    // connection, before loading or numeric sync progress has been published.
+    // Show the waiting bar only while the wallet still needs synchronization; once
+    // a completed wallet disconnects, do not leave a permanent spinner on Home.
+    val showConnectionWaitIndicator =
+        (!isConnected || !isNetworkConnected) && walletState.hasPendingWalletSync
+
     AnimatedVisibility(
         showIndefiniteLoading || manualRefreshInProgress || isSyncing ||
-            refreshIndicatorProgress != 0.0f,
+            showConnectionWaitIndicator || refreshIndicatorProgress != 0.0f,
         modifier = modifier
             .animateContentSize()
     ) {
