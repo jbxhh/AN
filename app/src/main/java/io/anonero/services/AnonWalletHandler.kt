@@ -54,6 +54,8 @@ class AnonWalletHandler(
     private val serviceStartMutex = Mutex()
     private val walletInitializationMutex = Mutex()
     private val manualNodeConnectionRequests = AtomicInteger(0)
+    // Supersedes older deferred proxy requests when the user changes settings again.
+    private val pendingProxyApplySequence = AtomicInteger(0)
     @Volatile private var serviceStartedWallet: Wallet? = null
 
     val scope get() = _scope
@@ -591,26 +593,57 @@ class AnonWalletHandler(
             }
         }
 
+        // Each accepted request supersedes any older proxy application waiting
+        // for the rescan preflight to finish.
+        val requestVersion = pendingProxyApplySequence.incrementAndGet()
         if (!canRunNodeChange(allowActiveResyncScan)) {
             Timber.tag(TAG).i("Proxy settings saved; native application deferred while wallet rescan has priority")
+            if (allowActiveResyncScan && !secureWipePriorityActive()) {
+                scheduleDeferredProxyApply(requestVersion)
+            }
             return
         }
 
-        // Settings have been persisted; now update the active native wallet if allowed.
-        if (proxy == null && port == null) {
+        applyPersistedProxyToNative()
+    }
+
+    private fun scheduleDeferredProxyApply(requestVersion: Int) {
+        _scope.launch {
+            while (pendingProxyApplySequence.get() == requestVersion) {
+                if (secureWipePriorityActive()) return@launch
+
+                if (canRunNodeChange(allowActiveResyncScan = true)) {
+                    var applied = false
+                    walletInitializationMutex.withLock {
+                        if (
+                            pendingProxyApplySequence.get() == requestVersion &&
+                            canRunNodeChange(allowActiveResyncScan = true)
+                        ) {
+                            applyPersistedProxyToNative()
+                            applied = true
+                        }
+                    }
+                    if (applied) return@launch
+                }
+
+                delay(100)
+            }
+        }
+    }
+
+    private fun applyPersistedProxyToNative() {
+        if (secureWipePriorityActive()) return
+        val configuredProxy = getProxy()
+        if (configuredProxy == null) {
             WalletManager.instance?.setProxy("")
             WalletManager.instance?.wallet?.setProxy("")
-        } else {
-            val proxyHost = prefs.getString(WALLET_PROXY, "")
-            val proxyPort = prefs.getInt(WALLET_PROXY_PORT, -1)
-            val proxyStr = if (!proxyHost.isNullOrBlank() && proxyPort in 1..65535) {
-                "${proxyHost}:$proxyPort"
-            } else {
-                return
-            }
-            WalletManager.instance?.setProxy(proxyStr)
-            WalletManager.instance?.wallet?.setProxy(proxyStr)
+            return
         }
+
+        val proxyAddress = "${configuredProxy.first}:${configuredProxy.second}"
+        WalletManager.instance?.setProxy(proxyAddress)
+        WalletManager.instance?.wallet?.setProxy(proxyAddress)
+        Timber.tag(TAG).d("Applied proxy settings to native wallet: %s", proxyAddress)
     }
 
     fun getProxy(): Pair<String, Int>? {
