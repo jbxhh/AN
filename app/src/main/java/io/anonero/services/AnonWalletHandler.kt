@@ -212,32 +212,27 @@ class AnonWalletHandler(
         val wallet = WalletManager.instance?.wallet ?: return
         if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
         walletState.prepareScanPreferenceIdentity(wallet)
-        if (
-            serviceStartedWallet === wallet &&
-            wallet.isInitialized &&
-            wallet.fullStatus.connectionStatus ==
-                Wallet.ConnectionStatus.ConnectionStatus_Connected
-        ) {
-            // Home can request automatic startup again when its route is recreated.
-            // The service is already running in this state; restarting native refresh
-            // here causes an unnecessary refresh every time the user returns Home.
-            // Keep the initialization mutex so reset and secure wipe retain priority.
-            val alreadyRunning = walletInitializationMutex.withLock {
-                if (secureWipePriorityActive() || walletState.isResyncPriorityActive) {
-                    false
-                } else {
-                    serviceStartedWallet === wallet &&
-                        wallet.isInitialized &&
-                        wallet.fullStatus.connectionStatus ==
-                            Wallet.ConnectionStatus.ConnectionStatus_Connected
-                }
+        // Every native status read must use the same mutex as node switching and init.
+        // Do not probe fullStatus before taking the lock: a manual connect may have
+        // started between the request gate and this check.
+        val alreadyRunning = walletInitializationMutex.withLock {
+            if (secureWipePriorityActive() || walletState.isResyncPriorityActive) {
+                false
+            } else {
+                serviceStartedWallet === wallet &&
+                    wallet.isInitialized &&
+                    wallet.fullStatus.connectionStatus ==
+                        Wallet.ConnectionStatus.ConnectionStatus_Connected
             }
-            if (alreadyRunning) {
-                Timber.tag(TAG).d("Skipping duplicate automatic startup for the active wallet")
-                return
-            }
-            if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
         }
+        if (alreadyRunning) {
+            // Home can request automatic startup again when its route is recreated.
+            // The service is already running; restarting native refresh causes a
+            // redundant refresh every time the user returns Home.
+            Timber.tag(TAG).d("Skipping duplicate automatic startup for the active wallet")
+            return
+        }
+        if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
 
         handler = MoneroHandlerThread(wallet, walletState, this)
         wallet.setListener(handler)
