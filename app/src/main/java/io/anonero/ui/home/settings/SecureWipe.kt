@@ -139,24 +139,24 @@ class SecureWipeViewModel(
                         check(!walletDir.exists() || walletDir.deleteRecursively()) {
                             "Wallet files could not be deleted"
                         }
-                        delay(1_000)
+                        delay(800)
                         _wipeProgress.postValue(.48f)
                         _wipeProgressMessage.postValue("钱包数据已清除")
-                        delay(1_200)
+                        delay(1_000)
 
                         _wipeProgress.postValue(.58f)
                         _wipeProgressMessage.postValue("正在清除钱包设置")
                         check(sharedPreferences.edit().clear().commit()) {
                             "Unable to clear wallet PIN and passphrase preferences"
                         }
-                        delay(800)
+                        delay(600)
                         _wipeProgress.postValue(.68f)
                         _wipeProgressMessage.postValue("正在清除节点配置")
                         nodesRepository.clearAll()
-                        delay(1_200)
+                        delay(1_000)
                         _wipeProgress.postValue(.76f)
                         _wipeProgressMessage.postValue("正在清除日志")
-                        delay(1_000)
+                        delay(800)
                         logRepository.clear()
                         AnonConfig.disposeState()
                         _wipeProgress.postValue(.86f)
@@ -220,10 +220,10 @@ class SecureWipeViewModel(
                             // resume cleanup when no native wallet handle remains.
                             anonWalletHandler.wipe(passPhrase)
                             nativeWalletDeletionCompleted = true
-                            delay(1_000)
+                            delay(800)
                             _wipeProgress.postValue(.48f)
                             _wipeProgressMessage.postValue("钱包数据已清除")
-                            delay(1_200)
+                            delay(1_000)
                         }
 
                         _wipeProgress.postValue(.58f)
@@ -231,14 +231,14 @@ class SecureWipeViewModel(
                         check(sharedPreferences.edit().clear().commit()) {
                             "Unable to clear wallet PIN and passphrase preferences"
                         }
-                        delay(800)
+                        delay(600)
                         _wipeProgress.postValue(.68f)
                         _wipeProgressMessage.postValue("正在清除节点配置")
                         nodesRepository.clearAll()
-                        delay(1_200)
+                        delay(1_000)
                         _wipeProgress.postValue(.76f)
                         _wipeProgressMessage.postValue("正在清除日志")
-                        delay(1_000)
+                        delay(800)
                         logRepository.clear()
                         AnonConfig.disposeState()
                         _wipeProgress.postValue(.86f)
