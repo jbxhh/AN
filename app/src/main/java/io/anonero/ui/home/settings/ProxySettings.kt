@@ -94,8 +94,6 @@ import androidx.core.content.edit
 import androidx.core.net.toUri
 
 private const val TAG = "ProxySettings"
-private const val PROXY_DRAFT_ADDRESS = "proxy_draft_address"
-private const val PROXY_DRAFT_PORT = "proxy_draft_port"
 
 
 fun isNumericAddress(address: String): Boolean {
@@ -117,36 +115,11 @@ class ProxySettingsViewModel(
     private val addressValidationError = MutableLiveData<String?>()
     private val _proxyLoading = MutableLiveData(false)
     private val _proxyAddress = MutableLiveData<Pair<String, Int>?>()
-    private val _proxyDraft = MutableLiveData<Pair<String, String>?>(
-        if (anonPrefs.contains(PROXY_DRAFT_ADDRESS) || anonPrefs.contains(PROXY_DRAFT_PORT)) {
-            Pair(
-                anonPrefs.getString(PROXY_DRAFT_ADDRESS, "").orEmpty(),
-                anonPrefs.getString(PROXY_DRAFT_PORT, "").orEmpty()
-            )
-        } else null
-    )
     private val _useManualProxy = MutableLiveData(false)
     val validationError: LiveData<String?> get() = addressValidationError
     val proxy: LiveData<Pair<String, Int>?> get() = _proxyAddress
-    val proxyDraft: LiveData<Pair<String, String>?> get() = _proxyDraft
     val loading: LiveData<Boolean> get() = _proxyLoading
     val useManualProxy: LiveData<Boolean> get() = _useManualProxy
-
-    fun saveProxyDraft(address: String, portText: String) {
-        anonPrefs.edit {
-            putString(PROXY_DRAFT_ADDRESS, address)
-            putString(PROXY_DRAFT_PORT, portText)
-        }
-        _proxyDraft.value = Pair(address, portText)
-    }
-
-    private fun clearProxyDraft() {
-        anonPrefs.edit {
-            remove(PROXY_DRAFT_ADDRESS)
-            remove(PROXY_DRAFT_PORT)
-        }
-        _proxyDraft.postValue(null)
-    }
     val logs: LiveData<List<String>> = torService.torLogs
         .runningFold<String, List<String>>(emptyList()) { accumulator, value ->
             accumulator + value
@@ -176,12 +149,11 @@ class ProxySettingsViewModel(
                     addressValidationError.postValue("Invalid proxy address")
                     return@launch
                 }
-                if (port !in 1..65535) {
+                if (port > 65535) {
                     addressValidationError.postValue("Invalid port")
                     return@launch
                 }
                 anonWalletHandler.setProxy(proxy = proxy, port = port)
-                clearProxyDraft()
                 updateProxyState()
                 if (!anonPrefs.getBoolean(WALLET_USE_TOR, true)) {
                     torService.stop()
@@ -232,24 +204,16 @@ fun ProxySettings(onBackPress: () -> Unit = {}) {
     val proxy by proxyViewModel.proxy.observeAsState(null)
     val loading by proxyViewModel.loading.observeAsState(false)
     val useManualProxy by proxyViewModel.useManualProxy.observeAsState(false)
-    // Keep the raw text while editing; parsing to Int on every keystroke can reset
-    // the field/cursor during partial input (for example while replacing a port).
-    var proxyPortText by remember { mutableStateOf("") }
+    var proxyPort by remember { mutableStateOf<Int?>(null) }
     val labelColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState()
-    val proxyDraft by proxyViewModel.proxyDraft.observeAsState(null)
 
     val view = LocalView.current
-    LaunchedEffect(proxy, proxyDraft) {
-        // An unfinished edit takes precedence over the last applied proxy config.
-        // This lets users leave the screen during sync and return to their draft.
-        if (proxyDraft != null) {
-            proxyAddress = proxyDraft!!.first
-            proxyPortText = proxyDraft!!.second
-        } else if (proxy != null) {
-            proxyAddress = proxy!!.first
-            proxyPortText = proxy!!.second.toString()
+    LaunchedEffect(proxy) {
+        if (proxy != null) {
+            proxyAddress = proxy?.first.toString()
+            proxyPort = proxy?.second
         }
     }
 
@@ -380,7 +344,6 @@ fun ProxySettings(onBackPress: () -> Unit = {}) {
                     shape = MaterialTheme.shapes.medium,
                     onValueChange = { text ->
                         proxyAddress = text
-                        proxyViewModel.saveProxyDraft(text, proxyPortText)
                         try {
                             text.toUri()
                         } catch (_: Exception) {
@@ -404,17 +367,11 @@ fun ProxySettings(onBackPress: () -> Unit = {}) {
                 )
                 OutlinedTextField(
                     enabled = useManualProxy,
-                    value = proxyPortText,
+                    value = proxyPort?.toString() ?: "",
                     shape = MaterialTheme.shapes.medium,
-                    isError = proxyPortText.toIntOrNull()?.let { it in 1..65535 } != true,
-                    singleLine = true,
+                    isError = proxyPort == null,
                     onValueChange = { port ->
-                        // Accept transient empty input so the user can replace all digits.
-                        // Limit to digits and the largest valid TCP port width.
-                        if (port.length <= 5 && port.all { it.isDigit() }) {
-                            proxyPortText = port
-                            proxyViewModel.saveProxyDraft(proxyAddress, port)
-                        }
+                        proxyPort = port.toIntOrNull()
                     },
                     keyboardOptions = KeyboardOptions(
                         imeAction = ImeAction.Done,
@@ -432,14 +389,13 @@ fun ProxySettings(onBackPress: () -> Unit = {}) {
             }
             if (useManualProxy)
                 OutlinedButton(
-                    enabled = proxyAddress.isNotEmpty() &&
-                        proxyPortText.toIntOrNull()?.let { it in 1..65535 } == true,
+                    enabled = proxyAddress.isNotEmpty() && proxyPort != null,
                     onClick = {
                         if (loading) {
                             return@OutlinedButton
                         }
                         proxyViewModel.setProxy(
-                            proxyAddress, proxyPortText.toInt()
+                            proxyAddress, proxyPort!!
                         ).invokeOnCompletion { error ->
                             if (error == null) {
                                 scope.launch(Dispatchers.Main) {
