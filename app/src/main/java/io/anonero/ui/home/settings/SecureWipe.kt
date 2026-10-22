@@ -359,23 +359,36 @@ fun SecureWipe(
         if (progressMessage != null) {
             requestClearScreen.invoke(false)
         }
+    }
 
-        // Leave the app only after every secure-delete and cleanup step succeeded.
-        // This also covers deletion recovery after the app process was interrupted.
-        if (progressMessage == "钱包已成功安全删除") {
-            val completedActivity = activity
-            if (completedActivity != null &&
-                !completedActivity.isFinishing &&
-                !completedActivity.isDestroyed
-            ) {
+    // Keep the final success step visible: first let the progress animation reach
+    // 100%, then hold the completed state briefly before returning to the launcher.
+    LaunchedEffect(progressMessage, animatedProgress) {
+        if (progressMessage != "钱包已成功安全删除" || animatedProgress < 0.999f) {
+            return@LaunchedEffect
+        }
+
+        delay(1_500)
+        val completedActivity = activity
+        if (completedActivity != null &&
+            !completedActivity.isFinishing &&
+            !completedActivity.isDestroyed
+        ) {
+            runCatching {
                 completedActivity.startActivity(
                     Intent(Intent.ACTION_MAIN).apply {
                         addCategory(Intent.CATEGORY_HOME)
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                 )
-                completedActivity.finishAndRemoveTask()
+            }.onFailure {
+                Timber.tag(TAG).e(it, "Unable to open launcher after secure deletion")
             }
+
+            runCatching { completedActivity.finishAndRemoveTask() }
+                .onFailure {
+                    Timber.tag(TAG).e(it, "Unable to remove secure-delete task")
+                }
         }
     }
 
