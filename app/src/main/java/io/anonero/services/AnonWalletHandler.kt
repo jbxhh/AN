@@ -563,24 +563,47 @@ class AnonWalletHandler(
         port: Int?,
         allowActiveResyncScan: Boolean = false
     ) {
-        if (!canRunNodeChange(allowActiveResyncScan)) return
+        // Secure deletion has absolute priority: do not write settings or touch native state
+        // once the wipe request has been accepted.
+        if (secureWipePriorityActive()) {
+            Timber.tag(TAG).i("Ignoring proxy change while secure deletion is active")
+            return
+        }
+
         Timber.tag(TAG).d("setProxy %s%s", proxy, port.toString())
-        //disable proxy
+
+        // Persist the user's valid choice before checking the native-operation gate.
+        // During a priority rescan the live wallet cannot be reconfigured safely, but
+        // returning before this write made the screen reload the previous saved values.
         if (proxy == null && port == null) {
             prefs.edit {
                 remove(WALLET_PROXY)
                 remove(WALLET_PROXY_PORT)
             }
+        } else {
+            if (proxy.isNullOrBlank() || port == null || port !in 1..65535) {
+                Timber.tag(TAG).w("Ignoring invalid proxy settings")
+                return
+            }
+            prefs.edit {
+                putString(WALLET_PROXY, proxy)
+                putInt(WALLET_PROXY_PORT, port)
+            }
+        }
+
+        if (!canRunNodeChange(allowActiveResyncScan)) {
+            Timber.tag(TAG).i("Proxy settings saved; native application deferred while wallet rescan has priority")
+            return
+        }
+
+        // Settings have been persisted; now update the active native wallet if allowed.
+        if (proxy == null && port == null) {
             WalletManager.instance?.setProxy("")
             WalletManager.instance?.wallet?.setProxy("")
         } else {
-            prefs.edit {
-                putString(WALLET_PROXY, proxy)
-                putInt(WALLET_PROXY_PORT, port ?: -1)
-            }
             val proxyHost = prefs.getString(WALLET_PROXY, "")
             val proxyPort = prefs.getInt(WALLET_PROXY_PORT, -1)
-            val proxyStr = if (proxyHost?.isNotEmpty() == true && proxyPort != -1) {
+            val proxyStr = if (!proxyHost.isNullOrBlank() && proxyPort in 1..65535) {
                 "${proxyHost}:$proxyPort"
             } else {
                 return
