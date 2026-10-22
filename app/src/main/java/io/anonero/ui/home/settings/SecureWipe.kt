@@ -170,10 +170,6 @@ class SecureWipeViewModel(
                         anonWalletHandler.releaseSecureWipePriority()
                         _wipeProgress.postValue(1f)
                         _wipeProgressMessage.postValue("钱包已成功安全删除")
-                        activity.applicationContext.sendBroadcast(
-                            Intent(MainActivity.ACTION_WALLET_CLEARED)
-                                .setPackage(activity.packageName)
-                        )
                         return@launch
                     } catch (e: Exception) {
                         // Log for diagnostics only. Never display deletion exceptions.
@@ -471,10 +467,6 @@ fun SecureWipe(
                                         view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
                                     }
                                 }
-                                currentActivity.applicationContext.sendBroadcast(
-                                    Intent(MainActivity.ACTION_WALLET_CLEARED)
-                                        .setPackage(currentActivity.packageName)
-                                )
                             } else {
                                 // The worker normally retries internally forever. If its
                                 // job is cancelled externally, start it again without ever
