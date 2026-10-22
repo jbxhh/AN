@@ -151,6 +151,11 @@ class WalletState(private val prefs: SharedPreferences) {
     val isWalletScanActive: Boolean
         get() = _scanTracking.get() && getWallet?.isSynchronized != true
 
+    // Distinguish a wallet waiting for its first/next scan from a previously
+    // synchronized wallet whose node connection is temporarily down.
+    val hasPendingWalletSync: Boolean
+        get() = getWallet?.isSynchronized == false
+
     // While the native worker prepares reset state, callback data is suppressed.
     // Once scan state is published, block/progress callbacks must be allowed through,
     // even if startRefresh() has not returned yet.
