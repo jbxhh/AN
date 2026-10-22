@@ -309,7 +309,7 @@ class NodeSettingsViewModel(
                 var proxyAddress: String? = null
                 if (useTor) {
                     // Resolve Tor first; do not mutate the live wallet proxy while it scans.
-                    val readySocket = torService.awaitSocksWithRetry(maxAttempts = 2)
+                    val readySocket = torService.awaitSocksWithRetry(maxAttempts = 6)
                         ?: throw IllegalStateException(
                             "Tor 尚未就绪，请稍后再次点击连接"
                         )
