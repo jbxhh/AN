@@ -308,16 +308,15 @@ class NodeSettingsViewModel(
 
                 var proxyAddress: String? = null
                 if (useTor) {
-                    // Resolve Tor first; do not mutate the live wallet proxy while it scans.
-                    val readySocket = torService.awaitSocksWithRetry(maxAttempts = 6)
-                        ?: throw IllegalStateException(
-                            "Tor 尚未就绪，请稍后再次点击连接"
-                        )
-                    check(canContinueNodeConnect(allowActiveResyncScan)) {
-                        "区块重置准备优先执行，节点连接已让路"
+                    // Match upstream manual node switching: start Tor and continue the
+                    // daemon switch without blocking this request for SOCKS bootstrap.
+                    // An already-ready SOCKS endpoint can be applied immediately; otherwise
+                    // AnonWalletHandler applies it when Tor emits the ready socket.
+                    torService.start()
+                    proxyAddress = torService.socks?.let { socket ->
+                        "${socket.address}:${socket.port.value}"
                     }
-                    proxyAddress = "${readySocket.address}:${readySocket.port.value}"
-                } else if (!proxyHost.isNullOrBlank() && proxyPort != -1) {
+                } else if (!proxyHost.isNullOrBlank() && proxyPort in 1..65535) {
                     proxyAddress = "${proxyHost}:${proxyPort}"
                 }
 
@@ -343,7 +342,7 @@ class NodeSettingsViewModel(
 
                     if (sameNodeAlreadyInitialized) {
                         // Startup may have connected the saved node while this manual
-                        // attempt was waiting for Tor. Reuse its listener/scan state.
+                        // request was being prepared. Reuse its listener/scan state.
                         check(canContinueNodeConnect(allowActiveResyncScan)) {
                             "区块重置优先执行，节点连接已让路"
                         }
@@ -386,9 +385,13 @@ class NodeSettingsViewModel(
                     if (resolvedProxyAddress != null) {
                         WalletManager.instance?.setProxy(resolvedProxyAddress)
                         wallet.setProxy(resolvedProxyAddress)
-                    } else {
+                    } else if (!useTor) {
+                        // No Tor and no custom proxy: use a direct node connection.
                         walletHandler.setProxy(null, null, allowActiveResyncScan)
                     }
+                    // When Tor is still bootstrapping, do not clear the existing proxy.
+                    // The Tor SOCKS callback will update the proxy after this native
+                    // initialization lock is released.
                     check(canContinueNodeConnect(allowActiveResyncScan)) {
                         "区块重置准备优先执行，节点连接已让路"
                     }
