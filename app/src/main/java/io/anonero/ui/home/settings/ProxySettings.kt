@@ -153,7 +153,11 @@ class ProxySettingsViewModel(
                     addressValidationError.postValue("Invalid port")
                     return@launch
                 }
-                anonWalletHandler.setProxy(proxy = proxy, port = port)
+                anonWalletHandler.setProxy(
+                    proxy = proxy,
+                    port = port,
+                    allowActiveResyncScan = true
+                )
                 updateProxyState()
                 if (!anonPrefs.getBoolean(WALLET_USE_TOR, true)) {
                     torService.stop()
