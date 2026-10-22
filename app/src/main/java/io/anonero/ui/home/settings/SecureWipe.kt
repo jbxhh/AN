@@ -132,7 +132,7 @@ class SecureWipeViewModel(
 
                         (activity as? MainActivity)?.stopNotificationService()
                         _wipeProgress.postValue(.15f)
-                        _wipeProgressMessage.postValue("正在恢复安全清除钱包")
+                        _wipeProgressMessage.postValue("正在恢复安全删除钱包")
 
                         // The previous process has ended, releasing its native wallet handle.
                         val walletDir = File(activity.filesDir, "wallets")
@@ -182,7 +182,7 @@ class SecureWipeViewModel(
                                 .commit()
                         }
                         _wipeProgress.postValue(.2f)
-                        _wipeProgressMessage.postValue("正在继续安全清除钱包")
+                        _wipeProgressMessage.postValue("正在继续安全删除钱包")
                         delay(1_000)
                     }
                 }
@@ -268,7 +268,7 @@ class SecureWipeViewModel(
                             if (nativeWalletDeletionCompleted) {
                                 "正在继续清除钱包设置"
                             } else {
-                                "正在继续安全清除钱包"
+                                "正在继续安全删除钱包"
                             }
                         )
                         delay(1_000)
@@ -476,7 +476,7 @@ fun SecureWipe(
                                     error = null
                                     wipeSubmitting = true
                                     passPhraseDialog = false
-                                    secureWipeViewModel.showWipeProgress("正在继续安全清除钱包")
+                                    secureWipeViewModel.showWipeProgress("正在继续安全删除钱包")
                                     requestClearScreen(false)
                                 }
                                 anonWalletHandler.scope.launch {
@@ -502,7 +502,7 @@ fun SecureWipe(
                         error = null
                         passPhraseDialog = false
                         wipeSubmitting = true
-                        secureWipeViewModel.showWipeProgress("正在继续安全清除钱包")
+                        secureWipeViewModel.showWipeProgress("正在继续安全删除钱包")
                         requestClearScreen(false)
                     }
                     delay(1_000)
@@ -651,7 +651,7 @@ fun SecureWipe(
                     )
                     Text(
                         progressMessage ?: if (wipePending || wipeRequestPersisted) {
-                            "正在恢复安全清除钱包"
+                            "正在恢复安全删除钱包"
                         } else {
                             "正在验证删除密码"
                         },
