@@ -653,7 +653,7 @@ fun SecureWipe(
                         progressMessage ?: if (wipePending || wipeRequestPersisted) {
                             "正在恢复安全清除钱包"
                         } else {
-                            "正在验证清除密码"
+                            "正在验证删除密码"
                         },
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.align(
