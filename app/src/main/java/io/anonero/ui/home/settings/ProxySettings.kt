@@ -149,7 +149,7 @@ class ProxySettingsViewModel(
                     addressValidationError.postValue("Invalid proxy address")
                     return@launch
                 }
-                if (port > 65535) {
+                if (port !in 1..65535) {
                     addressValidationError.postValue("Invalid port")
                     return@launch
                 }
@@ -204,7 +204,9 @@ fun ProxySettings(onBackPress: () -> Unit = {}) {
     val proxy by proxyViewModel.proxy.observeAsState(null)
     val loading by proxyViewModel.loading.observeAsState(false)
     val useManualProxy by proxyViewModel.useManualProxy.observeAsState(false)
-    var proxyPort by remember { mutableStateOf<Int?>(null) }
+    // Keep the raw text while editing; parsing to Int on every keystroke can reset
+    // the field/cursor during partial input (for example while replacing a port).
+    var proxyPortText by remember { mutableStateOf("") }
     val labelColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState()
@@ -213,7 +215,7 @@ fun ProxySettings(onBackPress: () -> Unit = {}) {
     LaunchedEffect(proxy) {
         if (proxy != null) {
             proxyAddress = proxy?.first.toString()
-            proxyPort = proxy?.second
+            proxyPortText = proxy?.second?.toString().orEmpty()
         }
     }
 
@@ -367,11 +369,16 @@ fun ProxySettings(onBackPress: () -> Unit = {}) {
                 )
                 OutlinedTextField(
                     enabled = useManualProxy,
-                    value = proxyPort?.toString() ?: "",
+                    value = proxyPortText,
                     shape = MaterialTheme.shapes.medium,
-                    isError = proxyPort == null,
+                    isError = proxyPortText.toIntOrNull()?.let { it in 1..65535 } != true,
+                    singleLine = true,
                     onValueChange = { port ->
-                        proxyPort = port.toIntOrNull()
+                        // Accept transient empty input so the user can replace all digits.
+                        // Limit to digits and the largest valid TCP port width.
+                        if (port.length <= 5 && port.all { it.isDigit() }) {
+                            proxyPortText = port
+                        }
                     },
                     keyboardOptions = KeyboardOptions(
                         imeAction = ImeAction.Done,
@@ -389,13 +396,14 @@ fun ProxySettings(onBackPress: () -> Unit = {}) {
             }
             if (useManualProxy)
                 OutlinedButton(
-                    enabled = proxyAddress.isNotEmpty() && proxyPort != null,
+                    enabled = proxyAddress.isNotEmpty() &&
+                        proxyPortText.toIntOrNull()?.let { it in 1..65535 } == true,
                     onClick = {
                         if (loading) {
                             return@OutlinedButton
                         }
                         proxyViewModel.setProxy(
-                            proxyAddress, proxyPort!!
+                            proxyAddress, proxyPortText.toInt()
                         ).invokeOnCompletion { error ->
                             if (error == null) {
                                 scope.launch(Dispatchers.Main) {
