@@ -2345,7 +2345,7 @@ class WalletState(private val prefs: SharedPreferences) {
                 val restart = runCatching { wallet.startRefresh() }
                 restart.onSuccess {
                     updateSyncProgressFromWallet(wallet, progressDaemonHeight)
-                    val hasRemainingBlocks = _syncProgress.value?.left?.let { it > 0L } == true
+                    val hasRemainingBlocks = _syncProgress.value?.let { !it.isComplete } == true
                     setLoading(!hasRemainingBlocks && !wallet.isSynchronized)
                 }.onFailure {
                     clearSyncProgress()
