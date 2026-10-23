@@ -364,7 +364,7 @@ fun SecureWipe(
             return@LaunchedEffect
         }
 
-        delay(1_000)
+        delay(500)
         val completedActivity = activity
         if (completedActivity != null &&
             !completedActivity.isFinishing &&
