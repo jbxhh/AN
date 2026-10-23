@@ -69,7 +69,7 @@ fun WalletProgressIndicator(modifier: Modifier = Modifier, refreshIndicatorProgr
     val connectionStatus by walletState.connectionStatus.asLiveData().observeAsState(null)
     val isConnected = connectionStatus == Wallet.ConnectionStatus.ConnectionStatus_Connected
     val isNetworkConnected by networkConnected()
-    val isSyncing = syncProgress?.left?.let { it > 0L } == true
+    val isSyncing = syncProgress != null && !syncProgress.isComplete
 
     // During first entry a wallet may still be waiting for its initial daemon
     // connection, before loading or numeric sync progress has been published.
