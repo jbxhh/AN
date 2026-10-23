@@ -37,7 +37,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
-data class SyncProgress(val progress: Float, val left: Long)
+data class SyncProgress(
+    val progress: Float,
+    val left: Long,
+    // The displayed count tracks backlog against the daemon's current height.
+    // Zero backlog does not finish the scan while the daemon itself is still catching up.
+    val isComplete: Boolean = left <= 0L
+)
 
 private const val TAG = "WalletState"
 const val PREF_FORCE_FRESH_WALLET_SCAN = "anonero_force_fresh_wallet_scan"
@@ -1523,13 +1529,15 @@ class WalletState(private val prefs: SharedPreferences) {
             maybeStartForcedRestoreScan(wallet)
         }
 
-        // Do not declare the wallet finished merely because it caught the daemon's
-        // current tip while that daemon is still syncing. Keep the displayed backlog
-        // tied to the live target to avoid a completed bar restarting from zero.
+        // The remaining-block count follows the daemon's current height, like upstream.
+        // Using the future target for the count can make it appear frozen when the daemon's
+        // target advances at roughly the same rate as the wallet scan.
+        // Keep the progress fraction target-based and keep the scan active until both
+        // the wallet and daemon reach the target.
         val progressTargetHeight = maxOf(daemonHeight, _daemonTargetHeight.get())
-        val left = progressTargetHeight - chainHeight
-        if (left == 0L) {
-            syncUpdate(SyncProgress(progress = 1f, left = 0L))
+        val left = (daemonHeight - chainHeight).coerceAtLeast(0L)
+        if (left == 0L && progressTargetHeight <= daemonHeight) {
+            syncUpdate(SyncProgress(progress = 1f, left = 0L, isComplete = true))
             return
         }
 
@@ -1703,13 +1711,17 @@ class WalletState(private val prefs: SharedPreferences) {
         // takes ownership of the progress area from the manual-refresh indicator.
         _manualRefreshInProgress.value = false
         val progress = syncProgress.progress
-        val done = syncProgress.left <= 0L
+        val done = syncProgress.isComplete
         if (done) {
             _syncProgress.value = null
             _isSyncing.set(false)
         } else {
             val safeProgress = if (progress.isFinite()) progress.coerceIn(0f, 0.999f) else 0f
-            _syncProgress.value = syncProgress.copy(progress = safeProgress)
+            _syncProgress.value = syncProgress.copy(
+                progress = safeProgress,
+                left = syncProgress.left.coerceAtLeast(0L),
+                isComplete = false
+            )
             _isSyncing.set(true)
         }
     }
@@ -1962,7 +1974,7 @@ class WalletState(private val prefs: SharedPreferences) {
                 if (daemonHeight > 0L) updateBlockHeights(wallet, daemonHeight)
 
                 if (manual) {
-                    val scanAlreadyActive = _syncProgress.value?.left?.let { it > 0L } == true ||
+                    val scanAlreadyActive = _syncProgress.value?.let { !it.isComplete } == true ||
                         (_scanTracking.get() && !wallet.isSynchronized)
                     if (!scanAlreadyActive) {
                         // A manual pull must resume the native refresh worker as well as
@@ -2289,7 +2301,7 @@ class WalletState(private val prefs: SharedPreferences) {
                 // Publish remaining-block progress after the accepted request is handed to
                 // native refresh, using the selected-height baseline rather than node tip.
                 updateSyncProgressFromWallet(wallet, progressDaemonHeight)
-                val hasRemainingBlocks = _syncProgress.value?.left?.let { it > 0L } == true
+                val hasRemainingBlocks = _syncProgress.value?.let { !it.isComplete } == true
                 setLoading(!hasRemainingBlocks && !wallet.isSynchronized)
                 Timber.tag(TAG).i(
                     "Manual rescan started: selectedHeight=%d walletHeight=%d daemonHeight=%d targetHeight=%d remaining=%d",
