@@ -537,12 +537,6 @@ fun TransactionScreen(
         refreshState.snapTo(0f)
     }
 
-    // Block-sync progress takes priority over the manual pull indicator.
-    // Clear any partial pull distance when a real scan begins to avoid stacked bars.
-    LaunchedEffect(blockSyncProgressVisible) {
-        if (blockSyncProgressVisible) refreshState.snapTo(0f)
-    }
-
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
@@ -690,7 +684,7 @@ fun TransactionScreen(
         }
     ) { contentPadding ->
         PullToRefreshBox(
-          isRefreshing = false,
+            isRefreshing = manualPullRefreshInProgress,
             state = refreshState,
             modifier = Modifier
                 .hazeSource(
@@ -719,9 +713,7 @@ fun TransactionScreen(
                 stickyHeader(key = "progress") {
                     Column {
                         WalletProgressIndicator(
-                            refreshIndicatorProgress = if (
-                                blockSyncProgressVisible
-                            ) 0f else refreshState.distanceFraction
+                            refreshIndicatorProgress = refreshState.distanceFraction
                         )
                         AnimatedVisibility(
                             visible = !manualPullRefreshInProgress &&
