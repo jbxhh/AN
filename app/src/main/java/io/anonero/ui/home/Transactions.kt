@@ -467,7 +467,7 @@ fun TransactionScreen(
     var syncBacklogSeen by remember { mutableStateOf(false) }
     var initialHistoryRefreshDone by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState()
-    val blockSyncProgressVisible = syncProgress != null && !syncProgress.isComplete
+    val blockSyncProgressVisible = syncProgress?.isComplete == false
     var manualPullRefreshInProgress by remember { mutableStateOf(false) }
     val view = LocalView.current
     val torConnected by torService.socksFlow.asLiveData().observeAsState(torService.socks != null)
@@ -508,7 +508,7 @@ fun TransactionScreen(
     // The final native scan callback can precede the stable transaction-history snapshot.
     // Retry after sync has completed without changing any screen layout or interaction.
     LaunchedEffect(syncProgress?.left, syncProgress?.isComplete, showIndefiniteLoading) {
-        if (syncProgress != null && !syncProgress.isComplete) {
+        if (syncProgress?.isComplete == false) {
             syncBacklogSeen = true
         } else if (syncBacklogSeen && syncProgress == null && !showIndefiniteLoading) {
             syncBacklogSeen = false
