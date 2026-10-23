@@ -1551,7 +1551,7 @@ class WalletState(private val prefs: SharedPreferences) {
         val progress = (scanned.toDouble() / scanRange.toDouble())
             .toFloat()
             .coerceIn(0f, 0.999f)
-        syncUpdate(SyncProgress(progress, left))
+        syncUpdate(SyncProgress(progress, left, isComplete = false))
     }
 
     fun setLoading(b: Boolean) {
