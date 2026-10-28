@@ -36,8 +36,12 @@ fun NavGraphBuilder.homeGraph(navController: NavHostController) {
             LockScreenRoute
         }
     ) {
-        composable<HomeScreenRoute> {
-            HomeScreenComposable(mainNavController = navController)
+        composable<HomeScreenRoute> { backStackEntry ->
+            val homeRoute = backStackEntry.toRoute<HomeScreenRoute>()
+            HomeScreenComposable(
+                mainNavController = navController,
+                initialShortcut = homeRoute.lockScreenShortCut,
+            )
         }
         composable<LockScreenRoute> {
             // A restored navigation back stack may still point to LockScreenRoute.
@@ -52,16 +56,13 @@ fun NavGraphBuilder.homeGraph(navController: NavHostController) {
                     }
                 }
             } else {
-                val walletState = org.koin.compose.koinInject<io.anonero.services.WalletState>()
                 LockScreen(
                     onUnLocked = { _, shortCut ->
-                        navController.navigate(HomeScreenRoute()) {
+                        navController.navigate(HomeScreenRoute(lockScreenShortCut = shortCut)) {
                             popUpTo(LockScreenRoute) {
                                 inclusive = true
                             }
-                        }
-                        if (shortCut != io.anonero.ui.home.LockScreenShortCut.HOME) {
-                            walletState.emitUnlockShortcut(shortCut)
+                            launchSingleTop = true
                         }
                     }
                 )
