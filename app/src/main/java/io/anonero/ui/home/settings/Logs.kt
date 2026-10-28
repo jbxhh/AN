@@ -10,11 +10,8 @@ import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -48,10 +45,8 @@ import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -266,7 +261,6 @@ fun LogViewer(
     val viewModel = koinViewModel<LogViewModel>()
     val logLines by viewModel.logLines.collectAsState(emptyList())
     val listState = rememberLazyListState()
-    val horizontalScrollState = rememberScrollState()
     var textScale by remember { mutableStateOf(1f) }
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
     val context = LocalContext.current
@@ -343,7 +337,7 @@ fun LogViewer(
             )
         }
     ) { innerPadding ->
-        BoxWithConstraints(
+        Box(
             modifier = Modifier
                 .padding(innerPadding)
                 .fillMaxSize()
@@ -391,36 +385,6 @@ fun LogViewer(
                     }
                 }
         ) {
-            val viewportWidth = maxWidth
-            // Measure the longest actual line instead of guessing its width from
-            // character count. This keeps log rows on one line while zooming and avoids
-            // accidental wrapping that pushes part of a row onto the next line.
-            val longestMessageLine = remember(logLines) {
-                logLines.asSequence()
-                    .flatMap { entry -> entry.message.lineSequence() }
-                    .maxByOrNull { it.length }
-                    .orEmpty()
-            }
-            val textMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
-            val longestMessageWidth = textMeasurer.measure(
-                text = longestMessageLine,
-                style = androidx.compose.ui.text.TextStyle(
-                    fontSize = (8f * textScale).sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Light
-                ),
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Clip
-            ).size.width
-            val density = LocalDensity.current
-            val logContentWidth = with(density) {
-                maxOf(
-                    viewportWidth,
-                    viewportWidth * textScale,
-                    (longestMessageWidth + (70f * textScale).dp.toPx() + 16.dp.toPx()).toDp()
-                )
-            }
             if (logLines.isEmpty()) {
                 androidx.compose.foundation.layout.Box(
                     modifier = Modifier.fillMaxSize(),
@@ -435,24 +399,17 @@ fun LogViewer(
                 }
             } else {
                 SelectionContainer(modifier = Modifier.fillMaxSize()) {
-                    Row(
+                    LazyColumn(
+                        state = listState,
+                        reverseLayout = true,
                         modifier = Modifier
                             .fillMaxSize()
-                            .horizontalScroll(horizontalScrollState)
+                            .padding(horizontal = 8.dp),
+                        contentPadding = PaddingValues(0.dp),
+                        verticalArrangement = Arrangement.Top
                     ) {
-                        LazyColumn(
-                            state = listState,
-                            reverseLayout = true,
-                            modifier = Modifier
-                                .width(logContentWidth)
-                                .fillMaxHeight()
-                                .padding(horizontal = 8.dp),
-                            contentPadding = PaddingValues(0.dp),
-                            verticalArrangement = Arrangement.Top
-                        ) {
-                            items(logLines.size) { index ->
-                                LogLine(logLines[index], textScale)
-                            }
+                        items(logLines.size) { index ->
+                            LogLine(logLines[index], textScale)
                         }
                     }
                 }
@@ -500,6 +457,7 @@ private fun LogLineContent(text: AnonLog, textScale: Float = 1f) {
             letterSpacing = 0.sp,
             modifier = Modifier
                 .width((70f * textScale).dp)
+                .alignByBaseline()
                 .padding(0.dp)
         )
         Text(
@@ -508,12 +466,12 @@ private fun LogLineContent(text: AnonLog, textScale: Float = 1f) {
             color = color,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Light,
-            maxLines = 30,
-            softWrap = false,
+            maxLines = Int.MAX_VALUE,
+            softWrap = true,
             lineHeight = (12f * textScale).sp,
-            overflow = TextOverflow.Clip,
             modifier = Modifier
-                .fillMaxWidth()
+                .weight(1f)
+                .alignByBaseline()
                 .padding(0.dp)
                 .background(Color.Transparent),
         )
