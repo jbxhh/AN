@@ -195,9 +195,6 @@ fun NavGraphBuilder.onboardingGraph(
                     ) {
                         popUpTo(LandingScreenRoute)
                     }
-                    activity?.runOnUiThread {
-                        (activity as? MainActivity)?.startNotificationService()
-                    }
                 }
             )
         }
@@ -273,18 +270,12 @@ fun NavGraphBuilder.onboardingGraph(
                                 navController.navigate(HomeScreenRoute()) {
                                     popUpTo(LandingScreenRoute)
                                 }
-                                activity?.runOnUiThread {
-                                    (activity as? MainActivity)?.startNotificationService()
-                                }
                             } else {
                                 if (onboardViewModel.getMode() == Mode.RESTORE) {
                                     startConfiguredNodeService(context, appViewModel)
                                     navController.navigate(HomeScreenRoute()) {
                                         popUpTo(LandingScreenRoute)
                                     }
-                                activity?.runOnUiThread {
-                                    (activity as? MainActivity)?.startNotificationService()
-                                }
                                 } else {
                                     navController.navigate(OnboardSeedScreen(onboardViewModel.getSeed()))
                                 }
@@ -315,9 +306,6 @@ fun NavGraphBuilder.onboardingGraph(
                         startConfiguredNodeService(context, appViewModel)
                         navController.navigate(HomeScreenRoute()) {
                             popUpTo(LandingScreenRoute)
-                        }
-                        activity?.runOnUiThread {
-                            (activity as? MainActivity)?.startNotificationService()
                         }
                     }
                 },
