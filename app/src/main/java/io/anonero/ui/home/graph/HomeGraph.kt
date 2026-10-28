@@ -9,6 +9,7 @@ import io.anonero.AnonConfig
 import io.anonero.model.WalletManager
 import io.anonero.ui.home.HomeScreenComposable
 import io.anonero.ui.home.LockScreen
+import io.anonero.ui.home.LockScreenMode
 import io.anonero.ui.home.graph.routes.Home
 import io.anonero.ui.home.graph.routes.HomeScreenRoute
 import io.anonero.ui.home.graph.routes.LockScreenRoute
@@ -30,7 +31,7 @@ fun NavGraphBuilder.homeGraph(navController: NavHostController) {
     ) == true
 
     navigation<Home>(
-        startDestination = if (secureDeleteInProgress || walletStatus == true) {
+        startDestination = if (secureDeleteInProgress) {
             HomeScreenRoute()
         } else {
             LockScreenRoute
@@ -57,6 +58,11 @@ fun NavGraphBuilder.homeGraph(navController: NavHostController) {
                 }
             } else {
                 LockScreen(
+                    mode = if (walletStatus == true) {
+                        LockScreenMode.LOCK_SCREEN
+                    } else {
+                        LockScreenMode.OPEN_WALLET
+                    },
                     onUnLocked = { _, shortCut ->
                         navController.navigate(HomeScreenRoute(lockScreenShortCut = shortCut)) {
                             popUpTo(LockScreenRoute) {
