@@ -57,6 +57,8 @@ class WalletState(private val prefs: SharedPreferences) {
     // StateFlow snapshots belong to one open wallet handle. A failed/transient daemon
     // init must not make a still-open wallet look like a brand-new empty wallet.
     private val publishedWalletIdentity = AtomicReference<Wallet?>(null)
+    // Avoid repeating local history refreshes while this wallet is waiting for daemon init.
+    private val localSnapshotAttemptedWallet = AtomicReference<Wallet?>(null)
     private var _blockUpdates = AtomicBoolean(false)
     val hideAmountsFlow = MutableStateFlow(false)
     private val _isLoading = MutableStateFlow(false)
@@ -199,6 +201,7 @@ class WalletState(private val prefs: SharedPreferences) {
     private fun resetSnapshotForWalletChange(wallet: Wallet) {
         if (publishedWalletIdentity.get() === wallet) return
         publishedWalletIdentity.set(wallet)
+        localSnapshotAttemptedWallet.set(null)
         _transactions.value = emptyList()
         _subAddresses.value = emptyList()
         _balanceInfo.value = null
@@ -688,6 +691,14 @@ class WalletState(private val prefs: SharedPreferences) {
     fun publishWalletSnapshot(wallet: Wallet? = getWallet) {
         if (walletWipeInProgress.get() || wallet == null) return
         resetSnapshotForWalletChange(wallet)
+        // The same not-yet-initialized wallet may be published by onboarding, Home and
+        // reconnect callbacks. One local snapshot is enough until native init succeeds;
+        // repeating refreshHistory() here only republishes the same empty history.
+        if (!wallet.isInitialized && localSnapshotAttemptedWallet.get() === wallet) {
+            Timber.tag(TAG).d("Skipping duplicate local snapshot while wallet init is unavailable")
+            return
+        }
+        if (!wallet.isInitialized) localSnapshotAttemptedWallet.set(wallet)
         prepareScanPreferenceIdentity(wallet)
 
         try {
@@ -1736,6 +1747,7 @@ class WalletState(private val prefs: SharedPreferences) {
     fun resetAfterWalletWipe() {
         scanPreferenceIdentity.set(null)
         publishedWalletIdentity.set(null)
+        localSnapshotAttemptedWallet.set(null)
         refreshDeferredDuringResync.set(false)
         _blockUpdates.set(false)
         _isLoading.value = false
