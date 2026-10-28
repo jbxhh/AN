@@ -60,7 +60,7 @@ object AnonConfig {
         val torDir = File(context?.filesDir, "tor")
         torDir.mkdirs()
         val cacheDir = File(context?.cacheDir, "tor")
-        torDir.mkdirs()
+        cacheDir.mkdirs()
         return TorRuntime.Environment.Builder(
             workDirectory = torDir,
             cacheDirectory = cacheDir,
