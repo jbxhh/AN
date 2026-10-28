@@ -57,6 +57,8 @@ class WalletState(private val prefs: SharedPreferences) {
     // StateFlow snapshots belong to one open wallet handle. A failed/transient daemon
     // init must not make a still-open wallet look like a brand-new empty wallet.
     private val publishedWalletIdentity = AtomicReference<Wallet?>(null)
+    // Prevent repeated local-history refreshes while native wallet initialization is unavailable.
+    private val localSnapshotAttemptedWallet = AtomicReference<Wallet?>(null)
     private var _blockUpdates = AtomicBoolean(false)
     val hideAmountsFlow = MutableStateFlow(false)
     private val _isLoading = MutableStateFlow(false)
@@ -199,6 +201,7 @@ class WalletState(private val prefs: SharedPreferences) {
     private fun resetSnapshotForWalletChange(wallet: Wallet) {
         if (publishedWalletIdentity.get() === wallet) return
         publishedWalletIdentity.set(wallet)
+        localSnapshotAttemptedWallet.set(null)
         _transactions.value = emptyList()
         _subAddresses.value = emptyList()
         _balanceInfo.value = null
@@ -238,7 +241,10 @@ class WalletState(private val prefs: SharedPreferences) {
                 // its history, balance, or last processed height. Publish local data only
                 // if no snapshot exists yet; never replace known values with transient
                 // zero/empty JNI results during a reconnect.
-                if (_balanceInfo.value == null || _nextAddress.value == null) {
+                if (
+                    localSnapshotAttemptedWallet.get() !== wallet &&
+                    (_balanceInfo.value == null || _nextAddress.value == null)
+                ) {
                     publishWalletSnapshot(wallet)
                 }
                 _walletStatus.value = null
@@ -689,6 +695,9 @@ class WalletState(private val prefs: SharedPreferences) {
         if (walletWipeInProgress.get() || wallet == null) return
         resetSnapshotForWalletChange(wallet)
         prepareScanPreferenceIdentity(wallet)
+        // Record this attempt before JNI reads. update() must not repeatedly refresh
+        // native transaction history while the same wallet is still uninitialized.
+        localSnapshotAttemptedWallet.set(wallet)
 
         try {
             if (wallet.isInitialized ||
@@ -1736,6 +1745,7 @@ class WalletState(private val prefs: SharedPreferences) {
     fun resetAfterWalletWipe() {
         scanPreferenceIdentity.set(null)
         publishedWalletIdentity.set(null)
+        localSnapshotAttemptedWallet.set(null)
         refreshDeferredDuringResync.set(false)
         _blockUpdates.set(false)
         _isLoading.value = false
