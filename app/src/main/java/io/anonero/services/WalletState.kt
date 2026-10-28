@@ -1565,11 +1565,13 @@ class WalletState(private val prefs: SharedPreferences) {
     suspend fun enterBackgroundSync(): Boolean = bgSyncMutex.withLock {
         if (walletWipeInProgress.get()) return false
         val wallet = getWallet ?: return false
+        // Lock the UI before attempting background-sync setup. A failed worker start or
+        // a resync-priority guard must never expose an already-open wallet without PIN.
+        _pinLockVisible.value = true
         if (!wallet.isInitialized) return false
         // If native background sync is still active after a prior resume failure,
         // re-lock the UI on the next app-background transition without starting a second worker.
         if (backgroundSync) {
-            _pinLockVisible.value = true
             return true
         }
         if (isResyncPriorityActive) return false
@@ -1584,12 +1586,12 @@ class WalletState(private val prefs: SharedPreferences) {
                 return true
             }
             _backgroundSync.value = false
-            _pinLockVisible.value = false
+            // Fail closed: keep the PIN overlay visible even when background sync cannot start.
             Timber.tag(TAG).e("startBackgroundSync returned false")
             return false
         } catch (e: Exception) {
             _backgroundSync.value = false
-            _pinLockVisible.value = false
+            // Fail closed: the in-memory wallet must remain PIN-locked on setup errors.
             Timber.tag(TAG).e(e, "startBackgroundSync error")
             return false
         } finally {
@@ -1600,6 +1602,12 @@ class WalletState(private val prefs: SharedPreferences) {
     suspend fun exitBackgroundSync(pin: String): Boolean = bgSyncMutex.withLock {
         if (walletWipeInProgress.get() || isResyncPriorityActive) return false
         val wallet = getWallet ?: return false
+        if (!backgroundSync) {
+            // Background sync never started; after PIN verification, resume the existing
+            // in-memory wallet without calling stopBackgroundSync on a worker that is absent.
+            _pinLockVisible.value = false
+            return true
+        }
         if (AnonConfig.viewOnly) {
             _backgroundSync.value = false
             _pinLockVisible.value = false
