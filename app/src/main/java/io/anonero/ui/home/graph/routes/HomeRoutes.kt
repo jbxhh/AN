@@ -5,7 +5,10 @@ import kotlinx.serialization.Serializable
 
 
 @Serializable
-data class HomeScreenRoute(val lockScreenShortCut: LockScreenShortCut = LockScreenShortCut.HOME)
+data class HomeScreenRoute(
+    val lockScreenShortCut: LockScreenShortCut = LockScreenShortCut.HOME,
+    val pinVerified: Boolean = false,
+)
 
 @Serializable
 data object LockScreenRoute
