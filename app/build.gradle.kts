@@ -180,6 +180,7 @@ dependencies {
     implementation(libs.org.bouncycastle.bcprov)
     implementation(libs.io.matthewnelson.kmp.tor.runtime)
     implementation(libs.io.matthewnelson.kmp.resource.exec.tor)
+    implementation("io.matthewnelson.kmp-tor:resource-compilation-exec-tor-gpl:409.5.0")
     implementation(libs.com.sparrowwallet.hummingbird)
     implementation(libs.io.github.dokar3.sonner)
     implementation("dev.chrisbanes.haze:haze:1.6.10")
