@@ -270,7 +270,7 @@ fun NavGraphBuilder.onboardingGraph(
                         if (it == null) {
                             if (AnonConfig.viewOnly) {
                                 startConfiguredNodeService(context, appViewModel)
-                                navController.navigate(HomeScreenRoute(pinVerified = true)) {
+                                navController.navigate(HomeScreenRoute()) {
                                     popUpTo(LandingScreenRoute)
                                 }
                                 activity?.runOnUiThread {
@@ -279,7 +279,7 @@ fun NavGraphBuilder.onboardingGraph(
                             } else {
                                 if (onboardViewModel.getMode() == Mode.RESTORE) {
                                     startConfiguredNodeService(context, appViewModel)
-                                    navController.navigate(HomeScreenRoute(pinVerified = true)) {
+                                    navController.navigate(HomeScreenRoute()) {
                                         popUpTo(LandingScreenRoute)
                                     }
                                 activity?.runOnUiThread {
@@ -313,7 +313,7 @@ fun NavGraphBuilder.onboardingGraph(
                             walletState.publishWalletSnapshot()
                         }
                         startConfiguredNodeService(context, appViewModel)
-                        navController.navigate(HomeScreenRoute(pinVerified = true)) {
+                        navController.navigate(HomeScreenRoute()) {
                             popUpTo(LandingScreenRoute)
                         }
                         activity?.runOnUiThread {
