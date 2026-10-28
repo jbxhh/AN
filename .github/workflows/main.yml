@@ -24,8 +24,8 @@ permissions:
 # Do not cancel or serialize builds by branch; let GitHub schedule each run independently.
 
 env:
-  MONERO_REF: v0.18.5.3
-  MONERO_COMMIT: 22578c3f7d7b4b6dd85ff7daa42a827d97cc53d0
+  MONERO_REF: v0.18.5.4
+  MONERO_COMMIT: 85f036ba7019cd36f08e8a38a27c37ea7b522618
   MONERO_PATCH_COMMIT: 33671871de3d51696b66ffb3bd94f744e26974f6
   NATIVE_CACHE_SCHEMA: v5
 
