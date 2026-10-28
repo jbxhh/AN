@@ -40,10 +40,31 @@ fun NavGraphBuilder.homeGraph(navController: NavHostController) {
     ) {
         composable<HomeScreenRoute> { backStackEntry ->
             val homeRoute = backStackEntry.toRoute<HomeScreenRoute>()
-            HomeScreenComposable(
-                mainNavController = navController,
-                initialShortcut = homeRoute.lockScreenShortCut,
-            )
+            val walletIsOpen = WalletManager.instance?.wallet?.status?.isOk == true
+            val unlockCompleted = androidx.compose.runtime.remember {
+                androidx.compose.runtime.mutableStateOf(false)
+            }
+            val selectedShortcut = androidx.compose.runtime.remember(homeRoute.lockScreenShortCut) {
+                androidx.compose.runtime.mutableStateOf(homeRoute.lockScreenShortCut)
+            }
+
+            // Navigation state can restore HomeScreenRoute after process death, bypassing
+            // the graph start destination. Do not render Home until the wallet is open
+            // again through the PIN flow (except while secure wipe is intentionally active).
+            if (secureDeleteInProgress || walletIsOpen || unlockCompleted.value) {
+                HomeScreenComposable(
+                    mainNavController = navController,
+                    initialShortcut = selectedShortcut.value,
+                )
+            } else {
+                LockScreen(
+                    mode = LockScreenMode.OPEN_WALLET,
+                    onUnLocked = { _, shortCut ->
+                        selectedShortcut.value = shortCut
+                        unlockCompleted.value = true
+                    }
+                )
+            }
         }
         composable<LockScreenRoute> {
             // A restored navigation back stack may still point to LockScreenRoute.
