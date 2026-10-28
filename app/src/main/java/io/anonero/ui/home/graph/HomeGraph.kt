@@ -51,14 +51,14 @@ fun NavGraphBuilder.homeGraph(navController: NavHostController) {
             // Navigation state can restore HomeScreenRoute after process death, bypassing
             // the graph start destination. Do not render Home until the wallet is open
             // again through the PIN flow (except while secure wipe is intentionally active).
-            if (secureDeleteInProgress || walletIsOpen || unlockCompleted.value) {
+            if (secureDeleteInProgress || (homeRoute.pinVerified && walletIsOpen) || unlockCompleted.value) {
                 HomeScreenComposable(
                     mainNavController = navController,
                     initialShortcut = selectedShortcut.value,
                 )
             } else {
                 LockScreen(
-                    mode = LockScreenMode.OPEN_WALLET,
+                    mode = if (walletIsOpen) LockScreenMode.LOCK_SCREEN else LockScreenMode.OPEN_WALLET,
                     onUnLocked = { _, shortCut ->
                         selectedShortcut.value = shortCut
                         unlockCompleted.value = true
@@ -86,7 +86,7 @@ fun NavGraphBuilder.homeGraph(navController: NavHostController) {
                         LockScreenMode.OPEN_WALLET
                     },
                     onUnLocked = { _, shortCut ->
-                        navController.navigate(HomeScreenRoute(lockScreenShortCut = shortCut)) {
+                        navController.navigate(HomeScreenRoute(lockScreenShortCut = shortCut, pinVerified = true)) {
                             popUpTo(LockScreenRoute) {
                                 inclusive = true
                             }
