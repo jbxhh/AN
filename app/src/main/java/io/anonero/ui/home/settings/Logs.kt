@@ -10,8 +10,12 @@ import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -261,6 +265,7 @@ fun LogViewer(
     val viewModel = koinViewModel<LogViewModel>()
     val logLines by viewModel.logLines.collectAsState(emptyList())
     val listState = rememberLazyListState()
+    val horizontalScrollState = rememberScrollState()
     var textScale by remember { mutableStateOf(1f) }
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
     val context = LocalContext.current
@@ -337,7 +342,7 @@ fun LogViewer(
             )
         }
     ) { innerPadding ->
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .padding(innerPadding)
                 .fillMaxSize()
@@ -385,8 +390,12 @@ fun LogViewer(
                     }
                 }
         ) {
+            // Keep the content at viewport width normally so messages wrap naturally.
+            // During pinch zoom, expand the scrollable canvas with the text scale so
+            // enlarged content remains reachable horizontally.
+            val logContentWidth = maxWidth * textScale.coerceAtLeast(1f)
             if (logLines.isEmpty()) {
-                androidx.compose.foundation.layout.Box(
+                Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.TopStart
                 ) {
@@ -399,17 +408,24 @@ fun LogViewer(
                 }
             } else {
                 SelectionContainer(modifier = Modifier.fillMaxSize()) {
-                    LazyColumn(
-                        state = listState,
-                        reverseLayout = true,
+                    Row(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 8.dp),
-                        contentPadding = PaddingValues(0.dp),
-                        verticalArrangement = Arrangement.Top
+                            .horizontalScroll(horizontalScrollState)
                     ) {
-                        items(logLines.size) { index ->
-                            LogLine(logLines[index], textScale)
+                        LazyColumn(
+                            state = listState,
+                            reverseLayout = true,
+                            modifier = Modifier
+                                .width(logContentWidth)
+                                .fillMaxHeight()
+                                .padding(horizontal = 8.dp),
+                            contentPadding = PaddingValues(0.dp),
+                            verticalArrangement = Arrangement.Top
+                        ) {
+                            items(logLines.size) { index ->
+                                LogLine(logLines[index], textScale)
+                            }
                         }
                     }
                 }
