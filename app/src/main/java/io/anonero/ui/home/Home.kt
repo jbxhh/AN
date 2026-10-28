@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -42,6 +43,7 @@ import androidx.navigation.toRoute
 import io.anonero.R
 import io.anonero.model.Subaddress
 import io.anonero.model.node.NodeFields
+import io.anonero.ui.MainActivity
 import io.anonero.ui.components.MainBottomNavigation
 import io.anonero.ui.home.addresses.SubAddressDetailScreen
 import io.anonero.ui.home.addresses.SubAddressesScreen
@@ -141,6 +143,27 @@ fun HomeScreenComposable(
         ).getString(NodeFields.RPC_HOST.value, "")
         if (!wipeRequested && !wipePending && !configuredNode.isNullOrBlank()) {
             appViewModel.startService()
+        }
+    }
+
+    // Request notification permission only after the unlocked Home screen has drawn.
+    // Wallet creation/restoration must never trigger the system dialog from onboarding.
+    LaunchedEffect(context) {
+        val preferences = context.getSharedPreferences(
+            AnonConfig.APP_PREFERENCES,
+            android.content.Context.MODE_PRIVATE
+        )
+        val wipeInProgress = preferences.getBoolean(
+            AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
+        ) || preferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
+        if (!wipeInProgress && AnonConfig.getDefaultWalletFile(context).exists()) {
+            withFrameNanos { }
+            val wipeStillInProgress = preferences.getBoolean(
+                AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
+            ) || preferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
+            if (!wipeStillInProgress) {
+                (context as? MainActivity)?.startNotificationService()
+            }
         }
     }
 
