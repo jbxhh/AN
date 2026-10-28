@@ -88,7 +88,11 @@ import io.anonero.AnonConfig
 @OptIn(ExperimentalSharedTransitionApi::class)
 @SuppressLint("BatteryLife")
 @Composable
-fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHostController?) {
+fun HomeScreenComposable(
+    modifier: Modifier = Modifier,
+    mainNavController: NavHostController?,
+    initialShortcut: LockScreenShortCut = LockScreenShortCut.HOME,
+) {
     val context = LocalContext.current
     val appPreferences = remember(context) {
         context.getSharedPreferences(
@@ -110,7 +114,12 @@ fun HomeScreenComposable(modifier: Modifier = Modifier, mainNavController: NavHo
     val appViewModel = koinInject<io.anonero.ui.viewmodels.AppViewModel>()
     val toastState = rememberToasterState()
     val prefs = context.getSharedPreferences("anonero_prefs", android.content.Context.MODE_PRIVATE)
-    val startDestination: Any = if (wipeRequestedAtStart) SecureWipeRoute else TransactionsRoute
+    val startDestination: Any = when {
+        wipeRequestedAtStart -> SecureWipeRoute
+        initialShortcut == LockScreenShortCut.RECEIVE -> ReceiveRoute
+        initialShortcut == LockScreenShortCut.SEND -> SendScreenRoute(address = "")
+        else -> TransactionsRoute
+    }
 
     // A restored wallet can reach Home while the first background connection attempt
     // is still bootstrapping Tor. Recheck startup from Home so an initialized wallet
