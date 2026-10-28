@@ -3,6 +3,7 @@ package io.anonero.ui.home.graph
 import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
+import androidx.navigation.toRoute
 import androidx.navigation.compose.composable
 import androidx.navigation.navigation
 import io.anonero.AnonConfig
