@@ -41,6 +41,7 @@
     <string name="confirm">Confirmar</string>
     <string name="spend">Gastar</string>
     <string name="coins">Monedas</string>
+    <string name="output_label">SALIDA</string>
     <string name="output_number">SALIDA %1$d</string>
     <string name="battery_optimization_title">Optimización de batería</string>
     <string name="enable">Activar</string>
