@@ -98,7 +98,7 @@ private fun IdentifierValueText(
         Text(
             text = text,
             modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.End,
+            textAlign = TextAlign.Start,
             style = style
         )
     }
