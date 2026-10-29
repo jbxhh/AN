@@ -21,6 +21,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +41,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import kotlinx.coroutines.delay
 import io.anonero.R
 import io.anonero.model.Subaddress
 import io.anonero.model.node.NodeFields
@@ -146,9 +148,16 @@ fun HomeScreenComposable(
         }
     }
 
-    // Request notification permission only after the unlocked Home screen has drawn.
-    // Wallet creation/restoration must never trigger the system dialog from onboarding.
-    LaunchedEffect(context) {
+    val pinLockVisible by walletState.pinLockVisibleFlow.collectAsState(
+        initial = walletState.pinLockVisible
+    )
+    var notificationPromptAttempted by remember { mutableStateOf(false) }
+
+    // Wait until the unlocked Home screen is actually visible before asking.
+    // The initial Home composition can happen during onboarding/navigation transitions.
+    LaunchedEffect(context, pinLockVisible) {
+        if (notificationPromptAttempted || pinLockVisible) return@LaunchedEffect
+
         val preferences = context.getSharedPreferences(
             AnonConfig.APP_PREFERENCES,
             android.content.Context.MODE_PRIVATE
@@ -156,14 +165,25 @@ fun HomeScreenComposable(
         val wipeInProgress = preferences.getBoolean(
             AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
         ) || preferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
-        if (!wipeInProgress && AnonConfig.getDefaultWalletFile(context).exists()) {
-            withFrameNanos { }
-            val wipeStillInProgress = preferences.getBoolean(
-                AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
-            ) || preferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
-            if (!wipeStillInProgress) {
-                (context as? MainActivity)?.startNotificationService()
-            }
+        if (wipeInProgress || !AnonConfig.getDefaultWalletFile(context).exists()) {
+            return@LaunchedEffect
+        }
+
+        // Let the first Home frame become visible before opening the system dialog.
+        withFrameNanos { }
+        delay(1_200L)
+
+        val wipeStillInProgress = preferences.getBoolean(
+            AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
+        ) || preferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
+        if (
+            !wipeStillInProgress &&
+            !walletState.pinLockVisible &&
+            AnonConfig.getDefaultWalletFile(context).exists()
+        ) {
+            val activity = context as? MainActivity ?: return@LaunchedEffect
+            notificationPromptAttempted = true
+            activity.startNotificationService()
         }
     }
 
