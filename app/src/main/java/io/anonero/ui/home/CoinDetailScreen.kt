@@ -276,8 +276,7 @@ fun CoinDetailScreen(
                 ) {
                     Row(
                         modifier = Modifier.size(width = 52.dp, height = 24.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             stringResource(R.string.output_label),
@@ -285,6 +284,7 @@ fun CoinDetailScreen(
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1
                         )
+                        Spacer(Modifier.width(8.dp))
                         Text(
                             if (coinIndex >= 0) (coinIndex + 1).toString() else "",
                             color = outputColor,
