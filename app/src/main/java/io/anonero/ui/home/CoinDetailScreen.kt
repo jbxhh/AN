@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import io.anonero.R
 import io.anonero.services.WalletState
 import io.anonero.util.Formats
 import kotlinx.coroutines.Dispatchers
