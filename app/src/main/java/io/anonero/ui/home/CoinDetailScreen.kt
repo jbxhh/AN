@@ -150,13 +150,6 @@ private fun IdentifierValueText(
     val density = LocalDensity.current
     BoxWithConstraints(modifier = modifier) {
         val maxWidthPx = with(density) { maxWidth.roundToPx() }
-        val ellipsisWidthPx = textMeasurer.measure(
-            AnnotatedString("..."),
-            style = style,
-            softWrap = false
-        ).size.width
-        val sideWidthPx = ((maxWidthPx - ellipsisWidthPx) / 2).coerceAtLeast(0)
-        val rightWidthPx = (maxWidthPx - sideWidthPx - ellipsisWidthPx).coerceAtLeast(0)
         val fullValueFits = textMeasurer.measure(
             AnnotatedString(displayValue),
             style = style,
@@ -171,9 +164,15 @@ private fun IdentifierValueText(
                 textAlign = TextAlign.End,
                 style = style
             )
-        } else if (fullValueFits) {
+        } else {
+            // Keep the abbreviated value in one Text node so the prefix, ellipsis,
+            // and suffix remain adjacent instead of leaving gaps between weighted columns.
+            val visibleValue = remember(displayValue, maxWidthPx, style, textMeasurer) {
+                if (fullValueFits) displayValue
+                else abbreviatedValueToFit(displayValue, maxWidthPx, style, textMeasurer)
+            }
             Text(
-                text = displayValue,
+                text = visibleValue,
                 modifier = Modifier.fillMaxWidth(),
                 maxLines = 1,
                 softWrap = false,
@@ -181,44 +180,6 @@ private fun IdentifierValueText(
                 textAlign = TextAlign.End,
                 style = style
             )
-        } else {
-            val prefixLength = remember(displayValue, sideWidthPx, style, textMeasurer) {
-                fittingPrefixLength(displayValue, sideWidthPx, style, textMeasurer)
-            }
-            val suffixLength = remember(displayValue, rightWidthPx, style, textMeasurer) {
-                fittingSuffixLength(displayValue, rightWidthPx, style, textMeasurer)
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top
-            ) {
-                Text(
-                    text = displayValue.take(prefixLength),
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Clip,
-                    textAlign = TextAlign.Start,
-                    style = style
-                )
-                Text(
-                    text = "...",
-                    modifier = Modifier.width(with(density) { ellipsisWidthPx.toDp() }),
-                    maxLines = 1,
-                    softWrap = false,
-                    textAlign = TextAlign.Center,
-                    style = style
-                )
-                Text(
-                    text = displayValue.takeLast(suffixLength),
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Clip,
-                    textAlign = TextAlign.End,
-                    style = style
-                )
-            }
         }
     }
 }
