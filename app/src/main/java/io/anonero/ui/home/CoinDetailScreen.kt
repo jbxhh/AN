@@ -273,13 +273,27 @@ fun CoinDetailScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        "输出 " + if (coinIndex >= 0) coinIndex + 1 else "",
+                    Row(
                         modifier = Modifier.size(width = 52.dp, height = 24.dp),
-                        color = outputColor,
-                        style = MaterialTheme.typography.titleMedium,
-                        textAlign = TextAlign.Start
-                    )
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val outputLabel = stringResource(R.string.output_number, 0)
+                            .substringBefore("0")
+                            .trimEnd()
+                        Text(
+                            outputLabel,
+                            color = outputColor,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (coinIndex >= 0) (coinIndex + 1).toString() else "",
+                            color = outputColor,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1
+                        )
+                    }
                     Text(
                         coin?.let {
                             if (hideAmounts) Formats.maskAmount(it.amount)
