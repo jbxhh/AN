@@ -2,6 +2,9 @@ package io.anonero.ui.home
 
 import io.anonero.ui.theme.AnonNeroTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -36,6 +39,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.anonero.services.WalletState
@@ -79,6 +83,60 @@ private fun abbreviatedValueToFit(
     return best
 }
 
+private fun fittingPrefixLength(
+    value: String,
+    maxWidthPx: Int,
+    style: androidx.compose.ui.text.TextStyle,
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+): Int {
+    var low = 0
+    var high = value.length
+    var best = 0
+    while (low <= high) {
+        val mid = (low + high) / 2
+        val candidate = value.take(mid)
+        val width = textMeasurer.measure(
+            AnnotatedString(candidate),
+            style = style,
+            softWrap = false
+        ).size.width
+        if (width <= maxWidthPx) {
+            best = mid
+            low = mid + 1
+        } else {
+            high = mid - 1
+        }
+    }
+    return best
+}
+
+private fun fittingSuffixLength(
+    value: String,
+    maxWidthPx: Int,
+    style: androidx.compose.ui.text.TextStyle,
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+): Int {
+    var low = 0
+    var high = value.length
+    var best = 0
+    while (low <= high) {
+        val mid = (low + high) / 2
+        val candidate = value.takeLast(mid)
+        val width = textMeasurer.measure(
+            AnnotatedString(candidate),
+            style = style,
+            softWrap = false
+        ).size.width
+        if (width <= maxWidthPx) {
+            best = mid
+            low = mid + 1
+        } else {
+            high = mid - 1
+        }
+    }
+    return best
+}
+
 @Composable
 private fun IdentifierValueText(
     value: String?,
@@ -91,16 +149,76 @@ private fun IdentifierValueText(
     val density = LocalDensity.current
     BoxWithConstraints(modifier = modifier) {
         val maxWidthPx = with(density) { maxWidth.roundToPx() }
-        val text = remember(displayValue, expanded, maxWidthPx, style, textMeasurer) {
-            if (expanded) displayValue
-            else abbreviatedValueToFit(displayValue, maxWidthPx, style, textMeasurer)
+        val ellipsisWidthPx = textMeasurer.measure(
+            AnnotatedString("..."),
+            style = style,
+            softWrap = false
+        ).size.width
+        val sideWidthPx = ((maxWidthPx - ellipsisWidthPx) / 2).coerceAtLeast(0)
+        val rightWidthPx = (maxWidthPx - sideWidthPx - ellipsisWidthPx).coerceAtLeast(0)
+        val fullValueFits = textMeasurer.measure(
+            AnnotatedString(displayValue),
+            style = style,
+            softWrap = false
+        ).size.width <= maxWidthPx
+
+        if (expanded) {
+            // Preserve the original expanded presentation.
+            Text(
+                text = displayValue,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.End,
+                style = style
+            )
+        } else if (fullValueFits) {
+            Text(
+                text = displayValue,
+                modifier = Modifier.fillMaxWidth(),
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip,
+                textAlign = TextAlign.End,
+                style = style
+            )
+        } else {
+            val prefixLength = remember(displayValue, sideWidthPx, style, textMeasurer) {
+                fittingPrefixLength(displayValue, sideWidthPx, style, textMeasurer)
+            }
+            val suffixLength = remember(displayValue, rightWidthPx, style, textMeasurer) {
+                fittingSuffixLength(displayValue, rightWidthPx, style, textMeasurer)
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top
+            ) {
+                Text(
+                    text = displayValue.take(prefixLength),
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip,
+                    textAlign = TextAlign.Start,
+                    style = style
+                )
+                Text(
+                    text = "...",
+                    modifier = Modifier.width(with(density) { ellipsisWidthPx.toDp() }),
+                    maxLines = 1,
+                    softWrap = false,
+                    textAlign = TextAlign.Center,
+                    style = style
+                )
+                Text(
+                    text = displayValue.takeLast(suffixLength),
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip,
+                    textAlign = TextAlign.End,
+                    style = style
+                )
+            }
         }
-        Text(
-            text = text,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Start,
-            style = style
-        )
     }
 }
 
@@ -181,13 +299,24 @@ fun CoinDetailScreen(
                         Spacer(modifier = Modifier.size(28.dp))
                     }
                 }
-                Text(
-                    text = "全局索引  " + (coin?.globalOutputIndex ?: "____"),
+                androidx.compose.foundation.layout.Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 12.dp),
-                    style = MaterialTheme.typography.titleMedium
-                )
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Text(
+                        text = "全局索引",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = coin?.globalOutputIndex?.toString() ?: "____",
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
                 androidx.compose.foundation.layout.Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -198,7 +327,8 @@ fun CoinDetailScreen(
                     ),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Text("公钥", modifier = Modifier.size(width = 40.dp, height = 24.dp), style = MaterialTheme.typography.titleMedium)
+                    Text("公钥", modifier = Modifier.height(24.dp), style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.width(6.dp))
                     IdentifierValueText(
                         value = coin?.pub_key,
                         expanded = pubKeyState == 1,
@@ -215,7 +345,8 @@ fun CoinDetailScreen(
                     ),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Text("哈希", modifier = Modifier.size(width = 40.dp, height = 24.dp), style = MaterialTheme.typography.titleMedium)
+                    Text("哈希", modifier = Modifier.height(24.dp), style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.width(6.dp))
                     IdentifierValueText(
                         value = coin?.hash,
                         expanded = hashState == 1,
@@ -232,7 +363,8 @@ fun CoinDetailScreen(
                     ),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Text("地址", modifier = Modifier.size(width = 40.dp, height = 24.dp), style = MaterialTheme.typography.titleMedium)
+                    Text("地址", modifier = Modifier.height(24.dp), style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.width(6.dp))
                     IdentifierValueText(
                         value = outputAddress,
                         expanded = addressState == 1,
