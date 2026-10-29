@@ -21,13 +21,13 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -35,13 +35,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
-import kotlinx.coroutines.delay
 import io.anonero.R
 import io.anonero.model.Subaddress
 import io.anonero.model.node.NodeFields
@@ -153,37 +154,46 @@ fun HomeScreenComposable(
     )
     var notificationPromptAttempted by remember { mutableStateOf(false) }
 
-    // Wait until the unlocked Home screen is actually visible before asking.
-    // The initial Home composition can happen during onboarding/navigation transitions.
-    LaunchedEffect(context, pinLockVisible) {
-        if (notificationPromptAttempted || pinLockVisible) return@LaunchedEffect
+    // Navigation composes the incoming destination before it is actually visible.
+    // Request permission only when this Home destination reaches RESUMED, after its
+    // navigation transition has completed, and never while the PIN overlay is visible.
+    DisposableEffect(mainNavController, pinLockVisible) {
+        val lifecycle = mainNavController?.currentBackStackEntry?.lifecycle
+        if (lifecycle == null) {
+            onDispose { }
+        } else {
+            fun requestNotificationsIfEligible() {
+                if (notificationPromptAttempted || pinLockVisible) return
 
-        val preferences = context.getSharedPreferences(
-            AnonConfig.APP_PREFERENCES,
-            android.content.Context.MODE_PRIVATE
-        )
-        val wipeInProgress = preferences.getBoolean(
-            AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
-        ) || preferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
-        if (wipeInProgress || !AnonConfig.getDefaultWalletFile(context).exists()) {
-            return@LaunchedEffect
-        }
+                val preferences = context.getSharedPreferences(
+                    AnonConfig.APP_PREFERENCES,
+                    android.content.Context.MODE_PRIVATE
+                )
+                val wipeInProgress = preferences.getBoolean(
+                    AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
+                ) || preferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
+                if (
+                    !wipeInProgress &&
+                    AnonConfig.getDefaultWalletFile(context).exists()
+                ) {
+                    val activity = context as? MainActivity ?: return
+                    notificationPromptAttempted = true
+                    activity.startNotificationService()
+                }
+            }
 
-        // Let the first Home frame become visible before opening the system dialog.
-        withFrameNanos { }
-        delay(1_200L)
-
-        val wipeStillInProgress = preferences.getBoolean(
-            AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
-        ) || preferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
-        if (
-            !wipeStillInProgress &&
-            !walletState.pinLockVisible &&
-            AnonConfig.getDefaultWalletFile(context).exists()
-        ) {
-            val activity = context as? MainActivity ?: return@LaunchedEffect
-            notificationPromptAttempted = true
-            activity.startNotificationService()
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    requestNotificationsIfEligible()
+                }
+            }
+            lifecycle.addObserver(observer)
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                requestNotificationsIfEligible()
+            }
+            onDispose {
+                lifecycle.removeObserver(observer)
+            }
         }
     }
 
