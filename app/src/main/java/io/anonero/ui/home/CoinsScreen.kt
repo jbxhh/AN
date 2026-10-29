@@ -251,20 +251,17 @@ fun CoinsScreen(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Row(
-                                        verticalAlignment = Alignment.CenterVertically
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        val outputLabel = stringResource(R.string.output_number, 0)
-                                            .substringBefore("0")
-                                            .trimEnd()
                                         Text(
-                                            outputLabel,
+                                            stringResource(R.string.output_label),
                                             color = if (isFrozen || coin.spent) {
                                                 MaterialTheme.colorScheme.onSurfaceVariant
                                             } else {
                                                 MaterialTheme.colorScheme.primary
                                             },
                                         )
-                                        Spacer(Modifier.width(8.dp))
                                         Text(
                                             (index + 1).toString(),
                                             color = if (isFrozen || coin.spent) {
