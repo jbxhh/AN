@@ -309,7 +309,7 @@ fun CoinDetailScreen(
                         text = "全局索引",
                         style = MaterialTheme.typography.titleMedium
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = coin?.globalOutputIndex?.toString() ?: "____",
                         style = MaterialTheme.typography.titleMedium,
@@ -328,7 +328,7 @@ fun CoinDetailScreen(
                     verticalAlignment = Alignment.Top
                 ) {
                     Text("公钥", modifier = Modifier.height(24.dp), style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     IdentifierValueText(
                         value = coin?.pub_key,
                         expanded = pubKeyState == 1,
@@ -346,7 +346,7 @@ fun CoinDetailScreen(
                     verticalAlignment = Alignment.Top
                 ) {
                     Text("哈希", modifier = Modifier.height(24.dp), style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     IdentifierValueText(
                         value = coin?.hash,
                         expanded = hashState == 1,
@@ -364,7 +364,7 @@ fun CoinDetailScreen(
                     verticalAlignment = Alignment.Top
                 ) {
                     Text("地址", modifier = Modifier.height(24.dp), style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     IdentifierValueText(
                         value = outputAddress,
                         expanded = addressState == 1,
