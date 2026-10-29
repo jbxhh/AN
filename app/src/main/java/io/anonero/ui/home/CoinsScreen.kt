@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
@@ -251,8 +252,7 @@ fun CoinsScreen(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
                                             stringResource(R.string.output_label),
@@ -262,6 +262,7 @@ fun CoinsScreen(
                                                 MaterialTheme.colorScheme.primary
                                             },
                                         )
+                                        Spacer(Modifier.width(8.dp))
                                         Text(
                                             (index + 1).toString(),
                                             color = if (isFrozen || coin.spent) {
