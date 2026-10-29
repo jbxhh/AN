@@ -250,14 +250,30 @@ fun CoinsScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Text(
-                                        stringResource(R.string.output_number, index + 1),
-                                        color = if (isFrozen || coin.spent) {
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                        } else {
-                                            MaterialTheme.colorScheme.primary
-                                        },
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        val outputLabel = stringResource(R.string.output_number, 0)
+                                            .substringBefore("0")
+                                            .trimEnd()
+                                        Text(
+                                            outputLabel,
+                                            color = if (isFrozen || coin.spent) {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            } else {
+                                                MaterialTheme.colorScheme.primary
+                                            },
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            (index + 1).toString(),
+                                            color = if (isFrozen || coin.spent) {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            } else {
+                                                MaterialTheme.colorScheme.primary
+                                            },
+                                        )
+                                    }
                                     Text(
                                         if (hideAmounts) Formats.maskAmount(coin.amount)
                                         else Formats.getDisplayAmount(coin.amount),
