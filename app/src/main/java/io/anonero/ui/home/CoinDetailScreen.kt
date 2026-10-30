@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -172,9 +174,11 @@ fun CoinDetailScreen(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = coin?.let { if (pubKeyState == 1) it.pub_key else abbreviatedValue(it.pub_key, 33) } ?: "____",
-                        modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Right,
-                        style = MaterialTheme.typography.titleMedium
+                        modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                        textAlign = TextAlign.Start,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
                 androidx.compose.foundation.layout.Row(
@@ -191,9 +195,11 @@ fun CoinDetailScreen(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = coin?.let { if (hashState == 1) it.hash else abbreviatedValue(it.hash, 33) } ?: "____",
-                        modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Right,
-                        style = MaterialTheme.typography.titleMedium
+                        modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                        textAlign = TextAlign.Start,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
                 androidx.compose.foundation.layout.Row(
@@ -210,9 +216,11 @@ fun CoinDetailScreen(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = outputAddress?.let { if (addressState == 1) it else abbreviatedValue(it, 33) } ?: "____",
-                        modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Right,
-                        style = MaterialTheme.typography.titleMedium
+                        modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                        textAlign = TextAlign.Start,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
