@@ -174,7 +174,7 @@ fun CoinDetailScreen(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = coin?.let { if (pubKeyState == 1) it.pub_key else abbreviatedValue(it.pub_key, 33) } ?: "____",
-                        modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
                         textAlign = TextAlign.Start,
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
@@ -195,7 +195,7 @@ fun CoinDetailScreen(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = coin?.let { if (hashState == 1) it.hash else abbreviatedValue(it.hash, 33) } ?: "____",
-                        modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
                         textAlign = TextAlign.Start,
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
@@ -216,7 +216,7 @@ fun CoinDetailScreen(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = outputAddress?.let { if (addressState == 1) it else abbreviatedValue(it, 33) } ?: "____",
-                        modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
                         textAlign = TextAlign.Start,
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
