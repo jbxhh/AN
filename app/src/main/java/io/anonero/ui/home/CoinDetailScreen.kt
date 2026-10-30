@@ -3,9 +3,7 @@ package io.anonero.ui.home
 import io.anonero.ui.theme.AnonNeroTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,12 +33,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.anonero.R
@@ -56,133 +51,6 @@ private fun abbreviatedValue(value: String, maxChars: Int): String {
     val left = available / 2
     val right = available - left
     return value.take(left) + "..." + value.takeLast(right)
-}
-
-private fun abbreviatedValueToFit(
-    value: String,
-    maxWidthPx: Int,
-    style: androidx.compose.ui.text.TextStyle,
-    textMeasurer: androidx.compose.ui.text.TextMeasurer,
-): String {
-    if (value.length <= 5) return value
-    fun fits(candidate: String): Boolean =
-        textMeasurer.measure(AnnotatedString(candidate), style = style, softWrap = false).size.width <= maxWidthPx
-
-    if (fits(value)) return value
-    var low = 5
-    var high = value.length - 1
-    var best = abbreviatedValue(value, 5)
-    while (low <= high) {
-        val mid = (low + high) / 2
-        val candidate = abbreviatedValue(value, mid)
-        if (fits(candidate)) {
-            best = candidate
-            low = mid + 1
-        } else {
-            high = mid - 1
-        }
-    }
-    return best
-}
-
-private fun fittingPrefixLength(
-    value: String,
-    maxWidthPx: Int,
-    style: androidx.compose.ui.text.TextStyle,
-    textMeasurer: androidx.compose.ui.text.TextMeasurer,
-): Int {
-    var low = 0
-    var high = value.length
-    var best = 0
-    while (low <= high) {
-        val mid = (low + high) / 2
-        val candidate = value.take(mid)
-        val width = textMeasurer.measure(
-            AnnotatedString(candidate),
-            style = style,
-            softWrap = false
-        ).size.width
-        if (width <= maxWidthPx) {
-            best = mid
-            low = mid + 1
-        } else {
-            high = mid - 1
-        }
-    }
-    return best
-}
-
-private fun fittingSuffixLength(
-    value: String,
-    maxWidthPx: Int,
-    style: androidx.compose.ui.text.TextStyle,
-    textMeasurer: androidx.compose.ui.text.TextMeasurer,
-): Int {
-    var low = 0
-    var high = value.length
-    var best = 0
-    while (low <= high) {
-        val mid = (low + high) / 2
-        val candidate = value.takeLast(mid)
-        val width = textMeasurer.measure(
-            AnnotatedString(candidate),
-            style = style,
-            softWrap = false
-        ).size.width
-        if (width <= maxWidthPx) {
-            best = mid
-            low = mid + 1
-        } else {
-            high = mid - 1
-        }
-    }
-    return best
-}
-
-@Composable
-private fun IdentifierValueText(
-    value: String?,
-    expanded: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val displayValue = value ?: "____"
-    val style = MaterialTheme.typography.titleMedium
-    val textMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
-    val density = LocalDensity.current
-    BoxWithConstraints(modifier = modifier) {
-        val maxWidthPx = with(density) { maxWidth.roundToPx() }
-        val fullValueFits = textMeasurer.measure(
-            AnnotatedString(displayValue),
-            style = style,
-            softWrap = false
-        ).size.width <= maxWidthPx
-
-        if (expanded) {
-            // Preserve the original expanded presentation.
-            Text(
-                text = displayValue,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.End,
-                style = style
-            )
-        } else {
-            // Keep the abbreviated value in one Text node so the prefix, ellipsis,
-            // and suffix remain adjacent instead of leaving gaps between weighted columns.
-            val visibleValue = remember(displayValue, maxWidthPx, style, textMeasurer) {
-                if (fullValueFits) displayValue
-                else abbreviatedValueToFit(displayValue, maxWidthPx, style, textMeasurer)
-            }
-            Text(
-                text = visibleValue,
-                modifier = Modifier.fillMaxWidth(),
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Clip,
-                textAlign = TextAlign.End,
-                style = style
-            )
-        }
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -301,12 +169,13 @@ fun CoinDetailScreen(
                     ),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Text("公钥", modifier = Modifier.height(24.dp), style = MaterialTheme.typography.titleMedium)
+                    Text("公钥", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.width(8.dp))
-                    IdentifierValueText(
-                        value = coin?.pub_key,
-                        expanded = pubKeyState == 1,
-                        modifier = Modifier.weight(1f)
+                    Text(
+                        text = coin?.let { if (pubKeyState == 1) it.pub_key else abbreviatedValue(it.pub_key, 33) } ?: "____",
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Right,
+                        style = MaterialTheme.typography.titleMedium
                     )
                 }
                 androidx.compose.foundation.layout.Row(
@@ -319,12 +188,13 @@ fun CoinDetailScreen(
                     ),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Text("哈希", modifier = Modifier.height(24.dp), style = MaterialTheme.typography.titleMedium)
+                    Text("哈希", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.width(8.dp))
-                    IdentifierValueText(
-                        value = coin?.hash,
-                        expanded = hashState == 1,
-                        modifier = Modifier.weight(1f)
+                    Text(
+                        text = coin?.let { if (hashState == 1) it.hash else abbreviatedValue(it.hash, 33) } ?: "____",
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Right,
+                        style = MaterialTheme.typography.titleMedium
                     )
                 }
                 androidx.compose.foundation.layout.Row(
@@ -337,12 +207,13 @@ fun CoinDetailScreen(
                     ),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Text("地址", modifier = Modifier.height(24.dp), style = MaterialTheme.typography.titleMedium)
+                    Text("地址", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.width(8.dp))
-                    IdentifierValueText(
-                        value = outputAddress,
-                        expanded = addressState == 1,
-                        modifier = Modifier.weight(1f)
+                    Text(
+                        text = outputAddress?.let { if (addressState == 1) it else abbreviatedValue(it, 33) } ?: "____",
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Right,
+                        style = MaterialTheme.typography.titleMedium
                     )
                 }
             }
