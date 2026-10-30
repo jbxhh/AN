@@ -35,6 +35,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -44,6 +47,14 @@ import io.anonero.util.Formats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
+
+private val identifierFontFamily = FontFamily(
+    Font(R.font.robotomono_light, FontWeight.Light),
+    Font(R.font.robotomono_regular, FontWeight.Normal),
+    Font(R.font.robotomono_medium, FontWeight.Medium),
+    Font(R.font.robotomono_bold, FontWeight.Bold),
+    Font(R.font.robotomono_semi_bold, FontWeight.SemiBold),
+)
 
 private fun abbreviatedValue(value: String, maxChars: Int): String {
     if (value.length <= maxChars) return value
@@ -79,6 +90,10 @@ fun CoinDetailScreen(
     } else {
         MaterialTheme.colorScheme.primary
     }
+    // Match q's Roboto Mono titleMedium locally without changing the app-wide theme.
+    val identifierTextStyle = MaterialTheme.typography.titleMedium.copy(
+        fontFamily = identifierFontFamily
+    )
 
     Scaffold(
         topBar = {
@@ -169,13 +184,13 @@ fun CoinDetailScreen(
                     ),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Text("公钥", style = MaterialTheme.typography.titleMedium)
+                    Text("公钥", style = identifierTextStyle)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = coin?.let { if (pubKeyState == 1) it.pub_key else abbreviatedValue(it.pub_key, 33) } ?: "____",
                         modifier = Modifier.weight(1f),
                         textAlign = TextAlign.Right,
-                        style = MaterialTheme.typography.titleMedium
+                        style = identifierTextStyle
                     )
                 }
                 androidx.compose.foundation.layout.Row(
@@ -188,13 +203,13 @@ fun CoinDetailScreen(
                     ),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Text("哈希", style = MaterialTheme.typography.titleMedium)
+                    Text("哈希", style = identifierTextStyle)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = coin?.let { if (hashState == 1) it.hash else abbreviatedValue(it.hash, 33) } ?: "____",
                         modifier = Modifier.weight(1f),
                         textAlign = TextAlign.Right,
-                        style = MaterialTheme.typography.titleMedium
+                        style = identifierTextStyle
                     )
                 }
                 androidx.compose.foundation.layout.Row(
@@ -207,13 +222,13 @@ fun CoinDetailScreen(
                     ),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Text("地址", style = MaterialTheme.typography.titleMedium)
+                    Text("地址", style = identifierTextStyle)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = outputAddress?.let { if (addressState == 1) it else abbreviatedValue(it, 33) } ?: "____",
                         modifier = Modifier.weight(1f),
                         textAlign = TextAlign.Right,
-                        style = MaterialTheme.typography.titleMedium
+                        style = identifierTextStyle
                     )
                 }
             }
