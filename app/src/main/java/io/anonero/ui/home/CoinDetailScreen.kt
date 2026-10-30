@@ -168,12 +168,12 @@ fun CoinDetailScreen(
                     ),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Text("公钥", modifier = Modifier.width(52.dp), style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("公钥", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.width(8.dp))
                     Text(
                         text = coin?.let { if (pubKeyState == 1) it.pub_key else abbreviatedValue(it.pub_key, 33) } ?: "____",
                         modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Start,
+                        textAlign = TextAlign.Right,
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
@@ -187,12 +187,12 @@ fun CoinDetailScreen(
                     ),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Text("哈希", modifier = Modifier.width(52.dp), style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("哈希", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.width(8.dp))
                     Text(
                         text = coin?.let { if (hashState == 1) it.hash else abbreviatedValue(it.hash, 33) } ?: "____",
                         modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Start,
+                        textAlign = TextAlign.Right,
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
@@ -206,12 +206,12 @@ fun CoinDetailScreen(
                     ),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Text("地址", modifier = Modifier.width(52.dp), style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("地址", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.width(8.dp))
                     Text(
                         text = outputAddress?.let { if (addressState == 1) it else abbreviatedValue(it, 33) } ?: "____",
                         modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Start,
+                        textAlign = TextAlign.Right,
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
