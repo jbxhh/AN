@@ -162,10 +162,9 @@ fun CoinDetailScreen(
                     verticalAlignment = Alignment.Top
                 ) {
                     Text("公钥", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.width(8.dp))
                     Text(
                         text = coin?.pub_key ?: "____",
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).padding(start = 8.dp),
                         textAlign = TextAlign.End,
                         maxLines = if (pubKeyState == 1) Int.MAX_VALUE else 1,
                         softWrap = pubKeyState == 1,
@@ -184,10 +183,9 @@ fun CoinDetailScreen(
                     verticalAlignment = Alignment.Top
                 ) {
                     Text("哈希", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.width(8.dp))
                     Text(
                         text = coin?.hash ?: "____",
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).padding(start = 8.dp),
                         textAlign = TextAlign.End,
                         maxLines = if (hashState == 1) Int.MAX_VALUE else 1,
                         softWrap = hashState == 1,
@@ -206,10 +204,9 @@ fun CoinDetailScreen(
                     verticalAlignment = Alignment.Top
                 ) {
                     Text("地址", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.width(8.dp))
                     Text(
                         text = outputAddress ?: "____",
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).padding(start = 8.dp),
                         textAlign = TextAlign.End,
                         maxLines = if (addressState == 1) Int.MAX_VALUE else 1,
                         softWrap = addressState == 1,
