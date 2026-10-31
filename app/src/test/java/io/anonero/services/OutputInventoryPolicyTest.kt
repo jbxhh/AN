@@ -47,8 +47,29 @@ class OutputInventoryPolicyTest {
     }
 
     @Test
+    fun retriesWhenCachedWalletBalanceIsPositiveButNativeBalanceIsTemporarilyZero() {
+        assertTrue(
+            shouldRetryOutputSnapshot(
+                outputCount = 0,
+                balance = 0L,
+                unlockedBalance = 0L,
+                cachedBalance = 50L
+            )
+        )
+        assertTrue(
+            shouldRetryOutputSnapshot(
+                outputCount = 0,
+                balance = 0L,
+                unlockedBalance = 0L,
+                cachedUnlockedBalance = 25L
+            )
+        )
+    }
+
+    @Test
     fun stopsRetryingWhenOutputsExistOrWalletHasNoBalance() {
         assertFalse(shouldRetryOutputSnapshot(outputCount = 1, balance = 10L, unlockedBalance = 5L))
+        assertFalse(shouldRetryOutputSnapshot(outputCount = 1, balance = 0L, unlockedBalance = 0L, cachedBalance = 50L))
         assertFalse(shouldRetryOutputSnapshot(outputCount = 0, balance = 0L, unlockedBalance = 0L))
     }
 }
