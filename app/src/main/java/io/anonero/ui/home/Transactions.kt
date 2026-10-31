@@ -302,7 +302,7 @@ fun TransactionScreen(
                     )
                 ) {
                     Text(
-                        "Cancel",
+                        stringResource(R.string.cancel),
                         style = MaterialTheme.typography.bodyMedium.copy(
                             color = MaterialTheme.colorScheme.onSecondary.copy(
                                 alpha = 0.8f
