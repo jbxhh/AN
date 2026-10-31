@@ -55,8 +55,15 @@ internal fun retainOutputSnapshot(
 internal fun shouldRetryOutputSnapshot(
     outputCount: Int,
     balance: Long,
-    unlockedBalance: Long
-): Boolean = outputCount == 0 && (balance > 0L || unlockedBalance > 0L)
+    unlockedBalance: Long,
+    cachedBalance: Long = 0L,
+    cachedUnlockedBalance: Long = 0L
+): Boolean = outputCount == 0 && (
+    balance > 0L ||
+        unlockedBalance > 0L ||
+        cachedBalance > 0L ||
+        cachedUnlockedBalance > 0L
+)
 
 const val PREF_FORCE_FRESH_WALLET_SCAN = "anonero_force_fresh_wallet_scan"
 
