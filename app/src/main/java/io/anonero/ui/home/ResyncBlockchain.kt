@@ -177,13 +177,15 @@ private class MoneroBlockTimeLookup(
 
             if (targetTimestamp < minTimestamp && start == 0L) {
                 val genesisTimestamp = headers.firstOrNull { it.height == 0L }?.timestamp
-                if (genesisTimestamp != null && targetTimestamp < genesisTimestamp) {
+                    ?: throw IOException("节点未返回创世区块头")
+                if (targetTimestamp < genesisTimestamp) {
                     throw IOException("所选日期早于 Monero 创世区块")
                 }
             }
             if (targetTimestamp > maxTimestamp && end == tipHeight) {
                 val tipTimestamp = headers.firstOrNull { it.height == tipHeight }?.timestamp
-                if (tipTimestamp != null && targetTimestamp > tipTimestamp) {
+                    ?: throw IOException("节点未返回最新区块头")
+                if (targetTimestamp > tipTimestamp) {
                     throw IOException("所选日期晚于节点最新区块时间")
                 }
             }
