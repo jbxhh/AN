@@ -169,7 +169,7 @@ fun CoinDetailScreen(
                         textAlign = if (pubKeyState == 1) TextAlign.End else TextAlign.Start,
                         maxLines = if (pubKeyState == 1) Int.MAX_VALUE else 1,
                         softWrap = pubKeyState == 1,
-                        overflow = if (pubKeyState == 1) TextOverflow.Clip else TextOverflow.Middle,
+                        overflow = if (pubKeyState == 1) TextOverflow.Clip else TextOverflow.MiddleEllipsis,
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
@@ -191,7 +191,7 @@ fun CoinDetailScreen(
                         textAlign = if (hashState == 1) TextAlign.End else TextAlign.Start,
                         maxLines = if (hashState == 1) Int.MAX_VALUE else 1,
                         softWrap = hashState == 1,
-                        overflow = if (hashState == 1) TextOverflow.Clip else TextOverflow.Middle,
+                        overflow = if (hashState == 1) TextOverflow.Clip else TextOverflow.MiddleEllipsis,
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
@@ -213,7 +213,7 @@ fun CoinDetailScreen(
                         textAlign = if (addressState == 1) TextAlign.End else TextAlign.Start,
                         maxLines = if (addressState == 1) Int.MAX_VALUE else 1,
                         softWrap = addressState == 1,
-                        overflow = if (addressState == 1) TextOverflow.Clip else TextOverflow.Middle,
+                        overflow = if (addressState == 1) TextOverflow.Clip else TextOverflow.MiddleEllipsis,
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
