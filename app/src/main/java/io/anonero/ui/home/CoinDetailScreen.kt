@@ -162,14 +162,10 @@ fun CoinDetailScreen(
                     verticalAlignment = Alignment.Top
                 ) {
                     Text("公钥", style = MaterialTheme.typography.titleMedium)
-                    Text(
+                    ExpandableAlignedValue(
                         text = coin?.pub_key ?: "____",
-                        modifier = Modifier.weight(1f).padding(start = 8.dp),
-                        textAlign = TextAlign.Start,
-                        maxLines = if (pubKeyState == 1) Int.MAX_VALUE else 1,
-                        softWrap = pubKeyState == 1,
-                        overflow = if (pubKeyState == 1) TextOverflow.Clip else TextOverflow.MiddleEllipsis,
-                        style = MaterialTheme.typography.titleMedium
+                        expanded = pubKeyState == 1,
+                        modifier = Modifier.weight(1f).padding(start = 8.dp)
                     )
                 }
                 androidx.compose.foundation.layout.Row(
@@ -183,14 +179,10 @@ fun CoinDetailScreen(
                     verticalAlignment = Alignment.Top
                 ) {
                     Text("哈希", style = MaterialTheme.typography.titleMedium)
-                    Text(
+                    ExpandableAlignedValue(
                         text = coin?.hash ?: "____",
-                        modifier = Modifier.weight(1f).padding(start = 8.dp),
-                        textAlign = TextAlign.Start,
-                        maxLines = if (hashState == 1) Int.MAX_VALUE else 1,
-                        softWrap = hashState == 1,
-                        overflow = if (hashState == 1) TextOverflow.Clip else TextOverflow.MiddleEllipsis,
-                        style = MaterialTheme.typography.titleMedium
+                        expanded = hashState == 1,
+                        modifier = Modifier.weight(1f).padding(start = 8.dp)
                     )
                 }
                 androidx.compose.foundation.layout.Row(
@@ -204,14 +196,10 @@ fun CoinDetailScreen(
                     verticalAlignment = Alignment.Top
                 ) {
                     Text("地址", style = MaterialTheme.typography.titleMedium)
-                    Text(
+                    ExpandableAlignedValue(
                         text = outputAddress ?: "____",
-                        modifier = Modifier.weight(1f).padding(start = 8.dp),
-                        textAlign = TextAlign.Start,
-                        maxLines = if (addressState == 1) Int.MAX_VALUE else 1,
-                        softWrap = addressState == 1,
-                        overflow = if (addressState == 1) TextOverflow.Clip else TextOverflow.MiddleEllipsis,
-                        style = MaterialTheme.typography.titleMedium
+                        expanded = addressState == 1,
+                        modifier = Modifier.weight(1f).padding(start = 8.dp)
                     )
                 }
             }
@@ -245,6 +233,43 @@ fun CoinDetailScreen(
                     }
                 )
             }
+        }
+    }
+}
+
+
+
+@Composable
+private fun ExpandableAlignedValue(
+    text: String,
+    expanded: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    var firstLineEnd by remember(text, expanded) { mutableStateOf(text.length) }
+
+    Column(modifier = modifier) {
+        Text(
+            text = text,
+            modifier = Modifier.fillMaxWidth(),
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = TextAlign.Start,
+            maxLines = 1,
+            softWrap = expanded,
+            overflow = if (expanded) TextOverflow.Clip else TextOverflow.MiddleEllipsis,
+            onTextLayout = { layout ->
+                if (expanded && layout.lineCount > 0) {
+                    val end = layout.getLineEnd(0)
+                    if (firstLineEnd != end) firstLineEnd = end
+                }
+            }
+        )
+        if (expanded && firstLineEnd < text.length) {
+            Text(
+                text = text.substring(firstLineEnd),
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.End
+            )
         }
     }
 }
