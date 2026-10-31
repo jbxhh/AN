@@ -257,7 +257,9 @@ class WalletState(private val prefs: SharedPreferences) {
                     publishWalletSnapshot(wallet)
                 }
                 _walletStatus.value = null
-                _coins.value = emptyList()
+                // A transient daemon reinitialization does not invalidate the last
+                // known output inventory. A real wallet replacement is cleared by
+                // resetSnapshotForWalletChange() before this branch is reached.
                 _connectionStatus.value =
                     Wallet.ConnectionStatus.ConnectionStatus_Disconnected
                 _connectedDaemon.update { current ->
