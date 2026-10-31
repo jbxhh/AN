@@ -161,7 +161,7 @@ fun CoinDetailScreen(
                     ),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Text("公钥", style = MaterialTheme.typography.titleMedium)
+                    Text("公钥", modifier = Modifier.width(52.dp), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = coin?.pub_key ?: "____",
@@ -183,7 +183,7 @@ fun CoinDetailScreen(
                     ),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Text("哈希", style = MaterialTheme.typography.titleMedium)
+                    Text("哈希", modifier = Modifier.width(52.dp), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = coin?.hash ?: "____",
@@ -205,7 +205,7 @@ fun CoinDetailScreen(
                     ),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Text("地址", style = MaterialTheme.typography.titleMedium)
+                    Text("地址", modifier = Modifier.width(52.dp), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = outputAddress ?: "____",
