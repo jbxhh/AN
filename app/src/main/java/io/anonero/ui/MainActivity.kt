@@ -93,6 +93,10 @@ class MainActivity : ComponentActivity() {
 
     // Local prefs to record which wallet we've already prompted notification permission for
     private val localPrefs by lazy { getSharedPreferences("anonero_prefs", MODE_PRIVATE) }
+    // Android's notification permission sheet can trigger onUserLeaveHint. Do not
+    // interpret that system-owned UI as the user leaving the wallet and lock it again.
+    @Volatile
+    private var notificationPermissionRequestInProgress = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashscreen = installSplashScreen()
@@ -315,6 +319,7 @@ class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
+        notificationPermissionRequestInProgress = false
         // Mark that we've prompted for this wallet
         val walletId = AnonConfig.getDefaultWalletFile(this)?.name ?: ""
         if (walletId.isNotEmpty()) {
@@ -351,7 +356,13 @@ class MainActivity : ComponentActivity() {
         if (promptedWalletId != walletId) {
             // Not prompted for this wallet yet — request runtime permission (Android 13+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                notificationPermissionRequestInProgress = true
+                try {
+                    requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } catch (error: Exception) {
+                    notificationPermissionRequestInProgress = false
+                    throw error
+                }
             } else {
                 // Pre-Android 13 no runtime permission needed — start service and mark
                 startAnonService(applicationContext)
@@ -382,6 +393,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
+        if (notificationPermissionRequestInProgress) {
+            Timber.tag(TAG).d("Skipping background wallet lock while notification permission is requested")
+            return
+        }
         val wipePrefs = getSharedPreferences(AnonConfig.APP_PREFERENCES, MODE_PRIVATE)
         if (
             wipePrefs.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false) ||
