@@ -80,7 +80,20 @@ private const val MONERO_BLOCK_TIME_V1_SECONDS = 60L
 private const val MONERO_BLOCK_TIME_V2_SECONDS = 120L
 private const val BLOCK_SEARCH_RADIUS = 250L
 
-private data class ActualBlockHeader(val height: Long, val timestamp: Long)
+internal data class ActualBlockHeader(val height: Long, val timestamp: Long)
+
+internal fun firstBlockAtOrAfterTimestamp(
+    headers: List<ActualBlockHeader>,
+    targetTimestamp: Long
+): ActualBlockHeader? = headers.asSequence()
+    .filter { it.timestamp >= targetTimestamp }
+    .minByOrNull { it.height }
+
+private data class ActualBlockLookupResult(
+    val header: ActualBlockHeader,
+    val latestHeight: Long
+)
+
 private data class ActualDaemonHeights(val height: Long, val targetHeight: Long)
 private data class RpcHttpResponse(
     val code: Int,
@@ -128,18 +141,8 @@ private class MoneroBlockTimeLookup(
     // The estimate is only a search starting point; it is never used as the result.
     // Date inputs represent local midnight. Select the first block height on/after that
     // timestamp rather than the nearest timestamp, which can fall on the previous day.
-    fun heightAtOrAfterTimestamp(targetTimestamp: Long): Long {
+    fun blockAtOrAfterTimestamp(targetTimestamp: Long): ActualBlockLookupResult {
         val tipHeight = latestHeight()
-        val genesis = headerAtHeight(0L)
-        if (targetTimestamp < genesis.timestamp) {
-            throw IOException("所选日期早于 Monero 创世区块")
-        }
-        val tip = headerAtHeight(tipHeight)
-        if (targetTimestamp > tip.timestamp) {
-            throw IOException("所选日期晚于节点最新区块时间")
-        }
-        if (targetTimestamp == tip.timestamp) return tip.height
-
         var center = guessRestoreHeight(targetTimestamp).coerceIn(0L, tipHeight)
         repeat(12) {
             val start = (center - BLOCK_SEARCH_RADIUS).coerceAtLeast(0L)
@@ -171,12 +174,26 @@ private class MoneroBlockTimeLookup(
                 center = (center + distance).coerceAtMost(tipHeight)
                 return@repeat
             }
-            return headers
-                .asSequence()
-                .filter { it.timestamp >= targetTimestamp }
-                .minByOrNull { it.height }
-                ?.height
+
+            if (targetTimestamp < minTimestamp && start == 0L) {
+                val genesisTimestamp = headers.firstOrNull { it.height == 0L }?.timestamp
+                if (genesisTimestamp != null && targetTimestamp < genesisTimestamp) {
+                    throw IOException("所选日期早于 Monero 创世区块")
+                }
+            }
+            if (targetTimestamp > maxTimestamp && end == tipHeight) {
+                val tipTimestamp = headers.firstOrNull { it.height == tipHeight }?.timestamp
+                if (tipTimestamp != null && targetTimestamp > tipTimestamp) {
+                    throw IOException("所选日期晚于节点最新区块时间")
+                }
+            }
+
+            val selectedHeader = firstBlockAtOrAfterTimestamp(headers, targetTimestamp)
                 ?: throw IOException("节点未返回所选日期之后的区块头")
+            return ActualBlockLookupResult(
+                header = selectedHeader,
+                latestHeight = tipHeight
+            )
         }
         throw IOException("无法根据节点实际区块时间定位该日期，请检查节点是否同步")
     }
@@ -515,25 +532,30 @@ fun ResyncBlockchainScreen(
                                             throw IllegalStateException("钱包尚未初始化")
                                         }
                                         val lookup = MoneroBlockTimeLookup(walletPrefs, torService)
+                                        val dateLookup = if (
+                                            restoreHeightInput.isBlank() && restoreDateInput.isNotBlank()
+                                        ) {
+                                            val date = parseNumericRestoreDate(restoreDateInput)
+                                                ?: throw IOException("请输入有效日期，格式为 YYYY-MM-DD（例如 2026-10-18）")
+                                            lookup.blockAtOrAfterTimestamp(date.time / 1000L)
+                                        } else {
+                                            null
+                                        }
                                         val selectedHeight = when {
                                             restoreHeightInput.isNotBlank() -> {
                                                 restoreHeightInput.toLongOrNull()
                                                     ?: throw IOException("请输入有效的区块高度")
                                             }
-                                            restoreDateInput.isNotBlank() -> {
-                                                val date = parseNumericRestoreDate(restoreDateInput)
-                                                    ?: throw IOException("请输入有效日期，格式为 YYYY-MM-DD（例如 2026-10-18）")
-                                                lookup.heightAtOrAfterTimestamp(date.time / 1000L)
-                                            }
+                                            dateLookup != null -> dateLookup.header.height
                                             else -> wallet.getRestoreHeight().also {
                                                 if (it < 0L) throw IOException("无法获取恢复区块高度")
                                             }
                                         }
-                                        val latestHeight = lookup.latestHeight()
+                                        val latestHeight = dateLookup?.latestHeight ?: lookup.latestHeight()
                                         if (selectedHeight < 0L || selectedHeight > latestHeight) {
                                             throw IOException("恢复高度必须在 0 到节点最新高度 $latestHeight 之间")
                                         }
-                                        val header = lookup.headerAtHeight(selectedHeight)
+                                        val header = dateLookup?.header ?: lookup.headerAtHeight(selectedHeight)
                                         header.height to SimpleDateFormat("yyyy-MM-dd", Locale.US)
                                             .format(Date(header.timestamp * 1000L))
                                     }
