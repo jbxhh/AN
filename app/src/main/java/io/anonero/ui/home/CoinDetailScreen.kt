@@ -22,6 +22,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -44,14 +45,6 @@ import io.anonero.util.Formats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
-
-private fun abbreviatedValue(value: String, maxChars: Int): String {
-    if (value.length <= maxChars) return value
-    val available = (maxChars - 3).coerceAtLeast(2)
-    val left = available / 2
-    val right = available - left
-    return value.take(left) + "..." + value.takeLast(right)
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -171,9 +164,12 @@ fun CoinDetailScreen(
                     Text("公钥", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = coin?.let { if (pubKeyState == 1) it.pub_key else abbreviatedValue(it.pub_key, 33) } ?: "____",
+                        text = coin?.pub_key ?: "____",
                         modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Start,
+                        textAlign = if (pubKeyState == 1) TextAlign.End else TextAlign.Start,
+                        maxLines = if (pubKeyState == 1) Int.MAX_VALUE else 1,
+                        softWrap = pubKeyState == 1,
+                        overflow = if (pubKeyState == 1) TextOverflow.Clip else TextOverflow.Middle,
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
@@ -190,9 +186,12 @@ fun CoinDetailScreen(
                     Text("哈希", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = coin?.let { if (hashState == 1) it.hash else abbreviatedValue(it.hash, 33) } ?: "____",
+                        text = coin?.hash ?: "____",
                         modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Start,
+                        textAlign = if (hashState == 1) TextAlign.End else TextAlign.Start,
+                        maxLines = if (hashState == 1) Int.MAX_VALUE else 1,
+                        softWrap = hashState == 1,
+                        overflow = if (hashState == 1) TextOverflow.Clip else TextOverflow.Middle,
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
@@ -209,9 +208,12 @@ fun CoinDetailScreen(
                     Text("地址", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = outputAddress?.let { if (addressState == 1) it else abbreviatedValue(it, 33) } ?: "____",
+                        text = outputAddress ?: "____",
                         modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Start,
+                        textAlign = if (addressState == 1) TextAlign.End else TextAlign.Start,
+                        maxLines = if (addressState == 1) Int.MAX_VALUE else 1,
+                        softWrap = addressState == 1,
+                        overflow = if (addressState == 1) TextOverflow.Clip else TextOverflow.Middle,
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
