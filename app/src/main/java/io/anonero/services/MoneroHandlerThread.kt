@@ -247,7 +247,7 @@ class MoneroHandlerThread(
 
         postCompletionScope.launch {
             try {
-                repeat(2) { attempt ->
+                repeat(5) { attempt ->
                     delay(if (attempt == 0) 600L else 1_200L)
                     if (WalletManager.instance?.wallet !== wallet || !wallet.isInitialized) {
                         return@launch
@@ -301,16 +301,21 @@ class MoneroHandlerThread(
                     }
 
                     val transactionCount = wallet.history?.all?.size ?: 0
+                    val outputCount = wallet.coins?.all?.size ?: 0
+                    val balance = wallet.balance
+                    val unlockedBalance = wallet.unlockedBalance
                     Timber.tag(name).i(
-                        "Post-sync refresh attempt=%d transactions=%d walletHeight=%d daemonHeight=%d",
+                        "Post-sync refresh attempt=%d transactions=%d outputs=%d balance=%d walletHeight=%d daemonHeight=%d",
                         attempt + 1,
                         transactionCount,
+                        outputCount,
+                        balance,
                         walletState.currentWalletHeight,
                         walletState.currentDaemonHeight
                     )
-                    if (transactionCount > 0 ||
-                        (wallet.balance <= 0L && wallet.unlockedBalance <= 0L)
-                    ) {
+                    // Transaction history and output inventory are separate native caches.
+                    // Existing history must not suppress a retry while outputs are still empty.
+                    if (!shouldRetryOutputSnapshot(outputCount, balance, unlockedBalance)) {
                         return@launch
                     }
                 }

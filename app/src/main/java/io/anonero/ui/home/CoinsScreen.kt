@@ -101,6 +101,7 @@ fun CoinsScreen(
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             var emptyOutputRetries = 0
+            var emptyOutputRetryDelayMs = 1_000L
             while (currentCoroutineContext().isActive) {
                 val wallet = WalletManager.instance?.wallet
                 if (wallet == null || !wallet.isInitialized) {
@@ -119,20 +120,25 @@ fun CoinsScreen(
                         wallet.balance,
                         wallet.isSynchronized
                     )
-                    // Outputs include spent entries too. Retry transient empty native
-                    // snapshots for longer; if balance is still positive, leave an explicit
-                    // diagnostic in the log instead of silently treating it as no outputs.
                     if (outputs.isNotEmpty() || !hasBalance) {
                         return@withContext
                     }
+
+                    // The native output cache may lag behind balance/history after sync.
+                    // Keep retrying while this screen is open, with capped backoff instead
+                    // of abandoning a positive-balance wallet after ten empty snapshots.
                     emptyOutputRetries++
-                    if (emptyOutputRetries >= 10) {
-                        Timber.tag("CoinsScreen").e(
-                            "Output inventory is empty after 10 idle refreshes despite positive balance=%d",
+                    if (emptyOutputRetries % 10 == 0) {
+                        Timber.tag("CoinsScreen").w(
+                            "Output inventory is still empty after %d idle refreshes despite positive balance=%d; retrying",
+                            emptyOutputRetries,
                             wallet.balance
                         )
-                        return@withContext
                     }
+                    delay(emptyOutputRetryDelayMs)
+                    emptyOutputRetryDelayMs =
+                        (emptyOutputRetryDelayMs * 2L).coerceAtMost(15_000L)
+                    continue
                 }
                 delay(1_000L)
             }

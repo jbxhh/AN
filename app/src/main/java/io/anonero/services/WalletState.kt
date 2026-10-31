@@ -46,6 +46,18 @@ data class SyncProgress(
 )
 
 private const val TAG = "WalletState"
+
+internal fun retainOutputSnapshot(
+    previousSnapshot: List<CoinsInfo>,
+    refreshedSnapshot: List<CoinsInfo>?
+): List<CoinsInfo> = refreshedSnapshot ?: previousSnapshot
+
+internal fun shouldRetryOutputSnapshot(
+    outputCount: Int,
+    balance: Long,
+    unlockedBalance: Long
+): Boolean = outputCount == 0 && (balance > 0L || unlockedBalance > 0L)
+
 const val PREF_FORCE_FRESH_WALLET_SCAN = "anonero_force_fresh_wallet_scan"
 
 class WalletState(private val prefs: SharedPreferences) {
@@ -332,12 +344,17 @@ class WalletState(private val prefs: SharedPreferences) {
                         !_isSyncing.get() &&
                         _syncProgress.value == null
                 )
-            if (!backgroundSync && outputInventoryAvailable) {
-                // The output list is an inventory, not just a spendable-input picker.
-                // Keep spent and frozen outputs in state so the UI can display their
-                // status; selection logic already prevents spending them.
-                val outputSnapshot = wallet.coins?.all ?: emptyList()
-                _coins.value = outputSnapshot
+            // Keep the last known output inventory during ordinary sync/refresh.
+            // The wallet's native output cache is refreshed only when its scanner is idle;
+            // clearing this snapshot here made a previously populated Outputs list vanish
+            // every time the wallet re-entered a catch-up refresh.
+            val outputSnapshot = if (!backgroundSync && outputInventoryAvailable) {
+                wallet.coins?.all ?: emptyList()
+            } else {
+                null
+            }
+            _coins.value = retainOutputSnapshot(_coins.value, outputSnapshot)
+            if (outputSnapshot != null) {
                 Timber.tag(TAG).i(
                     "Output snapshot: total=%d unspent=%d spent=%d frozen=%d synchronized=%s",
                     outputSnapshot.size,
@@ -346,11 +363,6 @@ class WalletState(private val prefs: SharedPreferences) {
                     outputSnapshot.count { it.frozen },
                     wallet.isSynchronized
                 )
-            } else {
-                // Never expose selectable outputs while a scan, reset, or wallet
-                // initialization is active. The idle Outputs-screen refresh will
-                // publish a fresh native inventory after those tasks finish.
-                _coins.value = emptyList()
             }
 
             if (!backgroundSync) {
