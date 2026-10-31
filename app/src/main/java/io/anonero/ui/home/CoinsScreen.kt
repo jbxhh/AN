@@ -61,6 +61,7 @@ import io.anonero.R
 import io.anonero.model.CoinsInfo
 import io.anonero.model.Wallet
 import io.anonero.services.WalletState
+import io.anonero.services.shouldRetryOutputSnapshot
 import io.anonero.ui.components.WalletProgressIndicator
 import io.anonero.ui.home.graph.routes.SendScreenRoute
 import io.anonero.ui.theme.Orange
@@ -80,6 +81,8 @@ fun CoinsScreen(
     val walletState: WalletState by inject(WalletState::class.java)
     val coins by walletState.coins.collectAsState(arrayListOf())
     val hideAmounts by walletState.hideAmountsFlow.collectAsState(false)
+    val cachedBalance by walletState.balanceInfo.collectAsState(initial = null)
+    val cachedUnlockedBalance by walletState.unLockedBalance.collectAsState(initial = null)
 
     var selectedCoins by rememberSaveable(
         selected,
@@ -111,13 +114,20 @@ fun CoinsScreen(
 
                 val outputs = walletState.refreshOutputInventoryIfIdle()
                 if (outputs != null) {
-                    val hasBalance = wallet.balance > 0L || wallet.unlockedBalance > 0L
+                    val hasBalance = shouldRetryOutputSnapshot(
+                        outputCount = 0,
+                        balance = wallet.balance,
+                        unlockedBalance = wallet.unlockedBalance,
+                        cachedBalance = cachedBalance ?: 0L,
+                        cachedUnlockedBalance = cachedUnlockedBalance ?: 0L
+                    )
                     Timber.tag("CoinsScreen").i(
-                        "Output screen refresh: total=%d unspent=%d spent=%d balance=%d synchronized=%s",
+                        "Output screen refresh: total=%d unspent=%d spent=%d balance=%d cachedBalance=%d synchronized=%s",
                         outputs.size,
                         outputs.count { !it.spent },
                         outputs.count { it.spent },
                         wallet.balance,
+                        cachedBalance ?: 0L,
                         wallet.isSynchronized
                     )
                     if (outputs.isNotEmpty() || !hasBalance) {
