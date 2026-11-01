@@ -194,7 +194,7 @@ class AnonWalletHandler(
             Timber.tag(TAG).i("Skipping automatic service start while manual node connection is pending")
             return
         }
-        serviceStartMutex.lock()
+        if (!serviceStartMutex.tryLock()) return false
         try {
             if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
             if (isManualNodeConnectionInProgress()) {
@@ -641,7 +641,7 @@ class AnonWalletHandler(
             walletState.awaitPendingNativeQueries()
             if (walletState.isResyncPriorityActive || secureWipePriorityActive()) return false
 
-            walletInitializationMutex.lock()
+            if (!walletInitializationMutex.tryLock()) return false
             try {
                 val walletManager = WalletManager.instance
                 val wallet = walletManager?.wallet
