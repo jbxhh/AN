@@ -133,7 +133,8 @@ fun HomeScreenComposable(
     BackHandler(
         enabled = currentRoute == TransactionsRoute::class.qualifiedName &&
             mainNavController != null &&
-            !wipeRequestedAtStart,
+            !wipeRequestedAtStart &&
+            !pinLockVisible,
     ) {
         walletSwitchScope.launch {
             val closed = withContext(Dispatchers.IO) {
