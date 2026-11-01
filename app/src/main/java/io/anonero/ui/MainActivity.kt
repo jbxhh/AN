@@ -225,11 +225,12 @@ class MainActivity : ComponentActivity() {
                             AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
                         )
                         val storedWallets = AnonConfig.getWalletFiles(context)
-                        if (
-                            storedWallets.isNotEmpty() &&
-                            !AnonConfig.getDefaultWalletFile(context).exists()
-                        ) {
-                            AnonConfig.setActiveWallet(context, storedWallets.first().name)
+                        if (storedWallets.isNotEmpty()) {
+                            if (!AnonConfig.getDefaultWalletFile(context).exists()) {
+                                AnonConfig.setActiveWallet(context, storedWallets.first().name)
+                            }
+                        } else if (!stillPending && !wipeRequested) {
+                            AnonConfig.setActiveWallet(context, "anon")
                         }
                         walletExist = stillPending || wipeRequested || storedWallets.isNotEmpty()
                         useTor = if (stillPending || wipeRequested) {
