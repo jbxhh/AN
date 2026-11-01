@@ -616,6 +616,92 @@ class AnonWalletHandler(
         return null
     }
 
+    /**
+     * Close the current native wallet before changing the active wallet file.
+     * Refuse to switch while a rescan, secure wipe, manual node connection, or
+     * background-sync session owns the wallet.
+     */
+    suspend fun closeCurrentWalletForSwitch(): Boolean {
+        if (
+            secureWipePriorityActive() ||
+            walletState.isResyncPriorityActive ||
+            isManualNodeConnectionInProgress() ||
+            walletState.backgroundSync
+        ) return false
+
+        serviceStartMutex.lock()
+        try {
+            if (
+                secureWipePriorityActive() ||
+                walletState.isResyncPriorityActive ||
+                isManualNodeConnectionInProgress() ||
+                walletState.backgroundSync
+            ) return false
+
+            walletInitializationMutex.lock()
+            try {
+                val walletManager = WalletManager.instance
+                val wallet = walletManager?.wallet
+                if (wallet == null) {
+                    walletState.resetForWalletSwitch()
+                    serviceStartedWallet = null
+                    handler = null
+                    return true
+                }
+
+                var refreshPaused = false
+                var listenerDetached = false
+                var walletClosed = false
+                try {
+                    walletState.awaitPendingNativeQueries()
+                    if (walletState.isResyncPriorityActive || secureWipePriorityActive()) {
+                        return false
+                    }
+
+                    if (wallet.isInitialized) {
+                        wallet.pauseRefreshAndWait()
+                    } else {
+                        wallet.pauseRefresh()
+                    }
+                    refreshPaused = true
+
+                    wallet.setListener(null)
+                    listenerDetached = true
+
+                    check(wallet.close()) { "Unable to close the active wallet" }
+                    walletClosed = true
+
+                    walletManager.setDaemon(null)
+                    handler = null
+                    serviceStartedWallet = null
+                    walletState.resetForWalletSwitch()
+                    return true
+                } catch (error: Exception) {
+                    Timber.tag(TAG).e(error, "Unable to close wallet before switching")
+                    if (!walletClosed) {
+                        if (listenerDetached) {
+                            runCatching { wallet.setListener(handler) }
+                                .onFailure {
+                                    Timber.tag(TAG).e(it, "Unable to restore wallet listener after failed switch")
+                                }
+                        }
+                        if (refreshPaused && !secureWipePriorityActive()) {
+                            runCatching { wallet.startRefresh() }
+                                .onFailure {
+                                    Timber.tag(TAG).e(it, "Unable to resume wallet refresh after failed switch")
+                                }
+                        }
+                    }
+                    return false
+                }
+            } finally {
+                walletInitializationMutex.unlock()
+            }
+        } finally {
+            serviceStartMutex.unlock()
+        }
+    }
+
     suspend fun wipe(passPhrase: String): Boolean {
         check(wipeInProgress.compareAndSet(false, true)) {
             "Wallet wipe is already in progress"
