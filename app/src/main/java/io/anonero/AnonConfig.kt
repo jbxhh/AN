@@ -24,6 +24,7 @@ object AnonConfig {
     const val APP_PREFERENCES = "anonero_prefs"
     const val PREF_WALLET_WIPE_PENDING = "wallet_wipe_pending"
     const val PREF_WALLET_WIPE_REQUESTED = "wallet_wipe_requested"
+    const val PREF_ACTIVE_WALLET_NAME = "active_wallet_name"
     var context: AnonApplication? = null
     private var walletFound: Boolean = false
 
@@ -51,8 +52,51 @@ object AnonConfig {
 
     fun getDefaultWalletFile(context: Context): File {
         val walletDir = getDefaultWalletDir(context)
-        val anonWallet = File(walletDir, "anon")
-        return anonWallet
+        val walletName = context.getSharedPreferences(APP_PREFERENCES, Context.MODE_PRIVATE)
+            .getString(PREF_ACTIVE_WALLET_NAME, "anon")
+            ?.takeIf { it.isNotBlank() && File(it).name == it && it != "." && it != ".." }
+            ?: "anon"
+        return File(walletDir, walletName)
+    }
+
+    fun setActiveWallet(context: Context, walletName: String) {
+        require(walletName.isNotBlank() && File(walletName).name == walletName &&
+            walletName != "." && walletName != "..") {
+            "Invalid wallet name"
+        }
+        context.getSharedPreferences(APP_PREFERENCES, Context.MODE_PRIVATE)
+            .edit()
+            .putString(PREF_ACTIVE_WALLET_NAME, walletName)
+            .commit()
+    }
+
+    fun getWalletFiles(context: Context): List<File> {
+        val walletDir = getDefaultWalletDir(context)
+        return walletDir.listFiles()
+            .orEmpty()
+            .asSequence()
+            .filter { it.isFile && it.name.endsWith(".keys") }
+            .map { File(walletDir, it.name.removeSuffix(".keys")) }
+            .filter { it.isFile }
+            .sortedWith(
+                compareBy<File> { if (it.name == "anon") 0 else 1 }
+                    .thenBy { it.name.substringAfterLast('_').toIntOrNull() ?: Int.MAX_VALUE }
+                    .thenBy { it.name.lowercase() }
+            )
+            .toList()
+    }
+
+    fun createNewWalletFile(context: Context): File {
+        val walletDir = getDefaultWalletDir(context)
+        var index = 2
+        var candidate: File
+        do {
+            candidate = File(walletDir, "wallet_$index")
+            index++
+        } while (candidate.exists() || File(candidate.path + ".keys").exists())
+
+        setActiveWallet(context, candidate.name)
+        return candidate
     }
 
 
@@ -96,7 +140,7 @@ object AnonConfig {
 
     fun initWalletState() {
         MainScope().launch(Dispatchers.IO) {
-            walletFound = getDefaultWalletFile(context!!).exists()
+            walletFound = getWalletFiles(context!!).isNotEmpty()
         }
     }
 
