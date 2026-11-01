@@ -149,6 +149,8 @@ fun HomeScreenComposable(
                 return@launch
             }
 
+            (context as? MainActivity)?.stopNotificationService()
+
             val listRoute = WalletListRoute::class.qualifiedName
             val returnedToExistingList = listRoute != null &&
                 mainNavController?.popBackStack(listRoute, false) == true
