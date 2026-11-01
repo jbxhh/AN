@@ -1802,6 +1802,16 @@ class WalletState(private val prefs: SharedPreferences) {
         walletWipeInProgress.set(walletWipeRequestReserved.get())
     }
 
+    /**
+     * Clear process-wide presentation and scan state after closing one wallet so a
+     * different wallet can be opened without carrying over cached balances or history.
+     * Wallet files and persisted preferences are left untouched.
+     */
+    fun resetForWalletSwitch() {
+        resetAfterWalletWipe()
+        walletWipeInProgress.set(false)
+    }
+
     fun toggleHideAmounts() {
         hideAmountsFlow.update { !it }
     }
