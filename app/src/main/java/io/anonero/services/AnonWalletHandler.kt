@@ -638,6 +638,9 @@ class AnonWalletHandler(
                 walletState.backgroundSync
             ) return false
 
+            walletState.awaitPendingNativeQueries()
+            if (walletState.isResyncPriorityActive || secureWipePriorityActive()) return false
+
             walletInitializationMutex.lock()
             try {
                 val walletManager = WalletManager.instance
@@ -653,11 +656,6 @@ class AnonWalletHandler(
                 var listenerDetached = false
                 var walletClosed = false
                 try {
-                    walletState.awaitPendingNativeQueries()
-                    if (walletState.isResyncPriorityActive || secureWipePriorityActive()) {
-                        return false
-                    }
-
                     if (wallet.isInitialized) {
                         wallet.pauseRefreshAndWait()
                     } else {
