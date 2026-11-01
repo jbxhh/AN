@@ -52,7 +52,6 @@ class OnboardViewModel(
         withContext(Dispatchers.IO) {
             val context = AnonConfig.context!!.applicationContext
             val walletFile = AnonConfig.getDefaultWalletFile(context)
-            AnonConfig.getDefaultWalletDir(context).deleteRecursively()
             AnonConfig.getDefaultWalletDir(context).mkdirs()
             val anonWallet = WalletManager.instance?.createWallet(
                 walletFile,
@@ -91,7 +90,6 @@ class OnboardViewModel(
         withContext(Dispatchers.IO) {
             val context = AnonConfig.context!!.applicationContext
             val walletFile = AnonConfig.getDefaultWalletFile(context)
-            AnonConfig.getDefaultWalletDir(context).deleteRecursively()
             AnonConfig.getDefaultWalletDir(context).mkdirs()
             val anonWallet = WalletManager.instance?.createWalletWithKeys(
                 walletFile,
@@ -141,7 +139,6 @@ class OnboardViewModel(
 
         val context = AnonConfig.context!!.applicationContext
         val walletFile = AnonConfig.getDefaultWalletFile(context)
-        AnonConfig.getDefaultWalletDir(context).deleteRecursively()
         AnonConfig.getDefaultWalletDir(context).mkdirs()
         delay(100)
         val anonWallet = if (restorePayload!!.seed.size == 25) {
