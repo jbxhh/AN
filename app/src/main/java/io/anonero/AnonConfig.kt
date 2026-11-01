@@ -76,6 +76,39 @@ object AnonConfig {
             .commit()
     }
 
+    /**
+     * Move the pre-multi-wallet authentication and scan preferences into the
+     * default wallet namespace. All other wallet and network preferences remain
+     * untouched.
+     */
+    fun migrateLegacyWalletPreferences(context: Context) {
+        if (getActiveWalletName(context) != "anon") return
+
+        val preferences = context.getSharedPreferences("walletPref", Context.MODE_PRIVATE)
+        val editor = preferences.edit()
+        val keys = listOf(
+            "pinHash",
+            "passPhraseHash",
+            "restoreHeight",
+            "anonero_force_fresh_wallet_scan",
+        )
+        keys.forEach { key ->
+            val scopedKey = walletPreferenceKey(context, key)
+            if (!preferences.contains(key) || preferences.contains(scopedKey)) return@forEach
+
+            when (key) {
+                "pinHash", "passPhraseHash" -> {
+                    preferences.getString(key, null)?.let { editor.putString(scopedKey, it) }
+                }
+                "restoreHeight" -> editor.putLong(scopedKey, preferences.getLong(key, 0L))
+                "anonero_force_fresh_wallet_scan" -> {
+                    editor.putBoolean(scopedKey, preferences.getBoolean(key, false))
+                }
+            }
+        }
+        editor.commit()
+    }
+
     fun getWalletFiles(context: Context): List<File> {
         val walletDir = getDefaultWalletDir(context)
         return walletDir.listFiles()
@@ -146,6 +179,7 @@ object AnonConfig {
 
     fun initWalletState() {
         MainScope().launch(Dispatchers.IO) {
+            migrateLegacyWalletPreferences(context!!)
             walletFound = getWalletFiles(context!!).isNotEmpty()
         }
     }
