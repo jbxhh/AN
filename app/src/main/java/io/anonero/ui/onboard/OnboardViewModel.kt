@@ -68,14 +68,14 @@ class OnboardViewModel(
             }
             val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
             prefs.edit {
-                putString(PREFS_PASSPHRASE_HASH, crazyPass)
+                putString(AnonConfig.walletPreferenceKey(context, PREFS_PASSPHRASE_HASH), crazyPass)
             }
 
             //adds padding to the pin if it's less than 32 bytes
             prefs.edit(commit = true) {
-                putString(PREFS_PIN_HASH, encodePinHash(pin))
+                putString(AnonConfig.walletPreferenceKey(context, PREFS_PIN_HASH), encodePinHash(pin))
                 // A newly created wallet must not inherit another wallet's restore height.
-                putLong(RESTORE_HEIGHT, 0L)
+                putLong(AnonConfig.walletPreferenceKey(context, RESTORE_HEIGHT), 0L)
             }
             walllet = anonWallet
             prepareFirstReceiveAddress(anonWallet)
@@ -108,9 +108,9 @@ class OnboardViewModel(
             }
             val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
             prefs.edit(commit = true) {
-                putString("passPhraseHash", crazyPass)
-                putString(PREFS_PIN_HASH, encodePinHash(pin))
-                putLong(RESTORE_HEIGHT, neroKeyPayload!!.restoreHeight)
+                putString(AnonConfig.walletPreferenceKey(context, "passPhraseHash"), crazyPass)
+                putString(AnonConfig.walletPreferenceKey(context, PREFS_PIN_HASH), encodePinHash(pin))
+                putLong(AnonConfig.walletPreferenceKey(context, RESTORE_HEIGHT), neroKeyPayload!!.restoreHeight)
             }
             walllet = anonWallet
             prepareFirstReceiveAddress(anonWallet)
@@ -180,12 +180,12 @@ class OnboardViewModel(
             restorePayload?.restoreHeight ?: anonWallet.getRestoreHeight()
         ).coerceAtLeast(0L)
         prefs.edit(commit = true) {
-            putString(PREFS_PASSPHRASE_HASH, crazyPass)
-            putString(PREFS_PIN_HASH, encodePinHash(pin))
-            putLong(RESTORE_HEIGHT, actualRestoreHeight)
+            putString(AnonConfig.walletPreferenceKey(context, PREFS_PASSPHRASE_HASH), crazyPass)
+            putString(AnonConfig.walletPreferenceKey(context, PREFS_PIN_HASH), encodePinHash(pin))
+            putLong(AnonConfig.walletPreferenceKey(context, RESTORE_HEIGHT), actualRestoreHeight)
             // Mark this seed restore so wallet startup preserves the selected height
             // and queues its first native scan from that height after the daemon is synced.
-            putBoolean(PREF_FORCE_FRESH_WALLET_SCAN, true)
+            putBoolean(AnonConfig.walletPreferenceKey(context, PREF_FORCE_FRESH_WALLET_SCAN), true)
         }
         // Generate the local receive child address before Home starts node init/scan.
         prepareFirstReceiveAddress(anonWallet)
