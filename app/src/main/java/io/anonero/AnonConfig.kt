@@ -50,13 +50,19 @@ object AnonConfig {
 
     val viewOnly: Boolean get() = BuildConfig.VIEW_ONLY
 
-    fun getDefaultWalletFile(context: Context): File {
-        val walletDir = getDefaultWalletDir(context)
-        val walletName = context.getSharedPreferences(APP_PREFERENCES, Context.MODE_PRIVATE)
+    fun getActiveWalletName(context: Context): String {
+        return context.getSharedPreferences(APP_PREFERENCES, Context.MODE_PRIVATE)
             .getString(PREF_ACTIVE_WALLET_NAME, "anon")
             ?.takeIf { it.isNotBlank() && File(it).name == it && it != "." && it != ".." }
             ?: "anon"
-        return File(walletDir, walletName)
+    }
+
+    fun walletPreferenceKey(context: Context, key: String): String {
+        return "${getActiveWalletName(context)}::$key"
+    }
+
+    fun getDefaultWalletFile(context: Context): File {
+        return File(getDefaultWalletDir(context), getActiveWalletName(context))
     }
 
     fun setActiveWallet(context: Context, walletName: String) {
