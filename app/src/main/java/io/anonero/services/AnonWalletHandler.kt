@@ -84,6 +84,9 @@ class AnonWalletHandler(
             appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
     }
 
+    private fun walletPreferenceKey(key: String): String =
+        AnonConfig.context?.let { AnonConfig.walletPreferenceKey(it, key) } ?: key
+
     private fun secureWipePriorityActive(): Boolean =
         wipeInProgress.get() || walletState.isWalletWipeInProgress ||
             hasPersistentSecureWipeRequest()
@@ -409,7 +412,7 @@ class AnonWalletHandler(
         if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
         // Native init may replace a fresh seed restore's selected scan height with the
         // daemon tip. Capture it before init and reapply it before starting the scan.
-        val forceFreshScan = prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+        val forceFreshScan = prefs.getBoolean(walletPreferenceKey(PREF_FORCE_FRESH_WALLET_SCAN), false)
         val selectedRestoreHeightBeforeInit =
             if (forceFreshScan) walletState.pendingSelectedRestoreHeight(wallet) else null
 
@@ -428,7 +431,7 @@ class AnonWalletHandler(
             }
 
             val actualRestoreHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
-            prefs.edit(commit = true) { putLong(RESTORE_HEIGHT, actualRestoreHeight) }
+            prefs.edit(commit = true) { putLong(walletPreferenceKey(RESTORE_HEIGHT), actualRestoreHeight) }
             wallet.setTrustedDaemon(true)
             if (forceFreshScan) {
                 Timber.tag(TAG).i(
