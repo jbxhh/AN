@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,9 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -97,22 +94,24 @@ fun MultiWalletScreen(
                 verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.Bottom),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                LazyColumn(
-                    modifier = Modifier
-                        .width(220.dp)
-                        .heightIn(max = 240.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    items(wallets, key = { it.name }) { walletFile ->
-                        AnonOutlineButton(
-                            onClick = { onWalletSelected(walletFile) },
-                            modifier = Modifier.width(220.dp),
-                        ) {
-                            Text(
-                                text = walletDisplayName(walletFile),
-                                maxLines = 1,
-                            )
+                if (wallets.isNotEmpty()) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .width(220.dp)
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        items(wallets, key = { it.name }) { walletFile ->
+                            AnonOutlineButton(
+                                onClick = { onWalletSelected(walletFile) },
+                                modifier = Modifier.width(220.dp),
+                            ) {
+                                Text(
+                                    text = walletDisplayName(walletFile),
+                                    maxLines = 1,
+                                )
+                            }
                         }
                     }
                 }
