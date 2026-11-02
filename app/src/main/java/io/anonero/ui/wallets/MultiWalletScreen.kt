@@ -245,7 +245,10 @@ fun MultiWalletScreen(
                             horizontal = 12.dp
                         ),
                 ) {
-                    Text("新建钱包")
+                    Text(
+                        "新建钱包",
+                        style = MaterialTheme.typography.labelLarge
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))
