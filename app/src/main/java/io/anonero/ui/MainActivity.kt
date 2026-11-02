@@ -298,15 +298,7 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onNewWallet = {
                                         AnonConfig.createNewWalletFile(context)
-                                        if (AnonConfig.viewOnly) {
-                                            onboardViewModel.setMode(Mode.RESTORE)
-                                            navController.navigate(LandingScreenRoute)
-                                            navController.navigate(OnboardImportKeysScreen)
-                                        } else {
-                                            onboardViewModel.setMode(Mode.CREATE)
-                                            navController.navigate(LandingScreenRoute)
-                                            navController.navigate(OnboardNodeSetupScreen)
-                                        }
+                                        navController.navigate(LandingScreenRoute)
                                     },
                                 )
                             }
