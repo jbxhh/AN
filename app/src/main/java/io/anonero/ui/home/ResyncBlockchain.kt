@@ -615,7 +615,7 @@ fun ResyncBlockchainScreen(
                                                     restoreDateInput.isNotBlank() -> {
                                                         val date = parseNumericRestoreDate(restoreDateInput)
                                                             ?: throw IOException("请输入有效日期，格式为 YYYY-MM-DD（例如 2026-10-18）")
-                                                        lookup.heightAtOrAfterTimestamp(date.time / 1000L)
+                                                        lookup.blockAtOrAfterTimestamp(date.time / 1000L).header.height
                                                     }
                                                     else -> wallet.getRestoreHeight()
                                                 }
