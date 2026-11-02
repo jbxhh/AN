@@ -12,6 +12,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -70,6 +71,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.inject
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.qualifier.named
@@ -297,10 +299,38 @@ class MainActivity : ComponentActivity() {
                             composable<WalletListRoute> {
                                 MultiWalletScreen(
                                     onWalletSelected = { walletFile ->
-                                        AnonConfig.setActiveWallet(context, walletFile.name)
-                                        navController.navigate(Home) {
-                                            popUpTo(WalletListRoute) { inclusive = false }
-                                            launchSingleTop = true
+                                        scope.launch {
+                                            // Merely opening the wallet list does not close the
+                                            // current wallet. Close it only when another wallet
+                                            // is explicitly selected.
+                                            val isSameWallet =
+                                                AnonConfig.getActiveWalletName(context) == walletFile.name
+                                            if (!isSameWallet) {
+                                                val closed = runCatching {
+                                                    withContext(Dispatchers.IO) {
+                                                        anonWalletHandler.closeCurrentWalletForSwitch()
+                                                    }
+                                                }.onFailure {
+                                                    Timber.tag(TAG).e(it, "Unable to close current wallet before switching")
+                                                }.getOrDefault(false)
+
+                                                if (!closed) {
+                                                    Toast.makeText(
+                                                        context,
+                                                        "钱包正在执行操作，暂时无法切换",
+                                                        Toast.LENGTH_SHORT,
+                                                    ).show()
+                                                    return@launch
+                                                }
+
+                                                stopNotificationService()
+                                                AnonConfig.setActiveWallet(context, walletFile.name)
+                                            }
+
+                                            navController.navigate(Home) {
+                                                popUpTo(WalletListRoute) { inclusive = false }
+                                                launchSingleTop = true
+                                            }
                                         }
                                     },
                                     onProxySettings = {
