@@ -231,8 +231,14 @@ fun MultiWalletScreen(
                 }
 
                 AnonOutlineButton(
-                    onClick = onNewWallet,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    onClick = {
+                        onNewWallet()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = 12.dp
+                        ),
                 ) {
                     Text("新建钱包")
                 }
