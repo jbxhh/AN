@@ -156,7 +156,7 @@ fun MultiWalletScreen(
                     ) {
                         IconButton(
                             onClick = onProxySettings,
-                            modifier = Modifier.offset(y = 6.dp).size(32.dp),
+                            modifier = if (wallets.isNotEmpty()) Modifier.offset(y = 6.dp).size(32.dp) else Modifier.size(32.dp),
                         ) {
                             Icon(
                                 Icons.Default.Settings,
