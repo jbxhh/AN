@@ -20,7 +20,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -162,37 +161,39 @@ fun MultiWalletScreen(
                 verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.Bottom),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // Keep the gear attached to the list, not floating high above it.
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(32.dp),
-                    contentAlignment = Alignment.CenterEnd,
+                // Gear is positioned in the wallet-list header at its top-right corner.
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    IconButton(
-                        onClick = onProxySettings,
-                        modifier = Modifier.size(32.dp),
-                    ) {
-                        Icon(
-                            Icons.Default.Settings,
-                            contentDescription = "Proxy",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
-
-                if (wallets.isNotEmpty()) {
-                    LazyColumn(
-                        reverseLayout = false,
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            // One wallet row is 68 dp plus its divider. Keep a
-                            // five-row viewport; additional wallets scroll here.
-                            .height((wallets.size.coerceAtMost(5) * 69).dp),
+                            .height(32.dp),
+                        contentAlignment = Alignment.CenterEnd,
                     ) {
-                        items(wallets, key = { it.name }) { walletFile ->
-                            Column(modifier = Modifier.fillMaxWidth()) {
+                        IconButton(
+                            onClick = onProxySettings,
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.Settings,
+                                contentDescription = "Proxy",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+
+                    if (wallets.isNotEmpty()) {
+                        LazyColumn(
+                            reverseLayout = false,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                // Show at most five rows; additional wallets scroll here.
+                                .height((wallets.size.coerceAtMost(5) * 68).dp),
+                        ) {
+                            items(wallets, key = { it.name }) { walletFile ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -224,10 +225,6 @@ fun MultiWalletScreen(
                                         maxLines = 1,
                                     )
                                 }
-                                HorizontalDivider(
-                                    color = MaterialTheme.colorScheme.outlineVariant,
-                                    thickness = 1.dp,
-                                )
                             }
                         }
                     }
