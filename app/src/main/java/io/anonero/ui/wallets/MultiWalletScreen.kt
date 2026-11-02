@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -161,18 +160,18 @@ fun MultiWalletScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
+                    .height(48.dp),
                 contentAlignment = Alignment.CenterEnd,
             ) {
                 IconButton(
                     onClick = onProxySettings,
-                    modifier = Modifier.size(56.dp),
+                    modifier = Modifier.size(48.dp),
                 ) {
                     Icon(
                         Icons.Default.Settings,
                         contentDescription = "Proxy",
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(32.dp),
+                        modifier = Modifier.size(24.dp),
                     )
                 }
             }
@@ -188,7 +187,9 @@ fun MultiWalletScreen(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f),
+                            // One wallet row is 68 dp plus its divider. Keep a
+                            // five-row viewport; additional wallets scroll here.
+                            .height((wallets.size.coerceAtMost(5) * 69).dp),
                     ) {
                         items(wallets, key = { it.name }) { walletFile ->
                             Column(modifier = Modifier.fillMaxWidth()) {
@@ -234,7 +235,9 @@ fun MultiWalletScreen(
 
                 AnonOutlineButton(
                     onClick = onNewWallet,
-                    modifier = Modifier.width(220.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
                 ) {
                     Text("新建钱包")
                 }
