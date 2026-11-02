@@ -141,7 +141,7 @@ fun MultiWalletScreen(
         Column(
             modifier = Modifier
                 .padding(paddingValues)
-                .padding(16.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
                 .fillMaxSize(),
             verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -235,23 +235,21 @@ fun MultiWalletScreen(
                     }
                 }
 
-                AnonOutlineButton(
-                    onClick = {
-                        onNewWallet()
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            horizontal = 12.dp
-                        ),
-                ) {
-                    Text(
-                        "新建钱包",
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                }
+            }
 
-                Spacer(modifier = Modifier.height(32.dp))
+            // Match the onboarding "Next" button placement: the button is
+            // the final direct child of the page column, at the bottom inset.
+            AnonOutlineButton(
+                onClick = {
+                    onNewWallet()
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = 12.dp
+                    ),
+            ) {
+                Text("新建钱包")
             }
         }
     }
