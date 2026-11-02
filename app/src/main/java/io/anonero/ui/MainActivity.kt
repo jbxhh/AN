@@ -35,7 +35,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.asLiveData
 import androidx.navigation.NavDestination.Companion.hasRoute
-import androidx.navigation.hierarchy
+import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.composable
