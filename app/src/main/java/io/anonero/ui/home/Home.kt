@@ -130,6 +130,9 @@ fun HomeScreenComposable(
     val appViewModel = koinInject<io.anonero.ui.viewmodels.AppViewModel>()
     val toastState = rememberToasterState()
     val prefs = context.getSharedPreferences("anonero_prefs", android.content.Context.MODE_PRIVATE)
+    val pinLockVisible by walletState.pinLockVisibleFlow.collectAsState(
+        initial = walletState.pinLockVisible
+    )
     BackHandler(
         enabled = currentRoute == TransactionsRoute::class.qualifiedName &&
             mainNavController != null &&
@@ -193,9 +196,6 @@ fun HomeScreenComposable(
         }
     }
 
-    val pinLockVisible by walletState.pinLockVisibleFlow.collectAsState(
-        initial = walletState.pinLockVisible
-    )
     var notificationPromptAttempted by remember { mutableStateOf(false) }
 
     // Navigation composes the incoming destination before it is actually visible.
