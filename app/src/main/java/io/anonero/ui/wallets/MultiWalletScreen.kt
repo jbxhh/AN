@@ -156,26 +156,6 @@ fun MultiWalletScreen(
                 )
             }
 
-            // Proxy settings gear remains above the wallet list, at the upper right.
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-                contentAlignment = Alignment.CenterEnd,
-            ) {
-                IconButton(
-                    onClick = onProxySettings,
-                    modifier = Modifier.size(48.dp),
-                ) {
-                    Icon(
-                        Icons.Default.Settings,
-                        contentDescription = "Proxy",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-            }
-
             Column(
                 modifier = Modifier
                     .fillMaxHeight(0.5f)
@@ -183,6 +163,26 @@ fun MultiWalletScreen(
                 verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.Bottom),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                // Keep the gear attached to the list, not floating high above it.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(32.dp),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    IconButton(
+                        onClick = onProxySettings,
+                        modifier = Modifier.size(32.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "Proxy",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+
                 if (wallets.isNotEmpty()) {
                     LazyColumn(
                         modifier = Modifier
@@ -235,9 +235,7 @@ fun MultiWalletScreen(
 
                 AnonOutlineButton(
                     onClick = onNewWallet,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                 ) {
                     Text("新建钱包")
                 }
