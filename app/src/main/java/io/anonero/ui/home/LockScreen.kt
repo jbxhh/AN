@@ -108,6 +108,9 @@ fun LockScreen(
     val view = LocalView.current
     val activity = LocalActivity.current
     val prefs = koinInject<SharedPreferences>(named(WALLET_PREFERENCES))
+    val walletPinHashPreferenceKey = AnonConfig.context?.let {
+        AnonConfig.walletPreferenceKey(it, PREFS_PIN_HASH)
+    } ?: PREFS_PIN_HASH
     val currentPin = remember { mutableStateListOf<Int>() }
     var pinError by remember { mutableStateOf(false) }
     var pinKeys by remember { mutableStateOf(keys) }
@@ -153,7 +156,7 @@ fun LockScreen(
         // The local fingerprint is saved only after a successful wallet open/PIN setup.
         // Check it first: querying WalletManager through JNI while the background sync
         // worker holds native wallet locks can stall PIN verification indefinitely.
-        val savedFingerprintMatches = prefs.getString(PREFS_PIN_HASH, "") == pinHash
+        val savedFingerprintMatches = prefs.getString(walletPinHashPreferenceKey, "") == pinHash
         val valid = if (savedFingerprintMatches) {
             true
         } else if (keysFileExists) {
@@ -172,9 +175,9 @@ fun LockScreen(
             false
         }
 
-        if (valid && prefs.getString(PREFS_PIN_HASH, "") != pinHash) {
+        if (valid && prefs.getString(walletPinHashPreferenceKey, "") != pinHash) {
             prefs.edit(commit = true) {
-                putString(PREFS_PIN_HASH, pinHash)
+                putString(walletPinHashPreferenceKey, pinHash)
             }
         }
         return valid
@@ -198,7 +201,7 @@ fun LockScreen(
                         if (result) {
                             // Never overwrite the saved PIN with an unsuccessful attempt.
                             prefs.edit(commit = true) {
-                                putString(PREFS_PIN_HASH, encodePinHash(pin))
+                                putString(walletPinHashPreferenceKey, encodePinHash(pin))
                             }
                         }
                         withContext(Dispatchers.Main) {

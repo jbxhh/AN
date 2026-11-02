@@ -68,6 +68,9 @@ internal fun shouldRetryOutputSnapshot(
 const val PREF_FORCE_FRESH_WALLET_SCAN = "anonero_force_fresh_wallet_scan"
 
 class WalletState(private val prefs: SharedPreferences) {
+
+    private fun walletPreferenceKey(key: String): String =
+        AnonConfig.context?.let { AnonConfig.walletPreferenceKey(it, key) } ?: key
     class ManualResyncReservation internal constructor(internal val id: Long)
     private data class ScanPreferenceIdentity(val wallet: Wallet, val value: String)
 
@@ -539,10 +542,10 @@ class WalletState(private val prefs: SharedPreferences) {
      */
     fun pendingSelectedRestoreHeight(wallet: Wallet? = getWallet): Long? {
         val currentWallet = wallet ?: return null
-        if (!prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) return null
+        if (!prefs.getBoolean(walletPreferenceKey(PREF_FORCE_FRESH_WALLET_SCAN), false)) return null
         // SharedPreferences evaluates default arguments eagerly; avoid an unnecessary JNI call.
-        val selectedHeight = if (prefs.contains(RESTORE_HEIGHT)) {
-            prefs.getLong(RESTORE_HEIGHT, 0L)
+        val selectedHeight = if (prefs.contains(walletPreferenceKey(RESTORE_HEIGHT))) {
+            prefs.getLong(walletPreferenceKey(RESTORE_HEIGHT), 0L)
         } else {
             currentWallet.getRestoreHeight()
         }
@@ -581,7 +584,7 @@ class WalletState(private val prefs: SharedPreferences) {
      */
     fun maybeStartForcedRestoreScan(wallet: Wallet) {
         if (walletWipeInProgress.get() || manualResyncInProgress.get() || isResyncPriorityActive) return
-        if (!prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) return
+        if (!prefs.getBoolean(walletPreferenceKey(PREF_FORCE_FRESH_WALLET_SCAN), false)) return
         if (forcedRestoreScanStarted.get()) return
         if (!forcedRestoreScanInFlight.compareAndSet(false, true)) return
 
@@ -1262,7 +1265,7 @@ class WalletState(private val prefs: SharedPreferences) {
                     // was closed are not detected until a later refreshed()/manual refresh.
                     (!wallet.isSynchronized || !initialDaemonSnapshotResolved) &&
                     !manualResyncInProgress.get() &&
-                    (_scanTracking.get() || prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) &&
+                    (_scanTracking.get() || prefs.getBoolean(walletPreferenceKey(PREF_FORCE_FRESH_WALLET_SCAN), false)) &&
                     _syncProgress.value == null
                 ) {
                     attempts++
@@ -1318,7 +1321,7 @@ class WalletState(private val prefs: SharedPreferences) {
                         !wallet.isInitialized ||
                         (wallet.isSynchronized && initialDaemonSnapshotResolved) ||
                         (!_scanTracking.get() &&
-                            !prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false))
+                            !prefs.getBoolean(walletPreferenceKey(PREF_FORCE_FRESH_WALLET_SCAN), false))
                     ) {
                         break
                     }
@@ -1333,7 +1336,7 @@ class WalletState(private val prefs: SharedPreferences) {
                 if (!manualResyncInProgress.get()) {
                     val hasProgress = _syncProgress.value != null
                     val scanPending = _scanTracking.get() ||
-                        prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+                        prefs.getBoolean(walletPreferenceKey(PREF_FORCE_FRESH_WALLET_SCAN), false)
                     setLoading(
                         !hasProgress &&
                             scanPending &&
@@ -1413,7 +1416,7 @@ class WalletState(private val prefs: SharedPreferences) {
             // A transient zero height cannot prove that an active scan completed.
             val scanPending = _syncProgress.value != null ||
                 prefs.getBoolean(scanPreferenceKey(wallet, "in_progress"), false) ||
-                prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+                prefs.getBoolean(walletPreferenceKey(PREF_FORCE_FRESH_WALLET_SCAN), false)
             if (daemonHeight <= 0L && scanPending) {
                 wallet.isSynchronized = false
                 setLoading(true)
@@ -1433,7 +1436,7 @@ class WalletState(private val prefs: SharedPreferences) {
                 putBoolean(scanPreferenceKey(wallet, "completed"), true)
                 putLong(scanPreferenceKey(wallet, "processed_height"), _walletHeight.value)
                 putLong(scanPreferenceKey(wallet, "start_height"), _walletHeight.value)
-                remove(PREF_FORCE_FRESH_WALLET_SCAN)
+                remove(walletPreferenceKey(PREF_FORCE_FRESH_WALLET_SCAN))
             }
             forcedRestoreScanStarted.set(false)
         }
@@ -1555,7 +1558,7 @@ class WalletState(private val prefs: SharedPreferences) {
         // it starts automatically once daemon height reaches its target. Without
         // this retry, the UI can show a backlog while no newBlock callbacks arrive.
         if (chainHeight < daemonHeight &&
-            prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false) &&
+            prefs.getBoolean(walletPreferenceKey(PREF_FORCE_FRESH_WALLET_SCAN), false) &&
             !forcedRestoreScanStarted.get()
         ) {
             maybeStartForcedRestoreScan(wallet)
@@ -1673,7 +1676,7 @@ class WalletState(private val prefs: SharedPreferences) {
      */
     fun markForcedRestoreScanStarted() {
         if (!walletWipeInProgress.get() &&
-            prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+            prefs.getBoolean(walletPreferenceKey(PREF_FORCE_FRESH_WALLET_SCAN), false)
         ) {
             forcedRestoreScanStarted.set(true)
         }
@@ -1684,7 +1687,7 @@ class WalletState(private val prefs: SharedPreferences) {
      * Only this lifecycle event may release the queued-restore guard for retry.
      */
     fun prepareForcedRestoreScanRetry() {
-        if (prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) {
+        if (prefs.getBoolean(walletPreferenceKey(PREF_FORCE_FRESH_WALLET_SCAN), false)) {
             forcedRestoreScanStarted.set(false)
         }
     }
@@ -1696,7 +1699,7 @@ class WalletState(private val prefs: SharedPreferences) {
         _connectionStatus.update { status }
         if (status == Wallet.ConnectionStatus.ConnectionStatus_Disconnected) {
             _daemonTargetHeight.set(0L)
-            val restoreScanPending = prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+            val restoreScanPending = prefs.getBoolean(walletPreferenceKey(PREF_FORCE_FRESH_WALLET_SCAN), false)
             // During mnemonic restore or an active scan, keep the temporary loader
             // visible until we have a real remaining-block count. A transient disconnect
             // must not create a blank gap between refresh and the sync progress bar.
@@ -1800,6 +1803,16 @@ class WalletState(private val prefs: SharedPreferences) {
         resetPriorityActive.set(false)
         clearSyncProgress()
         walletWipeInProgress.set(walletWipeRequestReserved.get())
+    }
+
+    /**
+     * Clear process-wide presentation and scan state after closing one wallet so a
+     * different wallet can be opened without carrying over cached balances or history.
+     * Wallet files and persisted preferences are left untouched.
+     */
+    fun resetForWalletSwitch() {
+        resetAfterWalletWipe()
+        walletWipeInProgress.set(false)
     }
 
     fun toggleHideAmounts() {
@@ -2035,7 +2048,7 @@ class WalletState(private val prefs: SharedPreferences) {
                     wallet.isInitialized &&
                         !wallet.isSynchronized &&
                         (_scanTracking.get() ||
-                            prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)) &&
+                            prefs.getBoolean(walletPreferenceKey(PREF_FORCE_FRESH_WALLET_SCAN), false)) &&
                         _syncProgress.value == null
                 }.getOrDefault(false)
                 setLoading(waitingForScanProgress)
@@ -2363,7 +2376,7 @@ class WalletState(private val prefs: SharedPreferences) {
                 }
                 clearSyncProgress()
                 val scanPending = _scanTracking.get() ||
-                    prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+                    prefs.getBoolean(walletPreferenceKey(PREF_FORCE_FRESH_WALLET_SCAN), false)
                 setLoading(
                     scanPending && runCatching {
                         getWallet?.isInitialized == true && getWallet?.isSynchronized != true

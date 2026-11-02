@@ -24,6 +24,7 @@ object AnonConfig {
     const val APP_PREFERENCES = "anonero_prefs"
     const val PREF_WALLET_WIPE_PENDING = "wallet_wipe_pending"
     const val PREF_WALLET_WIPE_REQUESTED = "wallet_wipe_requested"
+    const val PREF_ACTIVE_WALLET_NAME = "active_wallet_name"
     var context: AnonApplication? = null
     private var walletFound: Boolean = false
 
@@ -49,10 +50,92 @@ object AnonConfig {
 
     val viewOnly: Boolean get() = BuildConfig.VIEW_ONLY
 
+    fun getActiveWalletName(context: Context): String {
+        return context.getSharedPreferences(APP_PREFERENCES, Context.MODE_PRIVATE)
+            .getString(PREF_ACTIVE_WALLET_NAME, "anon")
+            ?.takeIf { it.isNotBlank() && File(it).name == it && it != "." && it != ".." }
+            ?: "anon"
+    }
+
+    fun walletPreferenceKey(context: Context, key: String): String {
+        return "${getActiveWalletName(context)}::$key"
+    }
+
     fun getDefaultWalletFile(context: Context): File {
+        return File(getDefaultWalletDir(context), getActiveWalletName(context))
+    }
+
+    fun setActiveWallet(context: Context, walletName: String) {
+        require(walletName.isNotBlank() && File(walletName).name == walletName &&
+            walletName != "." && walletName != "..") {
+            "Invalid wallet name"
+        }
+        context.getSharedPreferences(APP_PREFERENCES, Context.MODE_PRIVATE)
+            .edit()
+            .putString(PREF_ACTIVE_WALLET_NAME, walletName)
+            .commit()
+    }
+
+    /**
+     * Move the pre-multi-wallet authentication and scan preferences into the
+     * default wallet namespace. All other wallet and network preferences remain
+     * untouched.
+     */
+    fun migrateLegacyWalletPreferences(context: Context) {
+        if (getActiveWalletName(context) != "anon") return
+
+        val preferences = context.getSharedPreferences("walletPref", Context.MODE_PRIVATE)
+        val editor = preferences.edit()
+        val keys = listOf(
+            "pinHash",
+            "passPhraseHash",
+            "restoreHeight",
+            "anonero_force_fresh_wallet_scan",
+        )
+        keys.forEach { key ->
+            val scopedKey = walletPreferenceKey(context, key)
+            if (!preferences.contains(key) || preferences.contains(scopedKey)) return@forEach
+
+            when (key) {
+                "pinHash", "passPhraseHash" -> {
+                    preferences.getString(key, null)?.let { editor.putString(scopedKey, it) }
+                }
+                "restoreHeight" -> editor.putLong(scopedKey, preferences.getLong(key, 0L))
+                "anonero_force_fresh_wallet_scan" -> {
+                    editor.putBoolean(scopedKey, preferences.getBoolean(key, false))
+                }
+            }
+        }
+        editor.commit()
+    }
+
+    fun getWalletFiles(context: Context): List<File> {
         val walletDir = getDefaultWalletDir(context)
-        val anonWallet = File(walletDir, "anon")
-        return anonWallet
+        return walletDir.listFiles()
+            .orEmpty()
+            .asSequence()
+            .filter { it.isFile && it.name.endsWith(".keys") }
+            .map { File(walletDir, it.name.removeSuffix(".keys")) }
+            .filter { it.isFile }
+            .sortedWith(
+                compareBy<File> { if (it.name == "anon") 0 else 1 }
+                    .thenBy { it.name.substringAfterLast('_').toIntOrNull() ?: Int.MAX_VALUE }
+                    .thenBy { it.name.lowercase() }
+            )
+            .toList()
+    }
+
+    fun createNewWalletFile(context: Context): File {
+        val walletDir = getDefaultWalletDir(context)
+        var index = 2
+        var candidate: File
+        do {
+            candidate = File(walletDir, "wallet_$index")
+            index++
+        } while (candidate.exists() || File(candidate.path + ".keys").exists())
+
+        setActiveWallet(context, candidate.name)
+        return candidate
     }
 
 
@@ -96,7 +179,8 @@ object AnonConfig {
 
     fun initWalletState() {
         MainScope().launch(Dispatchers.IO) {
-            walletFound = getDefaultWalletFile(context!!).exists()
+            migrateLegacyWalletPreferences(context!!)
+            walletFound = getWalletFiles(context!!).isNotEmpty()
         }
     }
 

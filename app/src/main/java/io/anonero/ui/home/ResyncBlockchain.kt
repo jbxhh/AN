@@ -1,5 +1,6 @@
 package io.anonero.ui.home
 
+import io.anonero.AnonConfig
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import androidx.compose.foundation.background
@@ -672,7 +673,7 @@ fun ResyncBlockchainScreen(
                                         } else {
                                             handedOffToResync = true
                                             walletPrefs.edit(commit = true) {
-                                                putLong(RESTORE_HEIGHT, selectedHeight)
+                                                putLong(AnonConfig.walletPreferenceKey(AnonConfig.context!!, RESTORE_HEIGHT), selectedHeight)
                                             }
                                             toastState.show(
                                                 "已提交区块重置，正在从所选高度扫描",

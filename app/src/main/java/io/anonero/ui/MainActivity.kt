@@ -35,6 +35,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.asLiveData
 import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import io.anonero.AnonConfig
 import io.anonero.R
@@ -50,11 +51,18 @@ import io.anonero.ui.home.LockScreenMode
 import io.anonero.ui.home.LockScreenShortCut
 import io.anonero.ui.home.graph.homeGraph
 import io.anonero.ui.home.graph.routes.Home
+import io.anonero.ui.home.settings.ProxySettings
 import io.anonero.ui.onboard.OnboardViewModel
+import io.anonero.ui.onboard.Mode
 import io.anonero.ui.onboard.graph.LandingScreenRoute
+import io.anonero.ui.onboard.graph.OnboardImportKeysScreen
+import io.anonero.ui.onboard.graph.OnboardNodeSetupScreen
 import io.anonero.ui.onboard.graph.onboardingGraph
 import io.anonero.util.WALLET_PREFERENCES
 import io.anonero.util.WALLET_USE_TOR
+import io.anonero.ui.wallets.WalletListRoute
+import io.anonero.ui.wallets.WalletListProxyRoute
+import io.anonero.ui.wallets.WalletListScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -216,8 +224,15 @@ class MainActivity : ComponentActivity() {
                         val wipeRequested = appPreferences.getBoolean(
                             AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
                         )
-                        walletExist = stillPending || wipeRequested ||
-                            AnonConfig.getDefaultWalletFile(context).exists()
+                        val storedWallets = AnonConfig.getWalletFiles(context)
+                        if (storedWallets.isNotEmpty()) {
+                            if (!AnonConfig.getDefaultWalletFile(context).exists()) {
+                                AnonConfig.setActiveWallet(context, storedWallets.first().name)
+                            }
+                        } else if (!stillPending && !wipeRequested) {
+                            AnonConfig.setActiveWallet(context, "anon")
+                        }
+                        walletExist = stillPending || wipeRequested || storedWallets.isNotEmpty()
                         useTor = if (stillPending || wipeRequested) {
                             false
                         } else {
@@ -269,6 +284,29 @@ class MainActivity : ComponentActivity() {
                             onboardingGraph(navController, onboardViewModel)
                             //home bottom navigation
                             homeGraph(navController)
+                            composable<WalletListRoute> {
+                                WalletListScreen(
+                                    onWalletSelected = { walletFile ->
+                                        AnonConfig.setActiveWallet(context, walletFile.name)
+                                        navController.navigate(Home) {
+                                            popUpTo(WalletListRoute) { inclusive = false }
+                                            launchSingleTop = true
+                                        }
+                                    },
+                                    onProxySettings = {
+                                        navController.navigate(WalletListProxyRoute)
+                                    },
+                                    onNewWallet = {
+                                        AnonConfig.createNewWalletFile(context)
+                                        navController.navigate(LandingScreenRoute)
+                                    },
+                                )
+                            }
+                            composable<WalletListProxyRoute> {
+                                ProxySettings(
+                                    onBackPress = { navController.popBackStack() }
+                                )
+                            }
                         }
                         if (showLockScreen && !deletionWorkflowActive) {
                             LockScreen(

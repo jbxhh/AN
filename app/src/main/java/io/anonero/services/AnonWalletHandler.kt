@@ -84,6 +84,9 @@ class AnonWalletHandler(
             appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
     }
 
+    private fun walletPreferenceKey(key: String): String =
+        AnonConfig.context?.let { AnonConfig.walletPreferenceKey(it, key) } ?: key
+
     private fun secureWipePriorityActive(): Boolean =
         wipeInProgress.get() || walletState.isWalletWipeInProgress ||
             hasPersistentSecureWipeRequest()
@@ -409,7 +412,7 @@ class AnonWalletHandler(
         if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
         // Native init may replace a fresh seed restore's selected scan height with the
         // daemon tip. Capture it before init and reapply it before starting the scan.
-        val forceFreshScan = prefs.getBoolean(PREF_FORCE_FRESH_WALLET_SCAN, false)
+        val forceFreshScan = prefs.getBoolean(walletPreferenceKey(PREF_FORCE_FRESH_WALLET_SCAN), false)
         val selectedRestoreHeightBeforeInit =
             if (forceFreshScan) walletState.pendingSelectedRestoreHeight(wallet) else null
 
@@ -428,7 +431,7 @@ class AnonWalletHandler(
             }
 
             val actualRestoreHeight = wallet.getRestoreHeight().coerceAtLeast(0L)
-            prefs.edit(commit = true) { putLong(RESTORE_HEIGHT, actualRestoreHeight) }
+            prefs.edit(commit = true) { putLong(walletPreferenceKey(RESTORE_HEIGHT), actualRestoreHeight) }
             wallet.setTrustedDaemon(true)
             if (forceFreshScan) {
                 Timber.tag(TAG).i(
@@ -614,6 +617,90 @@ class AnonWalletHandler(
             return Pair(proxyHost, proxyPort)
         }
         return null
+    }
+
+    /**
+     * Close the current native wallet before changing the active wallet file.
+     * Refuse to switch while a rescan, secure wipe, manual node connection, or
+     * background-sync session owns the wallet.
+     */
+    suspend fun closeCurrentWalletForSwitch(): Boolean {
+        if (
+            secureWipePriorityActive() ||
+            walletState.isResyncPriorityActive ||
+            isManualNodeConnectionInProgress() ||
+            walletState.backgroundSync
+        ) return false
+
+        if (!serviceStartMutex.tryLock()) return false
+        try {
+            if (
+                secureWipePriorityActive() ||
+                walletState.isResyncPriorityActive ||
+                isManualNodeConnectionInProgress() ||
+                walletState.backgroundSync
+            ) return false
+
+            walletState.awaitPendingNativeQueries()
+            if (walletState.isResyncPriorityActive || secureWipePriorityActive()) return false
+
+            if (!walletInitializationMutex.tryLock()) return false
+            try {
+                val walletManager = WalletManager.instance
+                val wallet = walletManager?.wallet
+                if (wallet == null) {
+                    walletState.resetForWalletSwitch()
+                    serviceStartedWallet = null
+                    handler = null
+                    return true
+                }
+
+                var refreshPaused = false
+                var listenerDetached = false
+                var walletClosed = false
+                try {
+                    if (wallet.isInitialized) {
+                        wallet.pauseRefreshAndWait()
+                    } else {
+                        wallet.pauseRefresh()
+                    }
+                    refreshPaused = true
+
+                    wallet.setListener(null)
+                    listenerDetached = true
+
+                    check(wallet.close()) { "Unable to close the active wallet" }
+                    walletClosed = true
+
+                    walletManager.setDaemon(null)
+                    handler = null
+                    serviceStartedWallet = null
+                    walletState.resetForWalletSwitch()
+                    return true
+                } catch (error: Exception) {
+                    Timber.tag(TAG).e(error, "Unable to close wallet before switching")
+                    if (!walletClosed) {
+                        if (listenerDetached) {
+                            runCatching { wallet.setListener(handler) }
+                                .onFailure {
+                                    Timber.tag(TAG).e(it, "Unable to restore wallet listener after failed switch")
+                                }
+                        }
+                        if (refreshPaused && !secureWipePriorityActive()) {
+                            runCatching { wallet.startRefresh() }
+                                .onFailure {
+                                    Timber.tag(TAG).e(it, "Unable to resume wallet refresh after failed switch")
+                                }
+                        }
+                    }
+                    return false
+                }
+            } finally {
+                walletInitializationMutex.unlock()
+            }
+        } finally {
+            serviceStartMutex.unlock()
+        }
     }
 
     suspend fun wipe(passPhrase: String): Boolean {
