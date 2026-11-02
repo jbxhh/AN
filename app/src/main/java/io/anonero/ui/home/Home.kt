@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -133,8 +134,10 @@ fun HomeScreenComposable(
     val pinLockVisible by walletState.pinLockVisibleFlow.collectAsState(
         initial = walletState.pinLockVisible
     )
+    val isTransactionsRoot = navBackStackEntry?.destination
+        ?.hasRoute<TransactionsRoute>() == true
     BackHandler(
-        enabled = currentRoute == TransactionsRoute::class.qualifiedName &&
+        enabled = isTransactionsRoot &&
             mainNavController != null &&
             !wipeRequestedAtStart &&
             !pinLockVisible,
