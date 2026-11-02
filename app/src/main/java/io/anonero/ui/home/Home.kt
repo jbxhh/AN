@@ -2,7 +2,6 @@ package io.anonero.ui.home
 
 import io.anonero.ui.theme.AnonNeroTheme
 import android.annotation.SuppressLint
-import android.widget.Toast
 import android.content.Intent
 import android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
 import androidx.activity.compose.BackHandler
@@ -92,12 +91,9 @@ import org.koin.compose.koinInject
 import com.dokar.sonner.Toaster
 import com.dokar.sonner.rememberToasterState
 import io.anonero.services.WalletState
-import io.anonero.services.AnonWalletHandler
 import io.anonero.ui.home.graph.routes.Home
 import io.anonero.ui.wallets.WalletListRoute
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import io.anonero.AnonConfig
 
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -126,8 +122,6 @@ fun HomeScreenComposable(
     val currentRoute = navBackStackEntry?.destination?.route ?: TransactionsRoute
     var showBatteryManagerDialog by remember { mutableStateOf(false) }
     val walletState = koinInject<WalletState>()
-    val walletHandler = koinInject<AnonWalletHandler>()
-    val walletSwitchScope = rememberCoroutineScope()
     val appViewModel = koinInject<io.anonero.ui.viewmodels.AppViewModel>()
     val toastState = rememberToasterState()
     val prefs = context.getSharedPreferences("anonero_prefs", android.content.Context.MODE_PRIVATE)
@@ -137,34 +131,17 @@ fun HomeScreenComposable(
     val isTransactionsRoot = navBackStackEntry?.destination
         ?.hasRoute<TransactionsRoute>() == true
     BackHandler(
-        enabled = isTransactionsRoot &&
-            mainNavController != null &&
-            !wipeRequestedAtStart &&
-            !pinLockVisible,
+        enabled = isTransactionsRoot && mainNavController != null,
     ) {
-        walletSwitchScope.launch {
-            val closed = withContext(Dispatchers.IO) {
-                walletHandler.closeCurrentWalletForSwitch()
-            }
-            if (!closed) {
-                Toast.makeText(
-                    context,
-                    "钱包正在执行操作，暂时无法切换",
-                    Toast.LENGTH_SHORT,
-                ).show()
-                return@launch
-            }
-
-            (context as? MainActivity)?.stopNotificationService()
-
-            val listRoute = WalletListRoute::class.qualifiedName
-            val returnedToExistingList = listRoute != null &&
-                mainNavController?.popBackStack(listRoute, false) == true
-            if (!returnedToExistingList) {
-                mainNavController?.navigate(WalletListRoute) {
-                    popUpTo(Home::class.qualifiedName!!) { inclusive = true }
-                    launchSingleTop = true
-                }
+        // Returning to the wallet list is navigation only. Keep the active native
+        // wallet and its background work untouched until the user selects another wallet.
+        val listRoute = WalletListRoute::class.qualifiedName
+        val returnedToExistingList = listRoute != null &&
+            mainNavController?.popBackStack(listRoute, false) == true
+        if (!returnedToExistingList) {
+            mainNavController?.navigate(WalletListRoute) {
+                popUpTo(Home::class.qualifiedName!!) { inclusive = true }
+                launchSingleTop = true
             }
         }
     }
