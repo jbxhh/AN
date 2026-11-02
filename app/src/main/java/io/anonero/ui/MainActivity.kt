@@ -284,10 +284,10 @@ class MainActivity : ComponentActivity() {
                             ExitTransition.None
                         }, popEnterTransition = {
                             EnterTransition.None
-                        }, startDestination = when {
-                            deletionWorkflowActive -> Home
-                            walletExist -> WalletListRoute
-                            else -> LandingScreenRoute
+                        }, startDestination = if (deletionWorkflowActive) {
+                            Home
+                        } else {
+                            WalletListRoute
                         }
                         ) {
                             //landing screen and onboarding screens
