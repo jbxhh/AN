@@ -65,7 +65,7 @@ import io.anonero.util.WALLET_PREFERENCES
 import io.anonero.util.WALLET_USE_TOR
 import io.anonero.ui.wallets.WalletListRoute
 import io.anonero.ui.wallets.WalletListProxyRoute
-import io.anonero.ui.wallets.WalletListScreen
+import io.anonero.ui.wallets.MultiWalletScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -295,7 +295,7 @@ class MainActivity : ComponentActivity() {
                             //home bottom navigation
                             homeGraph(navController)
                             composable<WalletListRoute> {
-                                WalletListScreen(
+                                MultiWalletScreen(
                                     onWalletSelected = { walletFile ->
                                         AnonConfig.setActiveWallet(context, walletFile.name)
                                         navController.navigate(Home) {
@@ -307,7 +307,11 @@ class MainActivity : ComponentActivity() {
                                         navController.navigate(WalletListProxyRoute)
                                     },
                                     onNewWallet = {
-                                        AnonConfig.createNewWalletFile(context)
+                                        if (AnonConfig.getWalletFiles(context).isEmpty()) {
+                                            AnonConfig.setActiveWallet(context, "anon")
+                                        } else {
+                                            AnonConfig.createNewWalletFile(context)
+                                        }
                                         navController.navigate(LandingScreenRoute)
                                     },
                                 )
