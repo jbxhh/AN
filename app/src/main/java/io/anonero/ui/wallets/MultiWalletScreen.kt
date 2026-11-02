@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -158,9 +157,9 @@ fun MultiWalletScreen(
 
             Column(
                 modifier = Modifier
-                    .fillMaxHeight(0.5f)
-                    .weight(1.2f),
-                verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.Top),
+                    .fillMaxWidth()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.Bottom),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 // Keep the gear attached to the list, not floating high above it.
