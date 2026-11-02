@@ -2,10 +2,12 @@ package io.anonero.ui.wallets
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,13 +31,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.anonero.AnonConfig
-import io.anonero.R
 import io.anonero.ui.theme.AnonOutlineButton
 import java.io.File
 
@@ -87,6 +87,24 @@ fun MultiWalletScreen(
                     modifier = Modifier.size(120.dp)
                 )
             }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                IconButton(
+                    onClick = onProxySettings,
+                    modifier = Modifier.size(56.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = "Proxy",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp),
+                    )
+                }
+            }
             Column(
                 modifier = Modifier
                     .fillMaxHeight(0.5f)
@@ -123,23 +141,6 @@ fun MultiWalletScreen(
                     Text("新建钱包")
                 }
 
-                IconButton(
-                    onClick = onProxySettings,
-                    modifier = Modifier.width(200.dp)
-                ) {
-                    androidx.compose.foundation.layout.Row {
-                        Icon(
-                            Icons.Default.Settings,
-                            contentDescription = "Proxy",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            stringResource(R.string.proxy),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
                 Spacer(modifier = Modifier.height(32.dp))
             }
         }
