@@ -34,7 +34,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.asLiveData
+import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.hierarchy
 import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import io.anonero.AnonConfig
@@ -262,6 +265,9 @@ class MainActivity : ComponentActivity() {
             TorSplash(enableTor = useTor) {
                 AnonNeroTheme {
                     val navController = rememberNavController()
+                    val currentBackStackEntry by navController.currentBackStackEntryAsState()
+                    val isHomeGraphVisible = currentBackStackEntry?.destination?.hierarchy
+                        ?.any { it.hasRoute<Home>() } == true
                     navController.addOnDestinationChangedListener { x, destination, d ->
                         Timber.tag(TAG).d("destination changed to ${destination.route}")
                     }
@@ -278,7 +284,11 @@ class MainActivity : ComponentActivity() {
                             ExitTransition.None
                         }, popEnterTransition = {
                             EnterTransition.None
-                        }, startDestination = if (walletExist) Home else LandingScreenRoute
+                        }, startDestination = when {
+                            deletionWorkflowActive -> Home
+                            walletExist -> WalletListRoute
+                            else -> LandingScreenRoute
+                        }
                         ) {
                             //landing screen and onboarding screens
                             onboardingGraph(navController, onboardViewModel)
@@ -308,7 +318,7 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
-                        if (showLockScreen && !deletionWorkflowActive) {
+                        if (showLockScreen && isHomeGraphVisible && !deletionWorkflowActive) {
                             LockScreen(
                                 mode = LockScreenMode.LOCK_SCREEN,
                                 modifier = androidx.compose.ui.Modifier.fillMaxSize(),
