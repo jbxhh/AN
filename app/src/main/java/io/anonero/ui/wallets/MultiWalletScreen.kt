@@ -16,29 +16,36 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.edit
@@ -77,6 +84,20 @@ fun MultiWalletScreen(
     }
     var walletToRename by remember { mutableStateOf<File?>(null) }
     var editedName by remember { mutableStateOf("") }
+    var editFieldHadFocus by remember { mutableStateOf(false) }
+    val editFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    fun saveWalletName(walletFile: File) {
+        val customName = editedName.trim()
+        walletPrefs.edit {
+            if (customName.isEmpty()) {
+                remove(walletDisplayNamePreferenceKey(walletFile))
+            } else {
+                putString(walletDisplayNamePreferenceKey(walletFile), customName)
+            }
+        }
+    }
 
     DisposableEffect(lifecycleOwner, context) {
         val observer = LifecycleEventObserver { _, event ->
@@ -88,53 +109,12 @@ fun MultiWalletScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    walletToRename?.let { walletFile ->
-        AlertDialog(
-            onDismissRequest = { walletToRename = null },
-            title = { Text("自定义钱包名称") },
-            text = {
-                OutlinedTextField(
-                    value = editedName,
-                    onValueChange = { editedName = it },
-                    singleLine = true,
-                    label = { Text("钱包名称") },
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val customName = editedName.trim()
-                        walletPrefs.edit {
-                            if (customName.isEmpty()) {
-                                remove(walletDisplayNamePreferenceKey(walletFile))
-                            } else {
-                                putString(walletDisplayNamePreferenceKey(walletFile), customName)
-                            }
-                        }
-                        walletToRename = null
-                    }
-                ) {
-                    Text("保存")
-                }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(
-                        onClick = {
-                            walletPrefs.edit {
-                                remove(walletDisplayNamePreferenceKey(walletFile))
-                            }
-                            walletToRename = null
-                        }
-                    ) {
-                        Text("恢复默认")
-                    }
-                    TextButton(onClick = { walletToRename = null }) {
-                        Text("取消")
-                    }
-                }
-            },
-        )
+    LaunchedEffect(walletToRename?.name) {
+        if (walletToRename != null) {
+            editFieldHadFocus = false
+            editFocusRequester.requestFocus()
+            keyboardController?.show()
+        }
     }
 
     Scaffold { paddingValues ->
@@ -195,36 +175,80 @@ fun MultiWalletScreen(
                                 .height((wallets.size.coerceAtMost(5) * 68).dp),
                         ) {
                             items(wallets, key = { it.name }) { walletFile ->
+                                val isEditing = walletToRename?.name == walletFile.name
+                                val defaultDisplayName = walletDisplayName(
+                                    walletName = walletFile.name,
+                                    customName = walletPrefs.getString(
+                                        walletDisplayNamePreferenceKey(walletFile),
+                                        null
+                                    )
+                                )
+
+                                val finishEditing = {
+                                    editFieldHadFocus = false
+                                    saveWalletName(walletFile)
+                                    walletToRename = null
+                                    keyboardController?.hide()
+                                }
+
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .heightIn(min = 68.dp)
-                                        .combinedClickable(
-                                            onClick = { onWalletSelected(walletFile) },
-                                            onLongClick = {
-                                                editedName = walletPrefs.getString(
-                                                    walletDisplayNamePreferenceKey(walletFile),
-                                                    ""
-                                                ).orEmpty()
-                                                walletToRename = walletFile
+                                        .then(
+                                            if (isEditing) {
+                                                Modifier
+                                            } else {
+                                                Modifier.combinedClickable(
+                                                    onClick = { onWalletSelected(walletFile) },
+                                                    onLongClick = {
+                                                        editedName = defaultDisplayName
+                                                        editFieldHadFocus = false
+                                                        walletToRename = walletFile
+                                                    }
+                                                )
                                             }
                                         )
                                         .padding(horizontal = 16.dp, vertical = 18.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Text(
-                                        text = walletDisplayName(
-                                            walletName = walletFile.name,
-                                            customName = walletPrefs.getString(
-                                                walletDisplayNamePreferenceKey(walletFile),
-                                                null
-                                            )
-                                        ),
-                                        color = MaterialTheme.colorScheme.onBackground,
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                    )
+                                    if (isEditing) {
+                                        BasicTextField(
+                                            value = editedName,
+                                            onValueChange = { editedName = it },
+                                            singleLine = true,
+                                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                                color = MaterialTheme.colorScheme.onBackground,
+                                                fontSize = 18.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                            ),
+                                            keyboardOptions = KeyboardOptions(
+                                                imeAction = ImeAction.Done
+                                            ),
+                                            keyboardActions = KeyboardActions(
+                                                onDone = { finishEditing() }
+                                            ),
+                                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .focusRequester(editFocusRequester)
+                                                .onFocusChanged { focusState ->
+                                                    if (focusState.isFocused) {
+                                                        editFieldHadFocus = true
+                                                    } else if (editFieldHadFocus) {
+                                                        finishEditing()
+                                                    }
+                                                },
+                                        )
+                                    } else {
+                                        Text(
+                                            text = defaultDisplayName,
+                                            color = MaterialTheme.colorScheme.onBackground,
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                        )
+                                    }
                                 }
                                 HorizontalDivider(
                                     color = MaterialTheme.colorScheme.outlineVariant,
