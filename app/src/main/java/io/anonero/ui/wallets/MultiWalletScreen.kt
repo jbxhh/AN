@@ -36,6 +36,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.anonero.AnonConfig
+import io.anonero.R
 import io.anonero.ui.theme.AnonOutlineButton
 import java.io.File
 
