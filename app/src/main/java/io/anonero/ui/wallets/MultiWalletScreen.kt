@@ -160,7 +160,7 @@ fun MultiWalletScreen(
                 modifier = Modifier
                     .fillMaxHeight(0.5f)
                     .weight(1.2f),
-                verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.Bottom),
+                verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.Top),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 // Keep the gear attached to the list, not floating high above it.
@@ -185,6 +185,7 @@ fun MultiWalletScreen(
 
                 if (wallets.isNotEmpty()) {
                     LazyColumn(
+                        reverseLayout = false,
                         modifier = Modifier
                             .fillMaxWidth()
                             // One wallet row is 68 dp plus its divider. Keep a
