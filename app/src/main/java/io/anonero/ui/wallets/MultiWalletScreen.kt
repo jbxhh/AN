@@ -240,6 +240,7 @@ fun MultiWalletScreen(
                         onNewWallet()
                     },
                     modifier = Modifier
+                        .height(52.dp)
                         .fillMaxWidth()
                         .padding(
                             horizontal = 12.dp
