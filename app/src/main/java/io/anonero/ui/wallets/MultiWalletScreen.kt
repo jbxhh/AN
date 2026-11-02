@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.BasicTextField
@@ -155,7 +156,7 @@ fun MultiWalletScreen(
                     ) {
                         IconButton(
                             onClick = onProxySettings,
-                            modifier = Modifier.size(32.dp),
+                            modifier = Modifier.offset(y = 6.dp).size(32.dp),
                         ) {
                             Icon(
                                 Icons.Default.Settings,
