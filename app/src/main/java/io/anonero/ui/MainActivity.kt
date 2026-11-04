@@ -288,8 +288,10 @@ class MainActivity : ComponentActivity() {
                             EnterTransition.None
                         }, startDestination = if (deletionWorkflowActive) {
                             Home
-                        } else {
+                        } else if (walletExist) {
                             WalletListRoute
+                        } else {
+                            LandingScreenRoute
                         }
                         ) {
                             //landing screen and onboarding screens
