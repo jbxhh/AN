@@ -311,9 +311,12 @@ class MainActivity : ComponentActivity() {
                                             val previousWalletName = AnonConfig.getActiveWalletName(context)
                                             val isSameWallet = previousWalletName == walletFile.name
                                             if (isSameWallet) {
-                                                val walletAlreadyOpen = WalletManager.instance?.wallet?.let {
-                                                    it.name == walletFile.name && it.status.isOk
-                                                } == true
+                                                val walletAlreadyOpen =
+                                                    !walletState.pinLockVisible &&
+                                                        !walletState.backgroundSync &&
+                                                        WalletManager.instance?.wallet?.let {
+                                                            it.name == walletFile.name && it.status.isOk
+                                                        } == true
                                                 withContext(Dispatchers.Main) {
                                                     navController.navigate(
                                                         HomeScreenRoute(pinVerified = walletAlreadyOpen)
@@ -331,13 +334,16 @@ class MainActivity : ComponentActivity() {
                                             // while the previous wallet is syncing or scanning.
                                             val currentPin = WalletManager.instance
                                                 ?.getManagedWalletPassword().orEmpty()
+                                            val canReuseCurrentPin = currentPin.isNotEmpty() &&
+                                                !walletState.pinLockVisible &&
+                                                !walletState.backgroundSync
                                             val replacement = anonWalletHandler.prepareWalletReplacement(currentPin)
 
                                             stopNotificationService()
                                             AnonConfig.setActiveWallet(context, walletFile.name)
                                             anonWalletHandler.detachWalletForReplacement(replacement)
 
-                                            val targetWalletOpened = if (currentPin.isNotEmpty()) {
+                                            val targetWalletOpened = if (canReuseCurrentPin) {
                                                 runCatching {
                                                     anonWalletHandler.openWallet(currentPin)
                                                 }.onFailure {
