@@ -222,6 +222,17 @@ class WalletManager {
         return closed
     }
 
+    /**
+     * Close an older native wallet after createWallet() has made a replacement active.
+     * Do not unmanage the new wallet or overwrite its in-memory password.
+     */
+    fun closeDetachedWallet(wallet: Wallet): Boolean = closeJ(wallet)
+
+    /** Restore the previously managed wallet when replacement creation fails. */
+    fun restoreManagedWallet(wallet: Wallet, password: String) {
+        manageWallet(wallet, password)
+    }
+
     fun walletExists(aFile: File): Boolean {
         return walletExists(aFile.absolutePath)
     }
