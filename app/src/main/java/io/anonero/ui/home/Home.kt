@@ -4,7 +4,6 @@ import io.anonero.ui.theme.AnonNeroTheme
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
