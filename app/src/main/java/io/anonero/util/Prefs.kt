@@ -7,6 +7,7 @@ const val WALLET_PREFERENCES = "walletPref"
 const val PREFS_PASSPHRASE_HASH = "passPhraseHash"
 
 const val PREFS_PIN_HASH = "pinHash"
+const val PREFS_PINLESS_WALLET = "pinlessWallet"
 const val RESTORE_HEIGHT = "restoreHeight"
 const val WALLET_PROXY = "proxy"
 const val WALLET_USE_TOR = "useTor"
