@@ -61,6 +61,7 @@ import io.anonero.ui.onboard.Mode
 import io.anonero.ui.onboard.graph.LandingScreenRoute
 import io.anonero.ui.onboard.graph.OnboardImportKeysScreen
 import io.anonero.ui.onboard.graph.OnboardNodeSetupScreen
+import io.anonero.ui.onboard.graph.OnboardMultiWalletCreatePinScreen
 import io.anonero.ui.onboard.graph.onboardingGraph
 import io.anonero.util.WALLET_PREFERENCES
 import io.anonero.util.WALLET_USE_TOR
@@ -341,12 +342,29 @@ class MainActivity : ComponentActivity() {
                                         navController.navigate(WalletListProxyRoute)
                                     },
                                     onNewWallet = {
-                                        if (AnonConfig.getWalletFiles(context).isEmpty()) {
-                                            AnonConfig.setActiveWallet(context, "anon")
-                                        } else {
-                                            AnonConfig.createNewWalletFile(context)
+                                        scope.launch {
+                                            val closed = runCatching {
+                                                withContext(Dispatchers.IO) {
+                                                    anonWalletHandler.closeCurrentWalletForSwitch()
+                                                }
+                                            }.onFailure {
+                                                Timber.tag(TAG).e(it, "Unable to close current wallet before creating a new wallet")
+                                            }.getOrDefault(false)
+
+                                            if (!closed) {
+                                                Toast.makeText(
+                                                    context,
+                                                    "钱包正在执行操作，暂时无法新建",
+                                                    Toast.LENGTH_SHORT,
+                                                ).show()
+                                                return@launch
+                                            }
+
+                                            stopNotificationService()
+                                            onboardViewModel.setMode(Mode.CREATE)
+                                            onboardViewModel.setPassPhrase("")
+                                            navController.navigate(OnboardMultiWalletCreatePinScreen)
                                         }
-                                        navController.navigate(LandingScreenRoute)
                                     },
                                 )
                             }
