@@ -3,7 +3,6 @@ package io.anonero.ui.home
 import io.anonero.ui.theme.AnonNeroTheme
 import android.content.SharedPreferences
 import android.util.Log
-import android.widget.Toast
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.animateColorAsState
@@ -134,30 +133,6 @@ fun LockScreen(
         pinKeys = keys.shuffleExcept(keys.indexOf(BackSpaceKey), keys.indexOf(ConfirmKey))
     }
 
-    LaunchedEffect(mode, isPinlessWallet, pinlessWalletPreferenceKey) {
-        if (!isPinlessWallet) return@LaunchedEffect
-
-        if (mode == LockScreenMode.OPEN_WALLET) {
-            val opened = withContext(Dispatchers.IO) { appViewModel.openWallet("") }
-            if (opened) {
-                appViewModel.startService()
-                (activity as? MainActivity)?.startNotificationService()
-                onUnLocked("", LockScreenShortCut.HOME)
-            } else {
-                Timber.tag(TAG).e("Unable to auto-open PIN-less wallet")
-                activity?.applicationContext?.let { appContext ->
-                    Toast.makeText(
-                        appContext,
-                        "无法自动打开无 PIN 钱包",
-                        Toast.LENGTH_LONG,
-                    ).show()
-                }
-            }
-        } else {
-            onUnLocked("", LockScreenShortCut.HOME)
-        }
-    }
-
     fun showError() {
         errorShake.shake(
             ShakeConfig(
@@ -220,7 +195,34 @@ fun LockScreen(
         if (pin.length >= 4) {
             scope.launch(Dispatchers.IO) {
                 try {
-                    if (mode == LockScreenMode.VERYFY_PIN) {
+
+                    if (isPinlessWallet && mode != LockScreenMode.VERYFY_PIN) {
+                        // A wallet created directly has no PIN yet. On its first later
+                        // selection from the wallet list, use the entered PIN to set the
+                        // native wallet password, then use the normal unlock flow thereafter.
+                        val walletReady = if (mode == LockScreenMode.OPEN_WALLET) {
+                            appViewModel.openWallet("")
+                        } else {
+                            WalletManager.instance?.wallet?.status?.isOk == true
+                        }
+                        val wallet = WalletManager.instance?.wallet
+                        if (walletReady && wallet != null) {
+                            wallet.setPassword(pin)
+                            prefs.edit(commit = true) {
+                                putString(walletPinHashPreferenceKey, encodePinHash(pin))
+                                remove(pinlessWalletPreferenceKey)
+                            }
+                            withContext(Dispatchers.Main) {
+                                if (mode == LockScreenMode.OPEN_WALLET) {
+                                    appViewModel.startService()
+                                    (activity as? MainActivity)?.startNotificationService()
+                                }
+                                onUnLocked(pin, shortCut)
+                            }
+                        } else {
+                            withContext(Dispatchers.Main) { showError() }
+                        }
+                    } else if (mode == LockScreenMode.VERYFY_PIN) {
                         if (verifyExistingWalletPin(pin)) {
                             onUnLocked(pin, shortCut)
                         } else {
@@ -269,8 +271,6 @@ fun LockScreen(
         }
 
     }
-
-    if (isPinlessWallet) return
 
     Scaffold(modifier = modifier) { paddingValues ->
         Column(
