@@ -88,6 +88,17 @@ class AnonWalletHandler(
         }
     }
 
+    /**
+     * Make the selected wallet the only wallet exposed by WalletManager without
+     * waiting for the previous native handle to finish syncing or scanning.
+     */
+    fun detachWalletForReplacement(replacement: WalletReplacement?) {
+        replacement?.let { pending ->
+            WalletManager.instance?.detachManagedWalletForReplacement(pending.wallet)
+        }
+        walletState.resetForWalletSwitch()
+    }
+
     fun restoreWalletAfterFailedCreation(replacement: WalletReplacement) {
         val manager = WalletManager.instance ?: return
         val currentWallet = manager.wallet
