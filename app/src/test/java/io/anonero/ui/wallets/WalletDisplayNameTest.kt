@@ -15,8 +15,8 @@ class WalletDisplayNameTest {
 
     @Test
     fun fallsBackToDefaultWhenCustomNameIsMissingOrBlank() {
-        assertEquals("Monero Wallet (1)", walletDisplayName("anon", null))
-        assertEquals("Monero Wallet (2)", walletDisplayName("wallet_2", "  "))
+        assertEquals("Monero Wallet 1", walletDisplayName("anon", null))
+        assertEquals("Monero Wallet 2", walletDisplayName("wallet_2", "  "))
     }
 
     @Test
