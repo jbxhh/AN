@@ -394,7 +394,7 @@ class MainActivity : ComponentActivity() {
                                                     MODE_PRIVATE
                                                 ).getString(NodeFields.RPC_HOST.value, "")
                                                 if (!configuredNode.isNullOrBlank()) {
-                                                    withContext(Dispatchers.IO) {
+                                                    scope.launch(Dispatchers.IO) {
                                                         anonWalletHandler.startService()
                                                     }
                                                 }
