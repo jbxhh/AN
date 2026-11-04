@@ -173,7 +173,7 @@ fun MultiWalletScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 // Show at most five rows; additional wallets scroll here.
-                                .height((wallets.size.coerceAtMost(5) * 68).dp),
+                                .height((5 * 68).dp),
                         ) {
                             items(wallets, key = { it.name }) { walletFile ->
                                 val isEditing = walletToRename?.name == walletFile.name
