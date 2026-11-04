@@ -315,19 +315,23 @@ class AnonWalletHandler(
     }
 
     suspend fun startService() {
-        if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
-        // Do not queue another automatic startup behind a user-initiated connection.
-        // Home and onboarding may both call startService; queued retries used to run
-        // immediately after each other and compete for the same native wallet handle.
-        if (isManualNodeConnectionInProgress()) {
+        if (secureWipePriorityActive()) return
+        val replacementPending = pendingWalletReplacement != null
+        if (!replacementPending && walletState.isResyncPriorityActive) return
+        // A replacement's old native handle must be cleaned up even when a previous
+        // wallet operation is active. That cleanup runs in this background coroutine,
+        // not on the new wallet's Home navigation path.
+        if (!replacementPending && isManualNodeConnectionInProgress()) {
             Timber.tag(TAG).i("Skipping automatic service start while manual node connection is pending")
             return
         }
         serviceStartMutex.lock()
         try {
-            if (secureWipePriorityActive() || walletState.isResyncPriorityActive) return
+            if (secureWipePriorityActive()) return
+            finishPendingWalletReplacementLocked()
+            if (walletState.isResyncPriorityActive) return
             if (isManualNodeConnectionInProgress()) {
-                Timber.tag(TAG).i("Skipping queued automatic service start; manual node connection has priority")
+                Timber.tag(TAG).i("Skipping queued automatic startup; manual node connection has priority")
                 return
             }
             startServiceLocked()
