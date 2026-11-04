@@ -14,6 +14,7 @@ import io.anonero.services.WalletState
 import io.anonero.util.KeyStoreHelper
 import io.anonero.util.PREFS_PASSPHRASE_HASH
 import io.anonero.util.PREFS_PIN_HASH
+import io.anonero.util.PREFS_PINLESS_WALLET
 import io.anonero.util.encodePinHash
 import io.anonero.util.RESTORE_HEIGHT
 import kotlinx.coroutines.CancellationException
@@ -74,7 +75,13 @@ class OnboardViewModel(
             val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
             prefs.edit(commit = true) {
                 putString(AnonConfig.walletPreferenceKey(context, PREFS_PASSPHRASE_HASH), crazyPass)
-                putString(AnonConfig.walletPreferenceKey(context, PREFS_PIN_HASH), encodePinHash(pin))
+                if (pin.isEmpty()) {
+                    remove(AnonConfig.walletPreferenceKey(context, PREFS_PIN_HASH))
+                    putBoolean(AnonConfig.walletPreferenceKey(context, PREFS_PINLESS_WALLET), true)
+                } else {
+                    putString(AnonConfig.walletPreferenceKey(context, PREFS_PIN_HASH), encodePinHash(pin))
+                remove(AnonConfig.walletPreferenceKey(context, PREFS_PINLESS_WALLET))
+                }
                 putLong(AnonConfig.walletPreferenceKey(context, RESTORE_HEIGHT), initialRestoreHeight)
                 remove(AnonConfig.walletPreferenceKey(context, PREF_FORCE_FRESH_WALLET_SCAN))
                 putBoolean(
@@ -115,6 +122,7 @@ class OnboardViewModel(
             prefs.edit(commit = true) {
                 putString(AnonConfig.walletPreferenceKey(context, "passPhraseHash"), crazyPass)
                 putString(AnonConfig.walletPreferenceKey(context, PREFS_PIN_HASH), encodePinHash(pin))
+                remove(AnonConfig.walletPreferenceKey(context, PREFS_PINLESS_WALLET))
                 putLong(AnonConfig.walletPreferenceKey(context, RESTORE_HEIGHT), neroKeyPayload!!.restoreHeight)
             }
             walllet = anonWallet
