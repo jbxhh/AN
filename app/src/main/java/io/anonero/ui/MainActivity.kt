@@ -346,16 +346,6 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onNewWallet = {
                                         scope.launch {
-                                            val currentPin = WalletManager.instance?.getManagedWalletPassword()
-                                            if (currentPin.isNullOrEmpty()) {
-                                                Toast.makeText(
-                                                    context,
-                                                    "当前钱包尚未解锁，请先解锁后再新建钱包",
-                                                    Toast.LENGTH_SHORT,
-                                                ).show()
-                                                return@launch
-                                            }
-
                                             val previousWalletName = AnonConfig.getActiveWalletName(context)
                                             val closed = runCatching {
                                                 withContext(Dispatchers.IO) {
@@ -385,7 +375,7 @@ class MainActivity : ComponentActivity() {
                                                 onboardViewModel.setMode(Mode.CREATE)
                                                 onboardViewModel.setPassPhrase("")
                                                 withContext(Dispatchers.IO) {
-                                                    onboardViewModel.create(currentPin)
+                                                    onboardViewModel.create("")
                                                     walletState.publishWalletSnapshot()
                                                 }
 
