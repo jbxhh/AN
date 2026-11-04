@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.util.UUID
 
 
 enum class Mode {
@@ -55,9 +56,13 @@ class OnboardViewModel(
             val context = AnonConfig.context!!.applicationContext
             val walletFile = AnonConfig.getDefaultWalletFile(context)
             AnonConfig.getDefaultWalletDir(context).mkdirs()
+            // Do not ask for a PIN while creating the wallet. Protect the wallet
+            // with a temporary random password stored only through Android Keystore;
+            // the user chooses their PIN the first time they open it from the wallet list.
+            val walletPassword = pin.ifEmpty { UUID.randomUUID().toString() }
             val anonWallet = WalletManager.instance?.createWallet(
                 walletFile,
-                pin,
+                walletPassword,
                 passPhrase,
                 "English",
                 1,
@@ -76,6 +81,12 @@ class OnboardViewModel(
             prefs.edit(commit = true) {
                 putString(AnonConfig.walletPreferenceKey(context, PREFS_PASSPHRASE_HASH), crazyPass)
                 if (pin.isEmpty()) {
+                    val walletName = AnonConfig.getActiveWalletName(context)
+                    KeyStoreHelper.saveWalletUserPass(context, walletName, walletPassword)
+                    check(
+                        runCatching { KeyStoreHelper.loadWalletUserPass(context, walletName) == walletPassword }
+                            .getOrDefault(false)
+                    ) { "Unable to securely store temporary wallet password" }
                     remove(AnonConfig.walletPreferenceKey(context, PREFS_PIN_HASH))
                     putBoolean(AnonConfig.walletPreferenceKey(context, PREFS_PINLESS_WALLET), true)
                 } else {
