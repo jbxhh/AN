@@ -436,6 +436,15 @@ Java_io_anonero_model_WalletManager_createWalletJ(JNIEnv *env, jobject instance,
                     seed_words,
                     std::string(_passpharse), true);
 
+    if (wallet == nullptr) {
+        LOGE("createWalletJ(): native wallet manager returned a null wallet");
+        env->ReleaseStringUTFChars(path, _path);
+        env->ReleaseStringUTFChars(password, _password);
+        env->ReleaseStringUTFChars(passpharse, _passpharse);
+        env->ReleaseStringUTFChars(language, _language);
+        return 0;
+    }
+
     bool setupStatus = wallet->setupBackgroundSync(Monero::Wallet::BackgroundSync_ReusePassword,
                                                    std::string(_password), {});
     if (setupStatus == true) {
@@ -463,6 +472,13 @@ Java_io_anonero_model_WalletManager_openWalletJ(JNIEnv *env, jobject instance,
                     std::string(_path),
                     std::string(_password),
                     _networkType);
+
+    if (wallet == nullptr) {
+        LOGE("openWalletJ(): native wallet manager returned a null wallet");
+        env->ReleaseStringUTFChars(path, _path);
+        env->ReleaseStringUTFChars(password, _password);
+        return 0;
+    }
 
     if (!viewOnly) {
         // setup background sync
