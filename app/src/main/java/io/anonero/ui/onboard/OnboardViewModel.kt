@@ -9,6 +9,7 @@ import io.anonero.model.NeroKeyPayload
 import io.anonero.model.Wallet
 import io.anonero.model.WalletManager
 import io.anonero.services.PREF_FORCE_FRESH_WALLET_SCAN
+import io.anonero.services.PREF_NEW_WALLET_SCAN_FROM_NODE_HEIGHT
 import io.anonero.services.WalletState
 import io.anonero.util.KeyStoreHelper
 import io.anonero.util.PREFS_PASSPHRASE_HASH
@@ -60,22 +61,26 @@ class OnboardViewModel(
                 "English",
                 1,
             )
-            anonWallet?.store()
             delay(100)
             if (anonWallet?.status?.isOk != true) {
                 walletFile.delete()
                 throw CancellationException(context.getString(R.string.unable_to_create_wallet))
             }
+            // A newly created wallet has no historical activity. Wait for its selected
+            // daemon to report the live chain height, then start scanning from that tip.
+            val initialRestoreHeight = anonWallet.getRestoreHeight().coerceAtLeast(0L)
+            anonWallet.setRestoreHeight(initialRestoreHeight)
+            check(anonWallet.store()) { "Unable to store new wallet restore height" }
             val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
-            prefs.edit {
-                putString(AnonConfig.walletPreferenceKey(context, PREFS_PASSPHRASE_HASH), crazyPass)
-            }
-
-            //adds padding to the pin if it's less than 32 bytes
             prefs.edit(commit = true) {
+                putString(AnonConfig.walletPreferenceKey(context, PREFS_PASSPHRASE_HASH), crazyPass)
                 putString(AnonConfig.walletPreferenceKey(context, PREFS_PIN_HASH), encodePinHash(pin))
-                // A newly created wallet must not inherit another wallet's restore height.
-                putLong(AnonConfig.walletPreferenceKey(context, RESTORE_HEIGHT), 0L)
+                putLong(AnonConfig.walletPreferenceKey(context, RESTORE_HEIGHT), initialRestoreHeight)
+                remove(AnonConfig.walletPreferenceKey(context, PREF_FORCE_FRESH_WALLET_SCAN))
+                putBoolean(
+                    AnonConfig.walletPreferenceKey(context, PREF_NEW_WALLET_SCAN_FROM_NODE_HEIGHT),
+                    true
+                )
             }
             walllet = anonWallet
             prepareFirstReceiveAddress(anonWallet)
