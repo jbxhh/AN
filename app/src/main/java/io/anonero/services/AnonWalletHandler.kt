@@ -25,6 +25,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import timber.log.Timber
 import androidx.core.content.edit
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -62,7 +63,7 @@ class AnonWalletHandler(
     private val walletInitializationMutex = Mutex()
     private val manualNodeConnectionRequests = AtomicInteger(0)
     @Volatile private var serviceStartedWallet: Wallet? = null
-    @Volatile private var pendingWalletReplacement: WalletReplacement? = null
+    private val pendingWalletReplacements = ConcurrentLinkedQueue<WalletReplacement>()
 
     val scope get() = _scope
 
@@ -72,20 +73,17 @@ class AnonWalletHandler(
      * the new wallet can become active and navigate to Home immediately.
      */
     fun prepareWalletReplacement(password: String): WalletReplacement? {
-        pendingWalletReplacement?.let { return it }
         val wallet = WalletManager.instance?.wallet ?: return null
         return WalletReplacement(
             wallet = wallet,
             listener = handler,
             password = password,
             backgroundSync = walletState.backgroundSync
-        ).also { pendingWalletReplacement = it }
+        ).also { pendingWalletReplacements.add(it) }
     }
 
     fun cancelWalletReplacement(replacement: WalletReplacement?) {
-        if (replacement != null && pendingWalletReplacement === replacement) {
-            pendingWalletReplacement = null
-        }
+        if (replacement != null) pendingWalletReplacements.remove(replacement)
     }
 
     /**
@@ -95,6 +93,8 @@ class AnonWalletHandler(
     fun detachWalletForReplacement(replacement: WalletReplacement?) {
         replacement?.let { pending ->
             WalletManager.instance?.detachManagedWalletForReplacement(pending.wallet)
+            if (handler === pending.listener) handler = null
+            if (serviceStartedWallet === pending.wallet) serviceStartedWallet = null
         }
         walletState.resetForWalletSwitch()
     }
@@ -124,72 +124,77 @@ class AnonWalletHandler(
     }
 
     private suspend fun finishPendingWalletReplacementLocked() {
-        val replacement = pendingWalletReplacement ?: return
-        val oldWallet = replacement.wallet
-        val oldHandler = replacement.listener
-        var refreshPaused = false
-        var listenerDetached = false
-        var walletClosed = false
+        while (true) {
+            val replacement = pendingWalletReplacements.peek() ?: return
+            val oldWallet = replacement.wallet
+            val oldHandler = replacement.listener
+            var refreshPaused = false
+            var listenerDetached = false
+            var walletClosed = false
 
-        try {
-            // A manual connect/reset already using the old handle must finish before
-            // its native object can be released. This wait is off the UI/navigation path.
-            while (isManualNodeConnectionInProgress()) {
-                delay(25L)
-            }
-
-            walletInitializationMutex.withLock {
-                // Do not let callbacks from the displaced wallet publish heights into
-                // the newly active wallet's WalletState.
-                oldWallet.setListener(null)
-                listenerDetached = true
-                oldHandler?.awaitPendingNativeCallbacks()
-
-                if (replacement.backgroundSync) {
-                    check(
-                        walletState.stopBackgroundSyncForWalletReplacement(
-                            oldWallet,
-                            replacement.password
-                        )
-                    ) { "Unable to stop background sync for the previous wallet" }
+            try {
+                // A manual connect/reset already using the old handle must finish before
+                // its native object can be released. This wait is off the UI/navigation path.
+                while (isManualNodeConnectionInProgress()) {
+                    delay(25L)
                 }
 
-                walletState.awaitPendingNativeQueries()
+                walletInitializationMutex.withLock {
+                    // Do not let callbacks from the displaced wallet publish heights into
+                    // the newly active wallet's WalletState.
+                    oldWallet.setListener(null)
+                    listenerDetached = true
+                    oldHandler?.awaitPendingNativeCallbacks()
 
-                if (oldWallet.isInitialized) {
-                    oldWallet.pauseRefreshAndWait()
-                } else {
-                    oldWallet.pauseRefresh()
-                }
-                refreshPaused = true
+                    if (replacement.backgroundSync) {
+                        check(
+                            walletState.stopBackgroundSyncForWalletReplacement(
+                                oldWallet,
+                                replacement.password
+                            )
+                        ) { "Unable to stop background sync for the previous wallet" }
+                    }
 
-                oldHandler?.awaitPendingNativeCallbacks()
-                walletState.awaitPendingNativeQueries()
+                    walletState.awaitPendingNativeQueries()
 
-                check(oldWallet.closeDetached()) {
-                    "Unable to close the previous native wallet"
-                }
-                walletClosed = true
-            }
+                    if (oldWallet.isInitialized) {
+                        oldWallet.pauseRefreshAndWait()
+                    } else {
+                        oldWallet.pauseRefresh()
+                    }
+                    refreshPaused = true
 
-            if (handler === oldHandler) handler = null
-            if (serviceStartedWallet === oldWallet) serviceStartedWallet = null
-            cancelWalletReplacement(replacement)
-            Timber.tag(TAG).i("Closed previous wallet after replacement became active")
-        } catch (error: Exception) {
-            Timber.tag(TAG).e(error, "Unable to finish previous wallet cleanup after replacement")
-            if (!walletClosed) {
-                // Keep the replacement active. The old handle remains detached/paused
-                // where possible and can be retried later; never send a blocking toast.
-                if (!listenerDetached) {
-                    runCatching { oldWallet.setListener(null) }
-                        .onFailure { Timber.tag(TAG).w(it, "Unable to detach previous wallet listener") }
+                    oldHandler?.awaitPendingNativeCallbacks()
+                    walletState.awaitPendingNativeQueries()
+
+                    check(oldWallet.closeDetached()) {
+                        "Unable to close the previous native wallet"
+                    }
+                    walletClosed = true
                 }
-                if (!refreshPaused) {
-                    runCatching { oldWallet.pauseRefresh() }
-                        .onFailure { Timber.tag(TAG).w(it, "Unable to pause previous wallet refresh") }
+
+                if (handler === oldHandler) handler = null
+                if (serviceStartedWallet === oldWallet) serviceStartedWallet = null
+                pendingWalletReplacements.remove(replacement)
+                Timber.tag(TAG).i("Closed previous wallet after replacement became active")
+            } catch (error: Exception) {
+                Timber.tag(TAG).e(error, "Unable to finish previous wallet cleanup after replacement")
+                if (!walletClosed) {
+                    // Keep the replacement active. The old handle remains detached/paused
+                    // where possible and can be retried later; never send a blocking toast.
+                    if (!listenerDetached) {
+                        runCatching { oldWallet.setListener(null) }
+                            .onFailure { Timber.tag(TAG).w(it, "Unable to detach previous wallet listener") }
+                    }
+                    if (!refreshPaused) {
+                        runCatching { oldWallet.pauseRefresh() }
+                            .onFailure { Timber.tag(TAG).w(it, "Unable to pause previous wallet refresh") }
+                    }
+                    oldHandler?.let { runCatching { it.awaitPendingNativeCallbacks() } }
                 }
-                oldHandler?.let { runCatching { it.awaitPendingNativeCallbacks() } }
+                // Preserve FIFO order. A failed older close must be retried before
+                // releasing any wallet that was displaced later.
+                return
             }
         }
     }
@@ -327,7 +332,7 @@ class AnonWalletHandler(
 
     suspend fun startService() {
         if (secureWipePriorityActive()) return
-        val replacementPending = pendingWalletReplacement != null
+        val replacementPending = pendingWalletReplacements.isNotEmpty()
         if (!replacementPending && walletState.isResyncPriorityActive) return
         // A replacement's old native handle must be cleaned up even when a previous
         // wallet operation is active. That cleanup runs in this background coroutine,
