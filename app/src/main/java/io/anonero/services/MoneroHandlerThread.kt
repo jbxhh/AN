@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -33,7 +34,26 @@ class MoneroHandlerThread(
     private val refreshedCallbackPending = AtomicBoolean(false)
     private val refreshedCallbackWorkerActive = AtomicBoolean(false)
     private val connectionRecoveryInFlight = AtomicBoolean(false)
+    private val moneyReceivedCallbackInFlight = AtomicInteger(0)
     private val lastConnectionRecoveryAtMillis = AtomicLong(0L)
+
+    /**
+     * Wait for listener work that was dispatched off the native callback thread.
+     * Native wallet close must not race deferred JNI reads/stores from these workers.
+     * Call only after refresh is paused and the native listener has been detached.
+     */
+    suspend fun awaitPendingNativeCallbacks() {
+        while (
+            walletUpdateCallbackPending.get() ||
+            walletUpdateCallbackWorkerActive.get() ||
+            refreshedCallbackPending.get() ||
+            refreshedCallbackWorkerActive.get() ||
+            postCompletionRefreshInFlight.get() ||
+            moneyReceivedCallbackInFlight.get() > 0
+        ) {
+            delay(25L)
+        }
+    }
 
     @Synchronized
     override fun start() {
@@ -50,10 +70,15 @@ class MoneroHandlerThread(
 
     override fun moneyReceived(txId: String?, amount: Long) {
         Timber.tag(name).i("moneyReceived: %s", amount)
+        moneyReceivedCallbackInFlight.incrementAndGet()
         postCompletionScope.launch {
-            if (WalletManager.instance?.wallet !== wallet || !wallet.isInitialized) return@launch
-            runCatching { wallet.store() }
-                .onFailure { Timber.tag(name).w(it, "Wallet store after received transaction failed") }
+            try {
+                if (WalletManager.instance?.wallet !== wallet || !wallet.isInitialized) return@launch
+                runCatching { wallet.store() }
+                    .onFailure { Timber.tag(name).w(it, "Wallet store after received transaction failed") }
+            } finally {
+                moneyReceivedCallbackInFlight.decrementAndGet()
+            }
         }
     }
 
