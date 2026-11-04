@@ -56,9 +56,9 @@ class OnboardViewModel(
             val context = AnonConfig.context!!.applicationContext
             val walletFile = AnonConfig.getDefaultWalletFile(context)
             AnonConfig.getDefaultWalletDir(context).mkdirs()
-            // Do not ask for a PIN while creating the wallet. Protect the wallet
-            // with a temporary random password stored only through Android Keystore;
-            // the user chooses their PIN the first time they open it from the wallet list.
+            // Reuse an already-unlocked wallet PIN without prompting. If none is
+            // available, use a temporary random password protected by Android Keystore;
+            // the user chooses a PIN the first time they open it from the wallet list.
             val walletPassword = pin.ifEmpty { UUID.randomUUID().toString() }
             val anonWallet = WalletManager.instance?.createWallet(
                 walletFile,
