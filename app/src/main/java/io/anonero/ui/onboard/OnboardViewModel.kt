@@ -80,7 +80,7 @@ class OnboardViewModel(
                     putBoolean(AnonConfig.walletPreferenceKey(context, PREFS_PINLESS_WALLET), true)
                 } else {
                     putString(AnonConfig.walletPreferenceKey(context, PREFS_PIN_HASH), encodePinHash(pin))
-                remove(AnonConfig.walletPreferenceKey(context, PREFS_PINLESS_WALLET))
+                    remove(AnonConfig.walletPreferenceKey(context, PREFS_PINLESS_WALLET))
                 }
                 putLong(AnonConfig.walletPreferenceKey(context, RESTORE_HEIGHT), initialRestoreHeight)
                 remove(AnonConfig.walletPreferenceKey(context, PREF_FORCE_FRESH_WALLET_SCAN))
@@ -195,6 +195,7 @@ class OnboardViewModel(
         prefs.edit(commit = true) {
             putString(AnonConfig.walletPreferenceKey(context, PREFS_PASSPHRASE_HASH), crazyPass)
             putString(AnonConfig.walletPreferenceKey(context, PREFS_PIN_HASH), encodePinHash(pin))
+            remove(AnonConfig.walletPreferenceKey(context, PREFS_PINLESS_WALLET))
             putLong(AnonConfig.walletPreferenceKey(context, RESTORE_HEIGHT), actualRestoreHeight)
             // Mark this seed restore so wallet startup preserves the selected height
             // and queues its first native scan from that height after the daemon is synced.
