@@ -50,7 +50,10 @@ class OnboardViewModel(
     fun getSeed() = walllet?.getSeed(passPhrase) ?: ""
 
 
-    suspend fun create(pin: String) {
+    suspend fun create(
+        pin: String,
+        prepareInitialReceiveAddress: Boolean = true
+    ) {
         if (AnonConfig.context == null) return
         withContext(Dispatchers.IO) {
             val context = AnonConfig.context!!.applicationContext
@@ -100,7 +103,9 @@ class OnboardViewModel(
                 )
             }
             walllet = anonWallet
-            prepareFirstReceiveAddress(anonWallet)
+            if (prepareInitialReceiveAddress) {
+                prepareFirstReceiveAddress(anonWallet)
+            }
         }
     }
 
