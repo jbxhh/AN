@@ -136,6 +136,27 @@ fun MultiWalletScreen(
                 )
             }
 
+            if (wallets.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(32.dp),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    IconButton(
+                        onClick = onProxySettings,
+                        modifier = Modifier.size(32.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "Proxy",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -143,12 +164,12 @@ fun MultiWalletScreen(
                 verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.Bottom),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // Gear is positioned in the wallet-list header at its top-right corner.
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Box(
+                if (wallets.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(32.dp),
@@ -156,7 +177,7 @@ fun MultiWalletScreen(
                     ) {
                         IconButton(
                             onClick = onProxySettings,
-                            modifier = if (wallets.isNotEmpty()) Modifier.offset(y = 6.dp).size(32.dp) else Modifier.size(32.dp),
+                            modifier = Modifier.offset(y = 6.dp).size(32.dp),
                         ) {
                             Icon(
                                 Icons.Default.Settings,
@@ -167,7 +188,6 @@ fun MultiWalletScreen(
                         }
                     }
 
-                    if (wallets.isNotEmpty()) {
                         LazyColumn(
                             reverseLayout = false,
                             modifier = Modifier
@@ -257,12 +277,10 @@ fun MultiWalletScreen(
                                 )
                             }
                         }
-                    } else {
-                        Spacer(Modifier.height((5 * 68).dp))
                     }
                 }
-
             }
+
 
             // Match the onboarding "Next" button placement: the button is
             // the final direct child of the page column, at the bottom inset.
