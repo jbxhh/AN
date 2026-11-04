@@ -102,7 +102,6 @@ class OnboardViewModel(
             }
             walllet = anonWallet
             prepareFirstReceiveAddress(anonWallet)
-            delay(500)
         }
     }
 
