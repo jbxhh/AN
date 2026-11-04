@@ -323,7 +323,8 @@ fun TransactionScreen(
                         containerColor = MaterialTheme.colorScheme.onBackground,
                     ),
                     onClick = {
-                        activity?.finishAffinity()
+                        showExitDialog = false
+                        onBackToWalletList()
                     }) { Text(stringResource(R.string.exit_wallet)) }
             },
         )
@@ -477,7 +478,7 @@ fun TransactionScreen(
 
 
     BackHandler {
-        onBackToWalletList()
+        showExitDialog = true
     }
 
     LaunchedEffect(walletState) {
