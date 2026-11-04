@@ -127,13 +127,17 @@ fun HomeScreenComposable(
     val pinLockVisible by walletState.pinLockVisibleFlow.collectAsState(
         initial = walletState.pinLockVisible
     )
-    val isTransactionsRoot = navBackStackEntry?.destination
-        ?.hasRoute<TransactionsRoute>() == true
-    val isHomeRoot = navBackStackEntry != null &&
-        bottomNavController.previousBackStackEntry == null &&
-        !wipeRequestedAtStart
+    // Every bottom-navigation destination is a Home root, even when another tab
+    // remains underneath it in the nested back stack. System Back from any Home tab
+    // returns to the multi-wallet list; nested detail/settings flows keep their own Back.
+    val isHomeTabRoot = navBackStackEntry?.destination?.let { destination ->
+        destination.hasRoute<TransactionsRoute>() ||
+            destination.hasRoute<ReceiveRoute>() ||
+            destination.hasRoute<SendScreenRoute>() ||
+            destination.hasRoute<SettingsRoute>()
+    } == true && !wipeRequestedAtStart
     BackHandler(
-        enabled = (isTransactionsRoot || isHomeRoot) && mainNavController != null,
+        enabled = isHomeTabRoot && mainNavController != null,
     ) {
         // Returning to the wallet list is navigation only. Keep the active native
         // wallet and its background work untouched until the user selects another wallet.
