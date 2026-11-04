@@ -199,10 +199,11 @@ class MainActivity : ComponentActivity() {
                     context.getSharedPreferences(AnonConfig.APP_PREFERENCES, MODE_PRIVATE).let { appPreferences ->
                         appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false) ||
                             appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, false) ||
-                            AnonConfig.isWalletFileExist()
+                            runCatching { AnonConfig.getWalletFiles(context).isNotEmpty() }.getOrDefault(true)
                     }
                 )
             }
+            var startupInitializationFailed by remember { mutableStateOf(false) }
             var useTor by remember {
                 mutableStateOf(
                     !context.getSharedPreferences(AnonConfig.APP_PREFERENCES, MODE_PRIVATE).let { appPreferences ->
@@ -257,6 +258,7 @@ class MainActivity : ComponentActivity() {
                             AnonConfig.PREF_WALLET_WIPE_REQUESTED, false
                         )
                         // Fail closed: do not route to onboarding or a usable wallet when recovery fails.
+                        startupInitializationFailed = true
                         walletExist = wipeStillPending || wipeWasRequested
                         useTor = false
                     } finally {
@@ -288,7 +290,7 @@ class MainActivity : ComponentActivity() {
                             EnterTransition.None
                         }, startDestination = if (deletionWorkflowActive) {
                             Home
-                        } else if (walletExist) {
+                        } else if (walletExist || startupInitializationFailed) {
                             WalletListRoute
                         } else {
                             LandingScreenRoute
