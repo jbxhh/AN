@@ -346,28 +346,12 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onNewWallet = {
                                         scope.launch {
-                                            // Reuse the active wallet PIN silently when this wallet is
-                                            // already unlocked. If unavailable, create with a temporary
-                                            // Keystore-protected password and let the first later list
-                                            // entry establish the wallet PIN.
+                                            // Create the replacement wallet locally first. The previous
+                                            // native wallet is queued for background cleanup so its active
+                                            // scan/operation state cannot block Home navigation.
                                             val currentPin = WalletManager.instance?.getManagedWalletPassword().orEmpty()
                                             val previousWalletName = AnonConfig.getActiveWalletName(context)
-                                            val closed = runCatching {
-                                                withContext(Dispatchers.IO) {
-                                                    anonWalletHandler.closeCurrentWalletForSwitch()
-                                                }
-                                            }.onFailure {
-                                                Timber.tag(TAG).e(it, "Unable to close current wallet before creating a new wallet")
-                                            }.getOrDefault(false)
-
-                                            if (!closed) {
-                                                Toast.makeText(
-                                                    context,
-                                                    "钱包正在执行操作，暂时无法新建",
-                                                    Toast.LENGTH_SHORT,
-                                                ).show()
-                                                return@launch
-                                            }
+                                            val replacement = anonWalletHandler.prepareWalletReplacement(currentPin)
 
                                             stopNotificationService()
                                             try {
@@ -384,24 +368,31 @@ class MainActivity : ComponentActivity() {
                                                     walletState.publishWalletSnapshot()
                                                 }
 
-                                                val configuredNode = context.getSharedPreferences(
-                                                    AnonConfig.PREFS,
-                                                    MODE_PRIVATE
-                                                ).getString(NodeFields.RPC_HOST.value, "")
-                                                if (!configuredNode.isNullOrBlank()) {
-                                                    scope.launch(Dispatchers.IO) {
-                                                        anonWalletHandler.startService()
-                                                    }
-                                                }
-
                                                 navController.navigate(HomeScreenRoute(pinVerified = true)) {
                                                     popUpTo(WalletListRoute) { inclusive = true }
                                                     launchSingleTop = true
                                                 }
+
+                                                val configuredNode = context.getSharedPreferences(
+                                                    AnonConfig.PREFS,
+                                                    MODE_PRIVATE
+                                                ).getString(NodeFields.RPC_HOST.value, "")
+                                                scope.launch(Dispatchers.IO) {
+                                                    // Old-wallet cleanup is deliberately off the Home
+                                                    // navigation path. Node startup follows cleanup.
+                                                    anonWalletHandler.finishPendingWalletReplacement()
+                                                    if (!configuredNode.isNullOrBlank()) {
+                                                        anonWalletHandler.startService()
+                                                    }
+                                                }
                                             } catch (error: Exception) {
                                                 Timber.tag(TAG).e(error, "Unable to create a new wallet directly")
-                                                WalletManager.instance?.wallet?.let { wallet ->
-                                                    runCatching { WalletManager.instance?.close(wallet) }
+                                                if (replacement != null) {
+                                                    anonWalletHandler.restoreWalletAfterFailedCreation(replacement)
+                                                } else {
+                                                    WalletManager.instance?.wallet?.let { wallet ->
+                                                        runCatching { WalletManager.instance?.close(wallet) }
+                                                    }
                                                 }
                                                 AnonConfig.setActiveWallet(context, previousWalletName)
                                                 Toast.makeText(
