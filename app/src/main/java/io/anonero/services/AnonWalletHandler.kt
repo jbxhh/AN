@@ -672,7 +672,8 @@ class AnonWalletHandler(
                     // The native listener can dispatch deferred JNI work before it is detached.
                     // Drain those workers and any height/background-sync queries they queued
                     // before WalletManager unmanages and destroys the native wallet.
-                    handler?.takeIf { it === handler }?.awaitPendingNativeCallbacks()
+                    val activeHandler = handler
+                    activeHandler?.awaitPendingNativeCallbacks()
                     walletState.awaitPendingNativeQueries()
 
                     check(wallet.close()) { "Unable to close the active wallet" }
