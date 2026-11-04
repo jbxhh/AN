@@ -148,6 +148,7 @@ fun TransactionScreen(
     onItemClick: (TransactionInfo) -> Unit = {},
     navigateTo: (route: Any) -> Unit = {},
     navigateToShortCut: (shortcut: LockScreenShortCut) -> Unit = {},
+    onBackToWalletList: () -> Unit = {},
     toastState: ToasterState,
     animatedContentScope: AnimatedContentScope,
     sharedTransitionScope: SharedTransitionScope,
@@ -476,7 +477,7 @@ fun TransactionScreen(
 
 
     BackHandler {
-        showExitDialog = true
+        onBackToWalletList()
     }
 
     LaunchedEffect(walletState) {
