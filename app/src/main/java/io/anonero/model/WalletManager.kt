@@ -55,6 +55,11 @@ class WalletManager {
     fun getManagedWalletPassword(): String? =
         managedWalletPassword.takeIf { wallet != null }
 
+    fun updateManagedWalletPassword(password: String) {
+        checkNotNull(wallet) { "No wallet under management!" }
+        managedWalletPassword = password
+    }
+
     private fun unmanageWallet(wallet: Wallet?): String? {
         requireNotNull(wallet) { "Cannot unmanage null!" }
         checkNotNull(this.wallet) { "No wallet under management!" }
