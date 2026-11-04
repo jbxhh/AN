@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.sync.Mutex
@@ -33,6 +34,13 @@ class InvalidPin : Exception("invalid pin")
 private const val TAG = "AnonWalletHandler"
 
 class UnableToCloseWallet : Exception()
+
+class WalletReplacement internal constructor(
+    internal val wallet: Wallet,
+    internal val listener: MoneroHandlerThread?,
+    internal val password: String,
+    internal val backgroundSync: Boolean
+)
 
 class AnonWalletHandler(
     private val prefs: SharedPreferences,
@@ -54,8 +62,126 @@ class AnonWalletHandler(
     private val walletInitializationMutex = Mutex()
     private val manualNodeConnectionRequests = AtomicInteger(0)
     @Volatile private var serviceStartedWallet: Wallet? = null
+    @Volatile private var pendingWalletReplacement: WalletReplacement? = null
 
     val scope get() = _scope
+
+    /**
+     * Reserve the currently managed wallet for background cleanup after a new wallet
+     * has been created. This deliberately does not wait for scan/refresh operations:
+     * the new wallet can become active and navigate to Home immediately.
+     */
+    fun prepareWalletReplacement(password: String): WalletReplacement? {
+        pendingWalletReplacement?.let { return it }
+        val wallet = WalletManager.instance?.wallet ?: return null
+        return WalletReplacement(
+            wallet = wallet,
+            listener = handler,
+            password = password,
+            backgroundSync = walletState.backgroundSync
+        ).also { pendingWalletReplacement = it }
+    }
+
+    fun cancelWalletReplacement(replacement: WalletReplacement?) {
+        if (replacement != null && pendingWalletReplacement === replacement) {
+            pendingWalletReplacement = null
+        }
+    }
+
+    fun restoreWalletAfterFailedCreation(replacement: WalletReplacement) {
+        val manager = WalletManager.instance ?: return
+        val currentWallet = manager.wallet
+        if (currentWallet !== replacement.wallet) {
+            currentWallet?.let { failedWallet ->
+                runCatching { manager.close(failedWallet) }
+                    .onFailure { Timber.tag(TAG).w(it, "Unable to close failed replacement wallet") }
+            }
+            manager.restoreManagedWallet(replacement.wallet, replacement.password)
+        }
+        cancelWalletReplacement(replacement)
+    }
+
+    /**
+     * Finish closing the old native handle after the replacement wallet is already
+     * active. A slow scan/background operation can delay only this cleanup and node
+     * startup, never the new wallet's Home navigation.
+     */
+    suspend fun finishPendingWalletReplacement() {
+        serviceStartMutex.withLock {
+            finishPendingWalletReplacementLocked()
+        }
+    }
+
+    private suspend fun finishPendingWalletReplacementLocked() {
+        val replacement = pendingWalletReplacement ?: return
+        val oldWallet = replacement.wallet
+        val oldHandler = replacement.listener
+        var refreshPaused = false
+        var listenerDetached = false
+        var walletClosed = false
+
+        try {
+            // A manual connect/reset already using the old handle must finish before
+            // its native object can be released. This wait is off the UI/navigation path.
+            while (isManualNodeConnectionInProgress()) {
+                delay(25L)
+            }
+
+            walletInitializationMutex.withLock {
+                // Do not let callbacks from the displaced wallet publish heights into
+                // the newly active wallet's WalletState.
+                oldWallet.setListener(null)
+                listenerDetached = true
+                oldHandler?.awaitPendingNativeCallbacks()
+
+                if (replacement.backgroundSync) {
+                    check(
+                        walletState.stopBackgroundSyncForWalletReplacement(
+                            oldWallet,
+                            replacement.password
+                        )
+                    ) { "Unable to stop background sync for the previous wallet" }
+                }
+
+                walletState.awaitPendingNativeQueries()
+
+                if (oldWallet.isInitialized) {
+                    oldWallet.pauseRefreshAndWait()
+                } else {
+                    oldWallet.pauseRefresh()
+                }
+                refreshPaused = true
+
+                oldHandler?.awaitPendingNativeCallbacks()
+                walletState.awaitPendingNativeQueries()
+
+                check(oldWallet.closeDetached()) {
+                    "Unable to close the previous native wallet"
+                }
+                walletClosed = true
+            }
+
+            if (handler === oldHandler) handler = null
+            if (serviceStartedWallet === oldWallet) serviceStartedWallet = null
+            cancelWalletReplacement(replacement)
+            Timber.tag(TAG).i("Closed previous wallet after replacement became active")
+        } catch (error: Exception) {
+            Timber.tag(TAG).e(error, "Unable to finish previous wallet cleanup after replacement")
+            if (!walletClosed) {
+                // Keep the replacement active. The old handle remains detached/paused
+                // where possible and can be retried later; never send a blocking toast.
+                if (!listenerDetached) {
+                    runCatching { oldWallet.setListener(null) }
+                        .onFailure { Timber.tag(TAG).w(it, "Unable to detach previous wallet listener") }
+                }
+                if (!refreshPaused) {
+                    runCatching { oldWallet.pauseRefresh() }
+                        .onFailure { Timber.tag(TAG).w(it, "Unable to pause previous wallet refresh") }
+                }
+                oldHandler?.let { runCatching { it.awaitPendingNativeCallbacks() } }
+            }
+        }
+    }
 
     /** True while deletion is active or a validated request is unresolved in this process. */
     fun isSecureWipeInProgress(): Boolean =
