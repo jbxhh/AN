@@ -66,6 +66,7 @@ internal fun shouldRetryOutputSnapshot(
 )
 
 const val PREF_FORCE_FRESH_WALLET_SCAN = "anonero_force_fresh_wallet_scan"
+const val PREF_NEW_WALLET_SCAN_FROM_NODE_HEIGHT = "anonero_new_wallet_scan_from_node_height"
 
 class WalletState(private val prefs: SharedPreferences) {
 
@@ -584,7 +585,13 @@ class WalletState(private val prefs: SharedPreferences) {
      */
     fun maybeStartForcedRestoreScan(wallet: Wallet) {
         if (walletWipeInProgress.get() || manualResyncInProgress.get() || isResyncPriorityActive) return
-        if (!prefs.getBoolean(walletPreferenceKey(PREF_FORCE_FRESH_WALLET_SCAN), false)) return
+        val scanFromNodeHeight = prefs.getBoolean(
+            walletPreferenceKey(PREF_NEW_WALLET_SCAN_FROM_NODE_HEIGHT), false
+        )
+        if (
+            !prefs.getBoolean(walletPreferenceKey(PREF_FORCE_FRESH_WALLET_SCAN), false) &&
+            !scanFromNodeHeight
+        ) return
         if (forcedRestoreScanStarted.get()) return
         if (!forcedRestoreScanInFlight.compareAndSet(false, true)) return
 
@@ -653,14 +660,25 @@ class WalletState(private val prefs: SharedPreferences) {
                         return@withLock
                     }
 
-                    // The saved restore height, not the native cache tip, is authoritative.
-                    val selectedRestoreHeight = pendingSelectedRestoreHeight(wallet)
-                        ?: return@withLock
+                    // Imported wallets use their saved restore point. A new wallet has
+                    // no history to preserve, so its first scan begins at the live daemon tip.
+                    val selectedRestoreHeight = if (scanFromNodeHeight) {
+                        daemonHeight
+                    } else {
+                        pendingSelectedRestoreHeight(wallet) ?: return@withLock
+                    }
                     wallet.setRestoreHeight(selectedRestoreHeight)
                     check(wallet.getRestoreHeight().coerceAtLeast(0L) == selectedRestoreHeight) {
                         "Selected restore height changed before rescan"
                     }
                     check(wallet.store()) { "Unable to persist selected restore height before rescan" }
+                    if (scanFromNodeHeight) {
+                        prefs.edit(commit = true) {
+                            putLong(walletPreferenceKey(RESTORE_HEIGHT), selectedRestoreHeight)
+                            putBoolean(walletPreferenceKey(PREF_FORCE_FRESH_WALLET_SCAN), true)
+                            remove(walletPreferenceKey(PREF_NEW_WALLET_SCAN_FROM_NODE_HEIGHT))
+                        }
+                    }
 
                     clearSyncProgress()
                     _transactions.value = emptyList()
@@ -1010,6 +1028,21 @@ class WalletState(private val prefs: SharedPreferences) {
         }
         resetSnapshotForWalletChange(wallet)
 
+        // A brand-new wallet must wait for a real daemon tip. Starting progress at
+        // height zero would incorrectly show a full-chain scan before the node connects.
+        if (
+            prefs.getBoolean(walletPreferenceKey(PREF_NEW_WALLET_SCAN_FROM_NODE_HEIGHT), false) &&
+            !forceStartAtSelectedHeight
+        ) {
+            _scanTracking.set(false)
+            _scanStartHeight.set(0L)
+            _walletHeight.value = 0L
+            wallet.isSynchronized = false
+            clearSyncProgress()
+            setLoading(true)
+            return false
+        }
+
         val restoreHeight = (scanStartHeight ?: wallet.getRestoreHeight()).coerceAtLeast(0L)
         // A forced scan from a user-selected restore height must not wait for
         // the native cached chain height before recording the selected scan start.
@@ -1177,7 +1210,8 @@ class WalletState(private val prefs: SharedPreferences) {
      */
     fun recordScannedBlockHeight(processedHeight: Long, wallet: Wallet? = getWallet) {
         if (walletWipeInProgress.get() || isManualResyncPreparing() ||
-            wallet == null || !wallet.isInitialized || processedHeight <= 0L
+            wallet == null || !wallet.isInitialized || processedHeight <= 0L ||
+            prefs.getBoolean(walletPreferenceKey(PREF_NEW_WALLET_SCAN_FROM_NODE_HEIGHT), false)
         ) return
 
         // This is a native WalletListener callback. Do not call JNI/RPC height or
@@ -1471,7 +1505,14 @@ class WalletState(private val prefs: SharedPreferences) {
         val daemonHeight =
             (knownDaemonHeight ?: wallet.getDaemonBlockChainHeight()).coerceAtLeast(0L)
         _scanDaemonHeight.set(daemonHeight)
-        if (!_scanTracking.get()) {
+        if (
+            !_scanTracking.get() &&
+            prefs.getBoolean(walletPreferenceKey(PREF_NEW_WALLET_SCAN_FROM_NODE_HEIGHT), false)
+        ) {
+            // Keep the indeterminate startup loader until a connected node height is
+            // committed as this new wallet's scan baseline.
+            setLoading(true)
+        } else if (!_scanTracking.get()) {
             // Never populate the displayed wallet height from blockChainHeight():
             // Monero may append hashes during fast refresh before wallet transactions
             // for those blocks have been scanned. Resume from trusted app scan state
