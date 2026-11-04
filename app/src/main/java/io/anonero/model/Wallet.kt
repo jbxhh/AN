@@ -166,6 +166,15 @@ class Wallet {
         return WalletManager.instance?.close(this) == true
     }
 
+    /**
+     * Close this native handle after another wallet has already become managed.
+     * The active WalletManager reference and password must remain untouched.
+     */
+    fun closeDetached(): Boolean {
+        disposePendingTransaction()
+        return WalletManager.instance?.closeDetachedWallet(this) == true
+    }
+
     external fun getFilename(): String
 
     //    virtual std::string keysFilename() const = 0;
