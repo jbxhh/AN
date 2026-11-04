@@ -996,6 +996,17 @@ class WalletState(private val prefs: SharedPreferences) {
     }
 
     /** Wait until any daemon-height JNI/RPC query started by scan progress has left its critical section. */
+    /**
+     * Stop a displaced wallet's native background-sync session without changing
+     * the newly active wallet's WalletState flags.
+     */
+    suspend fun stopBackgroundSyncForWalletReplacement(
+        wallet: Wallet,
+        password: String
+    ): Boolean = bgSyncMutex.withLock {
+        wallet.stopBackgroundSync(password)
+    }
+
     suspend fun awaitPendingNativeQueries() {
         daemonHeightQueryMutex.withLock { }
         bgSyncMutex.withLock { }
