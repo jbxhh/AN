@@ -220,6 +220,16 @@ class WalletState(private val prefs: SharedPreferences) {
      * reconnect can temporarily flip isInitialized to false even though the same
      * local wallet file and its last-known balance/history are still valid to display.
      */
+    /**
+     * Clear the previous wallet's visible snapshot without releasing native-operation
+     * gates. This is used immediately before navigating to a newly opened wallet; the
+     * full native snapshot is read afterward on a background dispatcher.
+     */
+    @Synchronized
+    fun prepareImmediateWalletHome(wallet: Wallet) {
+        resetSnapshotForWalletChange(wallet)
+    }
+
     @Synchronized
     private fun resetSnapshotForWalletChange(wallet: Wallet) {
         if (publishedWalletIdentity.get() === wallet) return
