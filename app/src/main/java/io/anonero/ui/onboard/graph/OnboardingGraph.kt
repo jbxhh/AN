@@ -81,6 +81,9 @@ data class OnboardSeedScreen(val seed: String)
 data object OnboardPinScreen
 
 @Serializable
+data object OnboardMultiWalletCreatePinScreen
+
+@Serializable
 data object OnboardNodeSetupScreen
 
 @Serializable
@@ -288,6 +291,70 @@ fun NavGraphBuilder.onboardingGraph(
                 }
             )
         }
+        composable<OnboardMultiWalletCreatePinScreen> {
+            val walletState = koinInject<WalletState>()
+            val context = LocalContext.current
+            val previousWalletName = remember(context) {
+                AnonConfig.getActiveWalletName(context)
+            }
+            var showErrorMessage by remember { mutableStateOf<String?>(null) }
+
+            OnboardErrorDialog(
+                showErrorMessage = showErrorMessage,
+                isRestoreMode = false,
+                onClose = {
+                    showErrorMessage = null
+                    navController.popBackStack()
+                },
+                onShowLogs = {
+                    showErrorMessage = null
+                    navController.popBackStack()
+                    navController.navigate(OnboardLogsScreen)
+                }
+            )
+
+            PinSetup(
+                onNext = { pin ->
+                    try {
+                        if (AnonConfig.getWalletFiles(context).isEmpty()) {
+                            AnonConfig.setActiveWallet(context, "anon")
+                        } else {
+                            AnonConfig.createNewWalletFile(context)
+                        }
+                    } catch (error: Exception) {
+                        showErrorMessage = error.message ?: "Unknown error"
+                        return@PinSetup
+                    }
+
+                    onboardViewModel.setMode(Mode.CREATE)
+                    onboardViewModel.setPassPhrase("")
+                    navController.navigate(
+                        OnboardLoading(context.getString(R.string.creating_wallet))
+                    )
+                    onboardViewModel.viewModelScope.launch {
+                        onboardViewModel.create(pin)
+                        withContext(Dispatchers.IO) {
+                            walletState.publishWalletSnapshot()
+                        }
+                        delay(600)
+                    }.invokeOnCompletion { error ->
+                        if (error == null) {
+                            navController.navigate(HomeScreenRoute(pinVerified = true)) {
+                                popUpTo(OnboardMultiWalletCreatePinScreen) {
+                                    inclusive = true
+                                }
+                                launchSingleTop = true
+                            }
+                        } else {
+                            AnonConfig.setActiveWallet(context, previousWalletName)
+                            navController.popBackStack()
+                            showErrorMessage = error.message ?: "Unknown error"
+                        }
+                    }
+                }
+            )
+        }
+
         composable<OnboardSeedScreen> { navBackStackEntry ->
             val state = navBackStackEntry.toRoute<OnboardSeedScreen>()
             val context = LocalContext.current
