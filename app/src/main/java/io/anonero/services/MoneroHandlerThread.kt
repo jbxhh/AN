@@ -6,7 +6,6 @@ import io.anonero.model.WalletListener
 import io.anonero.model.WalletManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.children
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
