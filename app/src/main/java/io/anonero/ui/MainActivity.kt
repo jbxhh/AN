@@ -42,6 +42,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import io.anonero.AnonConfig
+import io.anonero.model.WalletManager
+import io.anonero.model.node.NodeFields
 import io.anonero.R
 import io.anonero.services.AnonNeroService
 import io.anonero.services.AnonWalletHandler
@@ -55,6 +57,7 @@ import io.anonero.ui.home.LockScreenMode
 import io.anonero.ui.home.LockScreenShortCut
 import io.anonero.ui.home.graph.homeGraph
 import io.anonero.ui.home.graph.routes.Home
+import io.anonero.ui.home.graph.routes.HomeScreenRoute
 import io.anonero.ui.home.settings.ProxySettings
 import io.anonero.ui.onboard.OnboardViewModel
 import io.anonero.ui.onboard.Mode
@@ -343,6 +346,17 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onNewWallet = {
                                         scope.launch {
+                                            val currentPin = WalletManager.instance?.getManagedWalletPassword()
+                                            if (currentPin.isNullOrEmpty()) {
+                                                Toast.makeText(
+                                                    context,
+                                                    "当前钱包尚未解锁，请先解锁后再新建钱包",
+                                                    Toast.LENGTH_SHORT,
+                                                ).show()
+                                                return@launch
+                                            }
+
+                                            val previousWalletName = AnonConfig.getActiveWalletName(context)
                                             val closed = runCatching {
                                                 withContext(Dispatchers.IO) {
                                                     anonWalletHandler.closeCurrentWalletForSwitch()
@@ -361,9 +375,46 @@ class MainActivity : ComponentActivity() {
                                             }
 
                                             stopNotificationService()
-                                            onboardViewModel.setMode(Mode.CREATE)
-                                            onboardViewModel.setPassPhrase("")
-                                            navController.navigate(OnboardMultiWalletCreatePinScreen)
+                                            try {
+                                                if (AnonConfig.getWalletFiles(context).isEmpty()) {
+                                                    AnonConfig.setActiveWallet(context, "anon")
+                                                } else {
+                                                    AnonConfig.createNewWalletFile(context)
+                                                }
+
+                                                onboardViewModel.setMode(Mode.CREATE)
+                                                onboardViewModel.setPassPhrase("")
+                                                withContext(Dispatchers.IO) {
+                                                    onboardViewModel.create(currentPin)
+                                                    walletState.publishWalletSnapshot()
+                                                }
+
+                                                val configuredNode = context.getSharedPreferences(
+                                                    AnonConfig.PREFS,
+                                                    MODE_PRIVATE
+                                                ).getString(NodeFields.RPC_HOST.value, "")
+                                                if (!configuredNode.isNullOrBlank()) {
+                                                    withContext(Dispatchers.IO) {
+                                                        anonWalletHandler.startService()
+                                                    }
+                                                }
+
+                                                navController.navigate(HomeScreenRoute(pinVerified = true)) {
+                                                    popUpTo(WalletListRoute) { inclusive = true }
+                                                    launchSingleTop = true
+                                                }
+                                            } catch (error: Exception) {
+                                                Timber.tag(TAG).e(error, "Unable to create a new wallet directly")
+                                                WalletManager.instance?.wallet?.let { wallet ->
+                                                    runCatching { WalletManager.instance?.close(wallet) }
+                                                }
+                                                AnonConfig.setActiveWallet(context, previousWalletName)
+                                                Toast.makeText(
+                                                    context,
+                                                    error.message ?: "新建钱包失败",
+                                                    Toast.LENGTH_LONG,
+                                                ).show()
+                                            }
                                         }
                                     },
                                 )
