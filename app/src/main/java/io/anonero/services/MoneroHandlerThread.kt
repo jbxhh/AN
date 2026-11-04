@@ -93,7 +93,7 @@ class MoneroHandlerThread(
     override fun unconfirmedMoneyReceived(txId: String?, amount: Long) {}
 
     override fun newBlock(height: Long) {
-        if (nativeCallbacksClosing.get()) return
+        if (nativeCallbacksClosing.get() || WalletManager.instance?.wallet !== wallet) return
         // anonero.cpp already converts Monero's zero-based block index to the
         // one-based processed-block count before calling this Java listener.
         // Do not increment here a second time; scan and daemon heights must use the
@@ -106,7 +106,7 @@ class MoneroHandlerThread(
     }
 
     override fun updated() {
-        if (nativeCallbacksClosing.get()) return
+        if (nativeCallbacksClosing.get() || WalletManager.instance?.wallet !== wallet) return
         // Listener callbacks run from native wallet code. Defer JNI history/status reads
         // so they cannot stall later newBlock callbacks during an ordinary initial scan.
         if (walletState.isResyncPriorityActive ||
@@ -147,7 +147,7 @@ class MoneroHandlerThread(
     }
 
     override fun refreshed() {
-        if (nativeCallbacksClosing.get()) return
+        if (nativeCallbacksClosing.get() || WalletManager.instance?.wallet !== wallet) return
         // Return immediately from native callback; perform JNI/status work after locks unwind.
         refreshedCallbackPending.set(true)
         scheduleRefreshedProcessingOutsideNativeCallback()
