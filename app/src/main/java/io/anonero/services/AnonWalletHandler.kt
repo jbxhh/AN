@@ -655,6 +655,7 @@ class AnonWalletHandler(
                     return true
                 }
 
+                val activeHandler = handler
                 var refreshPaused = false
                 var listenerDetached = false
                 var walletClosed = false
@@ -672,7 +673,6 @@ class AnonWalletHandler(
                     // The native listener can dispatch deferred JNI work before it is detached.
                     // Drain those workers and any height/background-sync queries they queued
                     // before WalletManager unmanages and destroys the native wallet.
-                    val activeHandler = handler
                     activeHandler?.awaitPendingNativeCallbacks()
                     walletState.awaitPendingNativeQueries()
 
@@ -688,7 +688,8 @@ class AnonWalletHandler(
                     Timber.tag(TAG).e(error, "Unable to close wallet before switching")
                     if (!walletClosed) {
                         if (listenerDetached) {
-                            runCatching { wallet.setListener(handler) }
+                            activeHandler?.resumeNativeCallbacksAfterCloseFailure()
+                            runCatching { wallet.setListener(activeHandler) }
                                 .onFailure {
                                     Timber.tag(TAG).e(it, "Unable to restore wallet listener after failed switch")
                                 }
