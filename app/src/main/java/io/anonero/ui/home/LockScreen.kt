@@ -63,6 +63,7 @@ import io.anonero.model.WalletManager
 import io.anonero.services.WalletState
 import io.anonero.ui.MainActivity
 import io.anonero.ui.viewmodels.AppViewModel
+import io.anonero.util.KeyStoreHelper
 import io.anonero.util.PREFS_PIN_HASH
 import io.anonero.util.PREFS_PINLESS_WALLET
 import io.anonero.util.ShakeConfig
@@ -200,8 +201,15 @@ fun LockScreen(
                         // A wallet created directly has no PIN yet. On its first later
                         // selection from the wallet list, use the entered PIN to set the
                         // native wallet password, then use the normal unlock flow thereafter.
+                        val walletName = AnonConfig.context?.let {
+                            AnonConfig.getActiveWalletName(it.applicationContext)
+                        } ?: error("Wallet context unavailable")
                         val walletReady = if (mode == LockScreenMode.OPEN_WALLET) {
-                            appViewModel.openWallet("")
+                            val temporaryPassword = KeyStoreHelper.loadWalletUserPass(
+                                AnonConfig.context!!.applicationContext,
+                                walletName,
+                            )
+                            appViewModel.openWallet(temporaryPassword)
                         } else {
                             WalletManager.instance?.wallet?.status?.isOk == true
                         }
@@ -211,6 +219,9 @@ fun LockScreen(
                             prefs.edit(commit = true) {
                                 putString(walletPinHashPreferenceKey, encodePinHash(pin))
                                 remove(pinlessWalletPreferenceKey)
+                            }
+                            AnonConfig.context?.let { context ->
+                                KeyStoreHelper.removeWalletUserPass(context.applicationContext, walletName)
                             }
                             withContext(Dispatchers.Main) {
                                 if (mode == LockScreenMode.OPEN_WALLET) {
