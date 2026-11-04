@@ -346,6 +346,11 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onNewWallet = {
                                         scope.launch {
+                                            // Reuse the active wallet PIN silently when this wallet is
+                                            // already unlocked. If unavailable, create with a temporary
+                                            // Keystore-protected password and let the first later list
+                                            // entry establish the wallet PIN.
+                                            val currentPin = WalletManager.instance?.getManagedWalletPassword().orEmpty()
                                             val previousWalletName = AnonConfig.getActiveWalletName(context)
                                             val closed = runCatching {
                                                 withContext(Dispatchers.IO) {
@@ -375,7 +380,7 @@ class MainActivity : ComponentActivity() {
                                                 onboardViewModel.setMode(Mode.CREATE)
                                                 onboardViewModel.setPassPhrase("")
                                                 withContext(Dispatchers.IO) {
-                                                    onboardViewModel.create("")
+                                                    onboardViewModel.create(currentPin)
                                                     walletState.publishWalletSnapshot()
                                                 }
 
