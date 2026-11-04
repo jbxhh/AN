@@ -67,7 +67,6 @@ class OnboardViewModel(
                 "English",
                 1,
             )
-            delay(100)
             if (anonWallet?.status?.isOk != true) {
                 walletFile.delete()
                 throw CancellationException(context.getString(R.string.unable_to_create_wallet))
