@@ -364,7 +364,7 @@ class MainActivity : ComponentActivity() {
                                                 onboardViewModel.setMode(Mode.CREATE)
                                                 onboardViewModel.setPassPhrase("")
                                                 withContext(Dispatchers.IO) {
-                                                    onboardViewModel.create(currentPin)
+                                                    onboardViewModel.create(currentPin, prepareInitialReceiveAddress = false)
                                                     walletState.publishWalletSnapshot()
                                                 }
 
