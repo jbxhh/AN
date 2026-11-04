@@ -127,24 +127,6 @@ fun HomeScreenComposable(
     val pinLockVisible by walletState.pinLockVisibleFlow.collectAsState(
         initial = walletState.pinLockVisible
     )
-    val isTransactionsRoot = navBackStackEntry?.destination
-        ?.hasRoute<TransactionsRoute>() == true
-    BackHandler(
-        enabled = isTransactionsRoot && mainNavController != null,
-    ) {
-        // Returning to the wallet list is navigation only. Keep the active native
-        // wallet and its background work untouched until the user selects another wallet.
-        val listRoute = WalletListRoute::class.qualifiedName
-        val returnedToExistingList = listRoute != null &&
-            mainNavController?.popBackStack(listRoute, false) == true
-        if (!returnedToExistingList) {
-            mainNavController?.navigate(WalletListRoute) {
-                popUpTo(Home::class.qualifiedName!!) { inclusive = true }
-                launchSingleTop = true
-            }
-        }
-    }
-
     val startDestination: Any = when {
         wipeRequestedAtStart -> SecureWipeRoute
         initialShortcut == LockScreenShortCut.RECEIVE -> ReceiveRoute
@@ -334,6 +316,18 @@ fun HomeScreenComposable(
                     composable<TransactionsRoute> {
                         TransactionScreen(
                             modifier = Modifier.padding(paddingValues),
+                            onBackToWalletList = {
+                                // Navigation only: leave the active wallet and sync service running.
+                                val listRoute = WalletListRoute::class.qualifiedName
+                                val returnedToExistingList = listRoute != null &&
+                                    mainNavController?.popBackStack(listRoute, false) == true
+                                if (!returnedToExistingList) {
+                                    mainNavController?.navigate(WalletListRoute) {
+                                        popUpTo(Home::class.qualifiedName!!) { inclusive = true }
+                                        launchSingleTop = true
+                                    }
+                                }
+                            },
                             onItemClick = {
                                 showBottomNavigation = false
                                 it.hash?.let { paymentId ->
