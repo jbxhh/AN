@@ -166,6 +166,7 @@ fun MultiWalletScreen(
                             }
                         }
 
+                    if (wallets.isNotEmpty()) {
                         LazyColumn(
                             reverseLayout = false,
                             modifier = Modifier
