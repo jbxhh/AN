@@ -5,6 +5,8 @@ import io.anonero.model.Wallet
 import io.anonero.model.WalletListener
 import io.anonero.model.WalletManager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.children
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -26,7 +28,9 @@ class MoneroHandlerThread(
     private val walletHandler: AnonWalletHandler
 ) : Thread(null, null, "MoneroHandler", THREAD_STACK_SIZE), WalletListener {
 
-    private val postCompletionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val postCompletionJob = SupervisorJob()
+    private val postCompletionScope = CoroutineScope(postCompletionJob + Dispatchers.IO)
+    private val nativeCallbacksClosing = AtomicBoolean(false)
     private val postCompletionRefreshInFlight = AtomicBoolean(false)
     private val lastPostCompletionRefreshHeight = AtomicLong(-1L)
     private val walletUpdateCallbackPending = AtomicBoolean(false)
@@ -43,16 +47,20 @@ class MoneroHandlerThread(
      * Call only after refresh is paused and the native listener has been detached.
      */
     suspend fun awaitPendingNativeCallbacks() {
-        while (
-            walletUpdateCallbackPending.get() ||
-            walletUpdateCallbackWorkerActive.get() ||
-            refreshedCallbackPending.get() ||
-            refreshedCallbackWorkerActive.get() ||
-            postCompletionRefreshInFlight.get() ||
-            moneyReceivedCallbackInFlight.get() > 0
-        ) {
-            delay(25L)
+        // The native listener has already been detached, so no new callback jobs
+        // can be submitted. Cancel delayed retries/reconnects immediately and join
+        // every worker; a worker inside a synchronous JNI call must return before
+        // the native wallet itself can be destroyed.
+        nativeCallbacksClosing.set(true)
+        postCompletionJob.children.toList().forEach { child ->
+            child.cancelAndJoin()
         }
+    }
+
+    fun resumeNativeCallbacksAfterCloseFailure() {
+        // closeCurrentWalletForSwitch() restores the same listener if native close
+        // is rejected. Allow that still-open wallet to schedule callback work again.
+        nativeCallbacksClosing.set(false)
     }
 
     @Synchronized
@@ -69,6 +77,7 @@ class MoneroHandlerThread(
     }
 
     override fun moneyReceived(txId: String?, amount: Long) {
+        if (nativeCallbacksClosing.get()) return
         Timber.tag(name).i("moneyReceived: %s", amount)
         moneyReceivedCallbackInFlight.incrementAndGet()
         postCompletionScope.launch {
@@ -85,6 +94,7 @@ class MoneroHandlerThread(
     override fun unconfirmedMoneyReceived(txId: String?, amount: Long) {}
 
     override fun newBlock(height: Long) {
+        if (nativeCallbacksClosing.get()) return
         // anonero.cpp already converts Monero's zero-based block index to the
         // one-based processed-block count before calling this Java listener.
         // Do not increment here a second time; scan and daemon heights must use the
@@ -97,6 +107,7 @@ class MoneroHandlerThread(
     }
 
     override fun updated() {
+        if (nativeCallbacksClosing.get()) return
         // Listener callbacks run from native wallet code. Defer JNI history/status reads
         // so they cannot stall later newBlock callbacks during an ordinary initial scan.
         if (walletState.isResyncPriorityActive ||
@@ -111,6 +122,7 @@ class MoneroHandlerThread(
     }
 
     private fun scheduleWalletUpdateOutsideNativeCallback() {
+        if (nativeCallbacksClosing.get()) return
         if (!walletUpdateCallbackWorkerActive.compareAndSet(false, true)) return
         postCompletionScope.launch {
             try {
@@ -124,7 +136,8 @@ class MoneroHandlerThread(
                 Timber.tag(name).w(e, "Deferred wallet update failed")
             } finally {
                 walletUpdateCallbackWorkerActive.set(false)
-                if (walletUpdateCallbackPending.get() &&
+                if (!nativeCallbacksClosing.get() &&
+                    walletUpdateCallbackPending.get() &&
                     WalletManager.instance?.wallet === wallet &&
                     wallet.isInitialized &&
                     !walletState.isResyncPriorityActive &&
@@ -135,12 +148,14 @@ class MoneroHandlerThread(
     }
 
     override fun refreshed() {
+        if (nativeCallbacksClosing.get()) return
         // Return immediately from native callback; perform JNI/status work after locks unwind.
         refreshedCallbackPending.set(true)
         scheduleRefreshedProcessingOutsideNativeCallback()
     }
 
     private fun scheduleRefreshedProcessingOutsideNativeCallback() {
+        if (nativeCallbacksClosing.get()) return
         if (!refreshedCallbackWorkerActive.compareAndSet(false, true)) return
         postCompletionScope.launch {
             try {
@@ -152,7 +167,8 @@ class MoneroHandlerThread(
                 Timber.tag(name).w(e, "Deferred refreshed callback processing failed")
             } finally {
                 refreshedCallbackWorkerActive.set(false)
-                if (refreshedCallbackPending.get() &&
+                if (!nativeCallbacksClosing.get() &&
+                    refreshedCallbackPending.get() &&
                     WalletManager.instance?.wallet === wallet &&
                     wallet.isInitialized
                 ) scheduleRefreshedProcessingOutsideNativeCallback()
@@ -265,6 +281,7 @@ class MoneroHandlerThread(
      * If a wallet with funds still has no history, retry once after another short delay.
      */
     private fun schedulePostCompletionRefresh() {
+        if (nativeCallbacksClosing.get()) return
         val completedHeight = walletState.currentWalletHeight
         if (lastPostCompletionRefreshHeight.get() == completedHeight) return
         if (!postCompletionRefreshInFlight.compareAndSet(false, true)) return
@@ -353,6 +370,7 @@ class MoneroHandlerThread(
     }
 
     private fun tryRestartConnection() {
+        if (nativeCallbacksClosing.get()) return
         // This method is called from WalletListener.refreshed(), which is itself a
         // native wallet callback. Never call wallet.init() inline here: re-entering
         // native initialization from the refresh callback can stall refresh and race
