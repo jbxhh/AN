@@ -308,36 +308,63 @@ class MainActivity : ComponentActivity() {
                                 MultiWalletScreen(
                                     onWalletSelected = { walletFile ->
                                         scope.launch {
-                                            // Merely opening the wallet list does not close the
-                                            // current wallet. Close it only when another wallet
-                                            // is explicitly selected.
-                                            val isSameWallet =
-                                                AnonConfig.getActiveWalletName(context) == walletFile.name
-                                            if (!isSameWallet) {
-                                                val closed = runCatching {
-                                                    withContext(Dispatchers.IO) {
-                                                        anonWalletHandler.closeCurrentWalletForSwitch()
+                                            val previousWalletName = AnonConfig.getActiveWalletName(context)
+                                            val isSameWallet = previousWalletName == walletFile.name
+                                            if (isSameWallet) {
+                                                val walletAlreadyOpen = WalletManager.instance?.wallet?.let {
+                                                    it.name == walletFile.name && it.status.isOk
+                                                } == true
+                                                withContext(Dispatchers.Main) {
+                                                    navController.navigate(
+                                                        HomeScreenRoute(pinVerified = walletAlreadyOpen)
+                                                    ) {
+                                                        popUpTo(WalletListRoute) { inclusive = false }
+                                                        launchSingleTop = true
                                                     }
-                                                }.onFailure {
-                                                    Timber.tag(TAG).e(it, "Unable to close current wallet before switching")
-                                                }.getOrDefault(false)
-
-                                                if (!closed) {
-                                                    Toast.makeText(
-                                                        context,
-                                                        "钱包正在执行操作，暂时无法切换",
-                                                        Toast.LENGTH_SHORT,
-                                                    ).show()
-                                                    return@launch
                                                 }
-
-                                                stopNotificationService()
-                                                AnonConfig.setActiveWallet(context, walletFile.name)
+                                                return@launch
                                             }
 
-                                            navController.navigate(Home) {
-                                                popUpTo(WalletListRoute) { inclusive = false }
-                                                launchSingleTop = true
+                                            // Reuse the current wallet PIN when it also unlocks the
+                                            // selected wallet. A different PIN falls back to the
+                                            // existing Home lock screen; it never delays navigation
+                                            // while the previous wallet is syncing or scanning.
+                                            val currentPin = WalletManager.instance
+                                                ?.getManagedWalletPassword().orEmpty()
+                                            val replacement = anonWalletHandler.prepareWalletReplacement(currentPin)
+
+                                            stopNotificationService()
+                                            AnonConfig.setActiveWallet(context, walletFile.name)
+                                            anonWalletHandler.detachWalletForReplacement(replacement)
+
+                                            val targetWalletOpened = if (currentPin.isNotEmpty()) {
+                                                runCatching {
+                                                    anonWalletHandler.openWallet(currentPin)
+                                                }.onFailure {
+                                                    Timber.tag(TAG).w(it, "Unable to auto-open selected wallet with the current PIN")
+                                                }.getOrDefault(false)
+                                            } else {
+                                                false
+                                            }
+
+                                            withContext(Dispatchers.Main) {
+                                                navController.navigate(
+                                                    HomeScreenRoute(pinVerified = targetWalletOpened)
+                                                ) {
+                                                    popUpTo(WalletListRoute) { inclusive = false }
+                                                    launchSingleTop = true
+                                                }
+                                            }
+
+                                            val configuredNode = context.getSharedPreferences(
+                                                AnonConfig.PREFS,
+                                                MODE_PRIVATE
+                                            ).getString(NodeFields.RPC_HOST.value, "")
+                                            scope.launch(Dispatchers.IO) {
+                                                anonWalletHandler.finishPendingWalletReplacement()
+                                                if (targetWalletOpened && !configuredNode.isNullOrBlank()) {
+                                                    anonWalletHandler.startService()
+                                                }
                                             }
                                         }
                                     },
@@ -368,9 +395,11 @@ class MainActivity : ComponentActivity() {
                                                     walletState.publishWalletSnapshot()
                                                 }
 
-                                                navController.navigate(HomeScreenRoute(pinVerified = true)) {
-                                                    popUpTo(WalletListRoute) { inclusive = true }
-                                                    launchSingleTop = true
+                                                withContext(Dispatchers.Main) {
+                                                    navController.navigate(HomeScreenRoute(pinVerified = true)) {
+                                                        popUpTo(WalletListRoute) { inclusive = true }
+                                                        launchSingleTop = true
+                                                    }
                                                 }
 
                                                 val configuredNode = context.getSharedPreferences(
