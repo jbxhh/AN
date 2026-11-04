@@ -95,8 +95,7 @@ class AnonWalletHandler(
             WalletManager.instance?.detachManagedWalletForReplacement(pending.wallet)
             if (handler === pending.listener) handler = null
             if (serviceStartedWallet === pending.wallet) serviceStartedWallet = null
-        }
-        walletState.resetForWalletSwitch()
+        } ?: walletState.resetForWalletSwitch()
     }
 
     fun restoreWalletAfterFailedCreation(replacement: WalletReplacement) {
@@ -124,8 +123,9 @@ class AnonWalletHandler(
     }
 
     private suspend fun finishPendingWalletReplacementLocked() {
+        var closedDisplacedWallet = false
         while (true) {
-            val replacement = pendingWalletReplacements.peek() ?: return
+            val replacement = pendingWalletReplacements.peek() ?: break
             val oldWallet = replacement.wallet
             val oldHandler = replacement.listener
             var refreshPaused = false
@@ -176,6 +176,7 @@ class AnonWalletHandler(
                 if (handler === oldHandler) handler = null
                 if (serviceStartedWallet === oldWallet) serviceStartedWallet = null
                 pendingWalletReplacements.remove(replacement)
+                closedDisplacedWallet = true
                 Timber.tag(TAG).i("Closed previous wallet after replacement became active")
             } catch (error: Exception) {
                 Timber.tag(TAG).e(error, "Unable to finish previous wallet cleanup after replacement")
@@ -195,6 +196,15 @@ class AnonWalletHandler(
                 // Preserve FIFO order. A failed older close must be retried before
                 // releasing any wallet that was displaced later.
                 return
+            }
+        }
+
+        if (closedDisplacedWallet) {
+            // Keep reset/rescan priority raised until every displaced native refresh
+            // thread has been paused and closed. Then publish the selected wallet again.
+            walletState.resetForWalletSwitch()
+            WalletManager.instance?.wallet?.let { activeWallet ->
+                walletState.publishWalletSnapshot(activeWallet)
             }
         }
     }
