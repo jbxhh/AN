@@ -257,6 +257,8 @@ fun MultiWalletScreen(
                                 )
                             }
                         }
+                    } else {
+                        Spacer(Modifier.height((5 * 68).dp))
                     }
                 }
 
