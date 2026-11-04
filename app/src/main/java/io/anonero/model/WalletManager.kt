@@ -71,6 +71,7 @@ class WalletManager {
         return password
     }
 
+    @Synchronized
     fun createWallet(
         aFile: File,
         password: String,
@@ -80,6 +81,7 @@ class WalletManager {
     ): Wallet {
         val walletHandle =
             createWalletJ(aFile.absolutePath, password, passphrase, language, networkType.value)
+        check(walletHandle != 0L) { "Native wallet creation returned a null handle" }
         val wallet = Wallet(walletHandle)
         manageWallet(wallet, password)
         if (wallet.status.isOk) {
@@ -108,8 +110,10 @@ class WalletManager {
         networkType: Int
     ): Long
 
+    @Synchronized
     fun openWallet(path: String, password: String): Wallet {
         val walletHandle = openWalletJ(path, password, networkType.value, AnonConfig.viewOnly)
+        check(walletHandle != 0L) { "Native wallet open returned a null handle" }
         val wallet = Wallet(walletHandle)
         manageWallet(wallet, password)
         return wallet
@@ -212,6 +216,7 @@ class WalletManager {
     ): Long
 
     external fun closeJ(wallet: Wallet?): Boolean
+    @Synchronized
     fun close(wallet: Wallet): Boolean {
         val password = unmanageWallet(wallet)
         val closed = closeJ(wallet)
@@ -226,9 +231,11 @@ class WalletManager {
      * Close an older native wallet after createWallet() has made a replacement active.
      * Do not unmanage the new wallet or overwrite its in-memory password.
      */
+    @Synchronized
     fun closeDetachedWallet(wallet: Wallet): Boolean = closeJ(wallet)
 
     /** Restore the previously managed wallet when replacement creation fails. */
+    @Synchronized
     fun restoreManagedWallet(wallet: Wallet, password: String) {
         manageWallet(wallet, password)
     }
@@ -237,6 +244,7 @@ class WalletManager {
      * Detach the current wallet from manager state without closing its native handle.
      * The caller keeps the handle in WalletReplacement and closes it asynchronously.
      */
+    @Synchronized
     fun detachManagedWalletForReplacement(wallet: Wallet): Boolean {
         if (this.wallet !== wallet) return false
         unmanageWallet(wallet)
