@@ -41,17 +41,29 @@ class WalletManager {
         this.networkType = AnonConfig.getNetworkType()
     }
 
-    private fun manageWallet(wallet: Wallet) {
+    // Retain the unlocked wallet PIN only in memory so direct wallet creation can
+    // reuse it silently. The value is cleared as soon as the wallet is closed.
+    @Volatile
+    private var managedWalletPassword: String? = null
+
+    private fun manageWallet(wallet: Wallet, password: String? = null) {
         Timber.tag(TAG).i("Managing %s", wallet.name)
         this.wallet = wallet
+        managedWalletPassword = password
     }
 
-    private fun unmanageWallet(wallet: Wallet?) {
+    fun getManagedWalletPassword(): String? =
+        managedWalletPassword.takeIf { wallet != null }
+
+    private fun unmanageWallet(wallet: Wallet?): String? {
         requireNotNull(wallet) { "Cannot unmanage null!" }
         checkNotNull(this.wallet) { "No wallet under management!" }
         check(this.wallet === wallet) { wallet.name + " not under management!" }
         Timber.tag(TAG).i("Unmanaging ${wallet.name}")
+        val password = managedWalletPassword
         this.wallet = null
+        managedWalletPassword = null
+        return password
     }
 
     fun createWallet(
@@ -64,7 +76,7 @@ class WalletManager {
         val walletHandle =
             createWalletJ(aFile.absolutePath, password, passphrase, language, networkType.value)
         val wallet = Wallet(walletHandle)
-        manageWallet(wallet)
+        manageWallet(wallet, password)
         if (wallet.status.isOk) {
 //            // (Re-)Estimate restore height based on what we know
 //            val oldHeight = wallet.getRestoreHeight()
@@ -94,7 +106,7 @@ class WalletManager {
     fun openWallet(path: String, password: String): Wallet {
         val walletHandle = openWalletJ(path, password, networkType.value, AnonConfig.viewOnly)
         val wallet = Wallet(walletHandle)
-        manageWallet(wallet)
+        manageWallet(wallet, password)
         return wallet
     }
 
@@ -118,7 +130,7 @@ class WalletManager {
             networkType.value, restoreHeight
         )
         val wallet = Wallet(walletHandle)
-        manageWallet(wallet)
+        manageWallet(wallet, password)
         return wallet
     }
 
@@ -138,7 +150,7 @@ class WalletManager {
             networkType.value
         )
         val wallet = Wallet(walletHandle)
-        manageWallet(wallet)
+        manageWallet(wallet, password)
         return wallet
     }
 
@@ -158,7 +170,7 @@ class WalletManager {
             addressString, viewKeyString, spendKeyString
         )
         val wallet = Wallet(walletHandle)
-        manageWallet(wallet)
+        manageWallet(wallet, password)
         return wallet
     }
 
@@ -182,7 +194,7 @@ class WalletManager {
             "5:20"
         )
         val wallet = Wallet(walletHandle)
-        manageWallet(wallet)
+        manageWallet(wallet, password)
         return wallet
     }
 
@@ -196,11 +208,11 @@ class WalletManager {
 
     external fun closeJ(wallet: Wallet?): Boolean
     fun close(wallet: Wallet): Boolean {
-        unmanageWallet(wallet)
+        val password = unmanageWallet(wallet)
         val closed = closeJ(wallet)
         if (!closed) {
-            // in case we could not close it, manage the wallet again.
-            manageWallet(wallet)
+            // Restore both the wallet handle and its in-memory PIN if close fails.
+            manageWallet(wallet, password)
         }
         return closed
     }
