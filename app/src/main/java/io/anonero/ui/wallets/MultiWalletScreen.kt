@@ -140,7 +140,7 @@ fun MultiWalletScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                verticalArrangement = if (wallets.isNotEmpty()) Arrangement.Top else Arrangement.spacedBy(24.dp, Alignment.Bottom),
+                verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.Bottom),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 // Gear is positioned in the wallet-list header at its top-right corner.
