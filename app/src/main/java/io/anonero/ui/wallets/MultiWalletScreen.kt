@@ -170,23 +170,23 @@ fun MultiWalletScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(32.dp),
-                        contentAlignment = Alignment.CenterEnd,
-                    ) {
-                        IconButton(
-                            onClick = onProxySettings,
-                            modifier = Modifier.offset(y = 6.dp).size(32.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(32.dp),
+                            contentAlignment = Alignment.CenterEnd,
                         ) {
-                            Icon(
-                                Icons.Default.Settings,
-                                contentDescription = "Proxy",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp),
-                            )
+                            IconButton(
+                                onClick = onProxySettings,
+                                modifier = Modifier.offset(y = 6.dp).size(32.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.Settings,
+                                    contentDescription = "Proxy",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
                         }
-                    }
 
                         LazyColumn(
                             reverseLayout = false,
@@ -280,7 +280,6 @@ fun MultiWalletScreen(
                     }
                 }
             }
-
 
             // Match the onboarding "Next" button placement: the button is
             // the final direct child of the page column, at the bottom inset.
