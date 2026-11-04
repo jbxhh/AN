@@ -207,7 +207,7 @@ fun LockScreen(
                         }
                         val wallet = WalletManager.instance?.wallet
                         if (walletReady && wallet != null) {
-                            wallet.setPassword(pin)
+                            check(wallet.setPassword(pin)) { "无法设置新钱包 PIN" }
                             prefs.edit(commit = true) {
                                 putString(walletPinHashPreferenceKey, encodePinHash(pin))
                                 remove(pinlessWalletPreferenceKey)
