@@ -233,6 +233,16 @@ class WalletManager {
         manageWallet(wallet, password)
     }
 
+    /**
+     * Detach the current wallet from manager state without closing its native handle.
+     * The caller keeps the handle in WalletReplacement and closes it asynchronously.
+     */
+    fun detachManagedWalletForReplacement(wallet: Wallet): Boolean {
+        if (this.wallet !== wallet) return false
+        unmanageWallet(wallet)
+        return true
+    }
+
     fun walletExists(aFile: File): Boolean {
         return walletExists(aFile.absolutePath)
     }
