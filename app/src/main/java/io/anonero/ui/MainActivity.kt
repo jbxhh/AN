@@ -366,10 +366,12 @@ class MainActivity : ComponentActivity() {
                                                 AnonConfig.PREFS,
                                                 MODE_PRIVATE
                                             ).getString(NodeFields.RPC_HOST.value, "")
-                                            scope.launch(Dispatchers.IO) {
-                                                anonWalletHandler.finishPendingWalletReplacement()
-                                                if (targetWalletOpened && !configuredNode.isNullOrBlank()) {
-                                                    anonWalletHandler.startService()
+                                            if (targetWalletOpened) {
+                                                scope.launch(Dispatchers.IO) {
+                                                    anonWalletHandler.finishPendingWalletReplacement()
+                                                    if (!configuredNode.isNullOrBlank()) {
+                                                        anonWalletHandler.startService()
+                                                    }
                                                 }
                                             }
                                         }
