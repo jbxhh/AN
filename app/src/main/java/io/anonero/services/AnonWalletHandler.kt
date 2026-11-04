@@ -64,16 +64,29 @@ class AnonWalletHandler(
     private val manualNodeConnectionRequests = AtomicInteger(0)
     @Volatile private var serviceStartedWallet: Wallet? = null
     private val pendingWalletReplacements = ConcurrentLinkedQueue<WalletReplacement>()
+    private val walletTransitionInProgress = AtomicBoolean(false)
 
     val scope get() = _scope
+
+    /** Prevent overlapping create/switch requests from racing native wallet handles. */
+    fun tryBeginWalletTransition(): Boolean =
+        walletTransitionInProgress.compareAndSet(false, true)
+
+    fun endWalletTransition() {
+        walletTransitionInProgress.set(false)
+    }
 
     /**
      * Reserve the currently managed wallet for background cleanup after a new wallet
      * has been created. This deliberately does not wait for scan/refresh operations:
      * the new wallet can become active and navigate to Home immediately.
      */
+    @Synchronized
     fun prepareWalletReplacement(password: String): WalletReplacement? {
         val wallet = WalletManager.instance?.wallet ?: return null
+        // One native Wallet pointer must be closed at most once, even if two
+        // lifecycle entry points race before the transition guard is acquired.
+        pendingWalletReplacements.firstOrNull { it.wallet === wallet }?.let { return it }
         return WalletReplacement(
             wallet = wallet,
             listener = handler,
@@ -301,7 +314,11 @@ class AnonWalletHandler(
         }
     }
 
-    suspend fun openWallet(pin: String): Boolean {
+    suspend fun openWallet(
+        pin: String,
+        publishLocalSnapshot: Boolean = true,
+        prepareInitialReceiveAddress: Boolean = true
+    ): Boolean {
         val walletFile = AnonConfig.getDefaultWalletFile(AnonConfig.context!!)
         val anonWallet = WalletManager.instance?.openWallet(
             walletFile.path,
@@ -320,22 +337,24 @@ class AnonWalletHandler(
             return false
         }
 
-        // Publish local wallet data and create a child receive address before starting
-        // node initialization/refresh. This avoids racing the first native address
-        // creation against wallet.init() or the scan thread, and does not wait for sync.
-        walletState.publishWalletSnapshot(anonWallet)
-        try {
-            val address = walletState.ensureNextReceiveAddress()
-            Timber.tag(TAG).i(
-                "Prepared initial receive subaddress index=%d",
-                address.addressIndex
-            )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // Unlock should still succeed if local address creation temporarily fails.
-            // ReceiveScreen keeps retrying until a usable child address is available.
-            Timber.tag(TAG).w(e, "Initial receive subaddress not ready; screen will retry")
+        // Normal PIN unlock publishes its local snapshot before Home. A wallet-list
+        // switch can skip this work so navigation happens as soon as the native handle
+        // is open; its snapshot is published by the background replacement task.
+        if (publishLocalSnapshot) walletState.publishWalletSnapshot(anonWallet)
+        if (prepareInitialReceiveAddress) {
+            try {
+                val address = walletState.ensureNextReceiveAddress()
+                Timber.tag(TAG).i(
+                    "Prepared initial receive subaddress index=%d",
+                    address.addressIndex
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Unlock should still succeed if local address creation temporarily fails.
+                // ReceiveScreen retries until the usable child address is available.
+                Timber.tag(TAG).w(e, "Initial receive subaddress not ready; screen will retry")
+            }
         }
         return true
     }
