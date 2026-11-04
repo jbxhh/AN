@@ -129,8 +129,11 @@ fun HomeScreenComposable(
     )
     val isTransactionsRoot = navBackStackEntry?.destination
         ?.hasRoute<TransactionsRoute>() == true
+    val isHomeRoot = navBackStackEntry != null &&
+        bottomNavController.previousBackStackEntry == null &&
+        !wipeRequestedAtStart
     BackHandler(
-        enabled = isTransactionsRoot && mainNavController != null,
+        enabled = (isTransactionsRoot || isHomeRoot) && mainNavController != null,
     ) {
         // Returning to the wallet list is navigation only. Keep the active native
         // wallet and its background work untouched until the user selects another wallet.
