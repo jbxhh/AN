@@ -136,27 +136,6 @@ fun MultiWalletScreen(
                 )
             }
 
-            if (wallets.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(32.dp),
-                    contentAlignment = Alignment.CenterEnd,
-                ) {
-                    IconButton(
-                        onClick = onProxySettings,
-                        modifier = Modifier.size(32.dp),
-                    ) {
-                        Icon(
-                            Icons.Default.Settings,
-                            contentDescription = "Proxy",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
-            }
-
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -164,8 +143,7 @@ fun MultiWalletScreen(
                 verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.Bottom),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                if (wallets.isNotEmpty()) {
-                    Column(
+                Column(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
@@ -177,7 +155,7 @@ fun MultiWalletScreen(
                         ) {
                             IconButton(
                                 onClick = onProxySettings,
-                                modifier = Modifier.offset(y = 6.dp).size(32.dp),
+                                modifier = if (wallets.isNotEmpty()) Modifier.offset(y = 6.dp).size(32.dp) else Modifier.size(32.dp),
                             ) {
                                 Icon(
                                     Icons.Default.Settings,
@@ -277,6 +255,8 @@ fun MultiWalletScreen(
                                 )
                             }
                         }
+                    } else {
+                        Spacer(Modifier.height((5 * 68).dp))
                     }
                 }
             }
