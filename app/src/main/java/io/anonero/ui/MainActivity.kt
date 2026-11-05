@@ -433,9 +433,7 @@ class MainActivity : ComponentActivity() {
                                                 val previousWalletReplacement = replacement
                                                 anonWalletHandler.scope.launch(Dispatchers.IO) {
                                                     try {
-                                                        withContext(Dispatchers.Main) {
-                                                            stopNotificationService()
-                                                        }
+                                                        stopNotificationService()
 
                                                         // File enumeration/creation belongs off the
                                                         // navigation thread; the visible Home screen
