@@ -399,7 +399,14 @@ class MainActivity : ComponentActivity() {
                                                 } else {
                                                     null
                                                 }
-                                                targetWallet?.let(walletState::prepareImmediateWalletHome)
+                                                targetWallet?.let { wallet ->
+                                                    walletState.prepareImmediateWalletHome(wallet)
+                                                    // Read the selected wallet's local balance before Home composes;
+                                                    // old-wallet cleanup and node startup remain asynchronous.
+                                                    withContext(Dispatchers.IO) {
+                                                        walletState.publishWalletBalanceSnapshot(wallet)
+                                                    }
+                                                }
 
                                                 withContext(Dispatchers.Main) {
                                                     navController.navigate(
