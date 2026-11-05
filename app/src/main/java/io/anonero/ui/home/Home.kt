@@ -89,6 +89,7 @@ import org.koin.compose.koinInject
 import com.dokar.sonner.Toaster
 import com.dokar.sonner.rememberToasterState
 import io.anonero.services.WalletState
+import io.anonero.services.AnonWalletHandler
 import io.anonero.ui.home.graph.routes.Home
 import io.anonero.ui.wallets.WalletListRoute
 import kotlinx.coroutines.launch
@@ -120,6 +121,7 @@ fun HomeScreenComposable(
     val currentRoute = navBackStackEntry?.destination?.route ?: TransactionsRoute
     var showBatteryManagerDialog by remember { mutableStateOf(false) }
     val walletState = koinInject<WalletState>()
+    val walletHandler = koinInject<AnonWalletHandler>()
     val appViewModel = koinInject<io.anonero.ui.viewmodels.AppViewModel>()
     val toastState = rememberToasterState()
     val prefs = context.getSharedPreferences("anonero_prefs", android.content.Context.MODE_PRIVATE)
@@ -151,7 +153,11 @@ fun HomeScreenComposable(
             AnonConfig.PREFS,
             android.content.Context.MODE_PRIVATE
         ).getString(NodeFields.RPC_HOST.value, "")
-        if (!wipeRequested && !wipePending && !configuredNode.isNullOrBlank()) {
+        if (
+            !walletHandler.isImmediateWalletCreationHomePending() &&
+            !wipeRequested && !wipePending &&
+            !configuredNode.isNullOrBlank()
+        ) {
             appViewModel.startService()
         }
     }
@@ -167,7 +173,10 @@ fun HomeScreenComposable(
             onDispose { }
         } else {
             fun requestNotificationsIfEligible() {
-                if (notificationPromptAttempted || pinLockVisible) return
+                if (
+                    notificationPromptAttempted || pinLockVisible ||
+                    walletHandler.isImmediateWalletCreationHomePending()
+                ) return
 
                 val preferences = context.getSharedPreferences(
                     AnonConfig.APP_PREFERENCES,
