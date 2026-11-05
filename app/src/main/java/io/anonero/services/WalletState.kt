@@ -80,6 +80,8 @@ class WalletState(private val prefs: SharedPreferences) {
     // StateFlow snapshots belong to one open wallet handle. A failed/transient daemon
     // init must not make a still-open wallet look like a brand-new empty wallet.
     private val publishedWalletIdentity = AtomicReference<Wallet?>(null)
+    // Ignore callbacks from the displaced wallet between the Home tap and new-handle creation.
+    private val pendingNewWalletHome = AtomicBoolean(false)
     // Avoid repeating local history refreshes while this wallet is waiting for daemon init.
     private val localSnapshotAttemptedWallet = AtomicReference<Wallet?>(null)
     private var _blockUpdates = AtomicBoolean(false)
@@ -226,6 +228,7 @@ class WalletState(private val prefs: SharedPreferences) {
      * full native snapshot is read afterward on a background dispatcher.
      */
     fun preparePendingWalletHome() {
+        pendingNewWalletHome.set(true)
         publishedWalletIdentity.set(null)
         localSnapshotAttemptedWallet.set(null)
         _transactions.value = emptyList()
@@ -256,11 +259,13 @@ class WalletState(private val prefs: SharedPreferences) {
 
     @Synchronized
     fun prepareImmediateWalletHome(wallet: Wallet) {
+        pendingNewWalletHome.set(false)
         resetSnapshotForWalletChange(wallet)
     }
 
     @Synchronized
     fun prepareImmediateNewWalletHome(wallet: Wallet) {
+        pendingNewWalletHome.set(false)
         resetSnapshotForWalletChange(wallet)
         // A newly created wallet has no prior funds. Publish a known zero balance
         // before Home starts collecting balanceInfo, so the UI never sees null.
@@ -299,6 +304,7 @@ class WalletState(private val prefs: SharedPreferences) {
 
     @Synchronized
     fun update() {
+        if (pendingNewWalletHome.get()) return
         if (
             _blockUpdates.get() ||
             walletWipeInProgress.get() ||
@@ -780,14 +786,14 @@ class WalletState(private val prefs: SharedPreferences) {
     /** Publish only the selected wallet's local balance before Home is shown. */
     @Synchronized
     fun publishWalletBalanceSnapshot(wallet: Wallet) {
-        if (walletWipeInProgress.get() || wallet !== getWallet) return
+        if (pendingNewWalletHome.get() || walletWipeInProgress.get() || wallet !== getWallet) return
         resetSnapshotForWalletChange(wallet)
         updateBalanceFromWallet(wallet)
     }
 
     @Synchronized
     fun publishWalletSnapshot(wallet: Wallet? = getWallet) {
-        if (walletWipeInProgress.get() || wallet == null) return
+        if (pendingNewWalletHome.get() || walletWipeInProgress.get() || wallet == null) return
         resetSnapshotForWalletChange(wallet)
         // The same not-yet-initialized wallet may be published by onboarding, Home and
         // reconnect callbacks. One local snapshot is enough until native init succeeds;
@@ -1452,7 +1458,7 @@ class WalletState(private val prefs: SharedPreferences) {
 
     @Synchronized
     private fun updateBalanceFromWallet(wallet: Wallet) {
-        if (walletWipeInProgress.get()) return
+        if (pendingNewWalletHome.get() || walletWipeInProgress.get()) return
         _balanceInfo.value = wallet.balance
         _unLockedBalance.value = if (AnonConfig.viewOnly) {
             wallet.viewOnlyBalance()
@@ -1558,7 +1564,7 @@ class WalletState(private val prefs: SharedPreferences) {
         wallet: Wallet? = getWallet,
         knownDaemonHeight: Long? = null
     ) {
-        if (walletWipeInProgress.get() || isManualResyncPreparing()) return
+        if (pendingNewWalletHome.get() || walletWipeInProgress.get() || isManualResyncPreparing()) return
         if (wallet == null) {
             _walletHeight.value = 0L
             _connectedDaemon.update { current -> current?.copy(daemonHeight = 0L) }
@@ -1919,6 +1925,7 @@ class WalletState(private val prefs: SharedPreferences) {
      * Wallet files and persisted preferences are left untouched.
      */
     fun resetForWalletSwitch() {
+        pendingNewWalletHome.set(false)
         resetAfterWalletWipe()
         walletWipeInProgress.set(false)
     }
