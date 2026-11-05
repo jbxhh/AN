@@ -899,7 +899,7 @@ class AnonWalletHandler(
         }
     }
 
-    suspend fun wipe(passPhrase: String): Boolean {
+    suspend fun wipe(): Boolean {
         check(wipeInProgress.compareAndSet(false, true)) {
             "Wallet wipe is already in progress"
         }
@@ -942,7 +942,11 @@ class AnonWalletHandler(
             // Stop background sync only if the app actually entered that mode.
             // Calling the native stop routine unconditionally can stall normal wipes.
             if (walletState.backgroundSync) {
-                check(wallet.stopBackgroundSync(passPhrase)) {
+                val walletPassword = walletManager?.getManagedWalletPassword().orEmpty()
+                check(walletPassword.isNotEmpty()) {
+                    "Unable to verify the active wallet PIN for secure deletion"
+                }
+                check(wallet.stopBackgroundSync(walletPassword)) {
                     "Unable to stop background sync; wallet was not deleted"
                 }
                 walletState.setBackGroundSync(false)
