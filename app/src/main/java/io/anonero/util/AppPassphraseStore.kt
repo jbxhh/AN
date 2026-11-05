@@ -36,7 +36,6 @@ object AppPassphraseStore {
      * wallet's legacy passphrase hash, never from a secondary wallet.
      */
     fun verify(context: Context, passphrase: String): Boolean {
-        if (passphrase.isBlank()) return false
         val appContext = context.applicationContext
         val savedPassphrase = get(appContext)
         if (savedPassphrase != null && constantTimeEquals(savedPassphrase, passphrase)) {
@@ -91,7 +90,7 @@ internal fun matchesCurrentWalletPassphrase(
     candidatePassphrase: String,
     candidateHash: String
 ): Boolean {
-    if (candidatePassphrase.isBlank() || candidateHash.isBlank()) return false
+    if (candidateHash.isBlank()) return false
     if (
         savedAppPassphrase != null &&
         constantTimeEquals(savedAppPassphrase, candidatePassphrase)
