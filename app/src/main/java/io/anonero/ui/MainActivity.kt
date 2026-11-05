@@ -357,82 +357,23 @@ class MainActivity : ComponentActivity() {
 
                                             if (!anonWalletHandler.tryBeginWalletTransition()) return@launch
                                             try {
-                                                val walletWasPinLocked = walletState.pinLockVisible
                                                 walletSelectedForUnlock = false
                                                 val managedWalletPin = WalletManager.instance
                                                     ?.getManagedWalletPassword().orEmpty()
-                                                val primaryPin = AppPinStore.get(context)
-                                                    ?: managedWalletPin.takeIf {
-                                                        it.isNotEmpty() && !anonPrefs.getBoolean(
-                                                            AnonConfig.walletPreferenceKey(context, PREFS_PINLESS_WALLET),
-                                                            false
-                                                        )
-                                                    }.orEmpty().also {
-                                                        AppPinStore.rememberIfMissing(context, it)
-                                                    }
-                                                val canReusePrimaryPin = primaryPin.isNotEmpty() &&
-                                                    managedWalletPin.isNotEmpty() &&
-                                                    !walletWasPinLocked
                                                 val replacement = anonWalletHandler.prepareWalletReplacement(managedWalletPin)
 
                                                 stopNotificationService()
                                                 AnonConfig.setActiveWallet(context, walletFile.name)
                                                 anonWalletHandler.detachWalletForReplacement(replacement)
-                                                if (walletWasPinLocked) {
-                                                    walletState.dismissPinLockScreen()
-                                                }
+                                                walletState.preparePendingWalletHome()
+                                                anonWalletHandler.beginImmediateWalletSelection()
 
-                                                val targetWalletOpened = if (canReusePrimaryPin) {
-                                                    runCatching {
-                                                        anonWalletHandler.openWallet(
-                                                            primaryPin,
-                                                            publishLocalSnapshot = false,
-                                                            prepareInitialReceiveAddress = false
-                                                        )
-                                                    }.onFailure {
-                                                        Timber.tag(TAG).w(it, "Unable to auto-open selected wallet with the app's primary PIN")
-                                                    }.getOrDefault(false)
-                                                } else {
-                                                    false
-                                                }
-                                                val targetWallet = if (targetWalletOpened) {
-                                                    WalletManager.instance?.wallet
-                                                } else {
-                                                    null
-                                                }
-                                                targetWallet?.let { wallet ->
-                                                    walletState.prepareImmediateWalletHome(wallet)
-                                                    // Read the selected wallet's local balance before Home composes;
-                                                    // old-wallet cleanup and node startup remain asynchronous.
-                                                    withContext(Dispatchers.IO) {
-                                                        walletState.publishWalletBalanceSnapshot(wallet)
-                                                    }
-                                                }
-
-                                                withContext(Dispatchers.Main) {
-                                                    navController.navigate(
-                                                        HomeScreenRoute(pinVerified = targetWalletOpened)
-                                                    ) {
-                                                        popUpTo(WalletListRoute) { inclusive = false }
-                                                        launchSingleTop = true
-                                                    }
-                                                }
-
-                                                val configuredNode = context.getSharedPreferences(
-                                                    AnonConfig.PREFS,
-                                                    MODE_PRIVATE
-                                                ).getString(NodeFields.RPC_HOST.value, "")
-                                                if (targetWalletOpened) {
-                                                    scope.launch(Dispatchers.IO) {
-                                                        anonWalletHandler.finishPendingWalletReplacement()
-                                                        val activeWallet = WalletManager.instance?.wallet
-                                                        if (activeWallet === targetWallet) {
-                                                            walletState.publishWalletSnapshot(activeWallet)
-                                                        }
-                                                        if (activeWallet === targetWallet && !configuredNode.isNullOrBlank()) {
-                                                            anonWalletHandler.startService()
-                                                        }
-                                                    }
+                                                // Show the selected wallet's PIN screen immediately.
+                                                // The target native wallet is opened only after the
+                                                // user confirms its PIN on that screen.
+                                                navController.navigate(HomeScreenRoute(pinVerified = false)) {
+                                                    popUpTo(WalletListRoute) { inclusive = false }
+                                                    launchSingleTop = true
                                                 }
                                             } finally {
                                                 anonWalletHandler.endWalletTransition()
