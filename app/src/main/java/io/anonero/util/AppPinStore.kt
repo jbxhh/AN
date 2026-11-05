@@ -23,10 +23,12 @@ object AppPinStore {
      */
     fun rememberIfMissing(context: Context, pin: String) {
         if (pin.isBlank() || get(context) != null) return
-        KeyStoreHelper.saveWalletUserPass(
-            context.applicationContext,
-            PRIMARY_PIN_STORE_ID,
-            pin
-        )
+        runCatching {
+            KeyStoreHelper.saveWalletUserPass(
+                context.applicationContext,
+                PRIMARY_PIN_STORE_ID,
+                pin
+            )
+        }
     }
 }
