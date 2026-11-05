@@ -39,7 +39,7 @@ class WalletDisplayNameTest {
     @Test
     fun findsEveryXmrOccurrenceForConsistentFontStyling() {
         assertEquals(
-            listOf(0..2, 8..10),
+            listOf(0..2, 9..11),
             xmrRanges("XMR main xmr"),
         )
         assertEquals(emptyList<IntRange>(), xmrRanges("wallet"))
