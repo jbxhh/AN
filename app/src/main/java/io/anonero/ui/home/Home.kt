@@ -59,6 +59,7 @@ import io.anonero.ui.home.graph.routes.ReviewTransactionRoute
 import io.anonero.ui.home.graph.routes.SecureWipeRoute
 import io.anonero.ui.home.graph.routes.SendScreenRoute
 import io.anonero.ui.home.graph.routes.SettingsDataRoute
+import io.anonero.ui.home.graph.routes.SettingsImportWalletRoute
 import io.anonero.ui.home.graph.routes.SettingsTradeRoute
 import io.anonero.ui.home.graph.routes.SettingsExportBackUp
 import io.anonero.ui.home.graph.routes.SettingsLogs
@@ -79,6 +80,7 @@ import io.anonero.ui.home.settings.ProxySettings
 import io.anonero.ui.home.settings.SecureWipe
 import io.anonero.ui.home.settings.SeedSettingsPage
 import io.anonero.ui.home.settings.SettingsDataPage
+import io.anonero.ui.home.settings.ImportWalletPage
 import io.anonero.ui.home.settings.SettingsTradePage
 import io.anonero.ui.home.settings.SettingsPage
 import io.anonero.ui.home.settings.WalletSettingsPage
@@ -464,6 +466,20 @@ fun HomeScreenComposable(
                         SettingsDataPage(
                             onBackPress = { bottomNavController.popBackStack() },
                             navigateTo = { bottomNavController.navigate(it) }
+                        )
+                    }
+                    composable<SettingsImportWalletRoute> {
+                        ImportWalletPage(
+                            onBackPress = { bottomNavController.popBackStack() },
+                            onImportCompleted = {
+                                showBottomNavigation = true
+                                bottomNavController.navigate(TransactionsRoute) {
+                                    popUpTo(bottomNavController.graph.startDestinationId) {
+                                        inclusive = false
+                                    }
+                                    launchSingleTop = true
+                                }
+                            }
                         )
                     }
                     composable<SettingsExportBackUp> {
