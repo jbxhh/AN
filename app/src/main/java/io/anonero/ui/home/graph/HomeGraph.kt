@@ -1,5 +1,6 @@
 package io.anonero.ui.home.graph
 
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
@@ -9,6 +10,7 @@ import androidx.navigation.navigation
 import io.anonero.AnonConfig
 import io.anonero.model.WalletManager
 import io.anonero.services.AnonWalletHandler
+import io.anonero.services.WalletState
 import io.anonero.ui.home.HomeScreenComposable
 import io.anonero.ui.home.LockScreen
 import io.anonero.ui.home.LockScreenMode
@@ -18,6 +20,7 @@ import io.anonero.ui.home.graph.routes.LockScreenRoute
 import org.koin.compose.koinInject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
 
 fun NavGraphBuilder.homeGraph(navController: NavHostController) {
@@ -45,8 +48,11 @@ fun NavGraphBuilder.homeGraph(navController: NavHostController) {
         composable<HomeScreenRoute> { backStackEntry ->
             val homeRoute = backStackEntry.toRoute<HomeScreenRoute>()
             val walletHandler = koinInject<AnonWalletHandler>()
+            val walletState = koinInject<WalletState>()
             val immediateWalletCreationPending =
                 walletHandler.isImmediateWalletCreationHomePending()
+            val immediateWalletSelectionPending =
+                walletHandler.isImmediateWalletSelectionPending()
             // Avoid querying the displaced native wallet while the immediate Home
             // transition is pending; the pending flag itself authorizes this route.
             val walletIsOpen = immediateWalletCreationPending ||
@@ -71,15 +77,36 @@ fun NavGraphBuilder.homeGraph(navController: NavHostController) {
                     initialShortcut = selectedShortcut.value,
                 )
             } else {
+                if (immediateWalletSelectionPending) {
+                    DisposableEffect(walletHandler) {
+                        onDispose { walletHandler.endImmediateWalletSelection() }
+                    }
+                }
                 LockScreen(
                     mode = if (walletIsOpen) LockScreenMode.LOCK_SCREEN else LockScreenMode.OPEN_WALLET,
                     onUnLocked = { _, shortCut ->
                         selectedShortcut.value = shortCut
                         unlockCompleted.value = true
-                        // A wallet opened after selecting it from the locked wallet list
-                        // is now active; close any displaced background wallet off the UI thread.
+                        // Finish native replacement and publish the selected wallet's
+                        // local data off the navigation path. A wallet-list switch skips
+                        // this work during open so Home is not held behind snapshot reads.
                         walletHandler.scope.launch(Dispatchers.IO) {
                             walletHandler.finishPendingWalletReplacement()
+                            if (immediateWalletSelectionPending) {
+                                val activeWallet = WalletManager.instance?.wallet
+                                if (activeWallet != null) {
+                                    runCatching {
+                                        walletState.publishWalletSnapshot(activeWallet)
+                                    }.onFailure {
+                                        Timber.tag("HomeGraph").w(it, "Unable to publish selected wallet snapshot")
+                                    }
+                                    runCatching {
+                                        walletState.ensureNextReceiveAddress()
+                                    }.onFailure {
+                                        Timber.tag("HomeGraph").w(it, "Unable to prepare selected wallet receive address")
+                                    }
+                                }
+                            }
                         }
                     }
                 )
