@@ -198,7 +198,13 @@ class OnboardViewModel(
         if (restorePayload == null) return
 
         val context = AnonConfig.context!!.applicationContext
-        passPhrase = passphraseOverride ?: AppPassphraseStore.get(context) ?: passPhrase
+        passPhrase = passphraseOverride ?: if (importWalletFlow) {
+            // Import runs the same passphrase setup screen, but each imported child
+            // wallet must retain the passphrase entered in that restore session.
+            passPhrase
+        } else {
+            AppPassphraseStore.get(context) ?: passPhrase
+        }
         val walletFile = AnonConfig.getDefaultWalletFile(context)
         AnonConfig.getDefaultWalletDir(context).mkdirs()
         delay(100)
