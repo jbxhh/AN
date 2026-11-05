@@ -460,7 +460,6 @@ class MainActivity : ComponentActivity() {
                                                             ?: error("新钱包创建后没有可用的钱包句柄")
 
                                                         walletState.prepareImmediateWalletHome(createdWallet)
-                                                        anonWalletHandler.endImmediateWalletCreationHome()
 
                                                         // Navigate as soon as the native wallet handle is valid.
                                                         // Do not wait for old-wallet cleanup, local snapshot reads,
