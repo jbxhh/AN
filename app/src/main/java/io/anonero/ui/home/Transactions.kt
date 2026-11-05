@@ -159,7 +159,6 @@ fun TransactionScreen(
     val balance by transactionsViewModel.balance.observeAsState()
     val transactions by transactionsViewModel.transactions.observeAsState(listOf())
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior { true }
-    var showExitDialog by remember { mutableStateOf(false) }
     var scanFailure by remember { mutableStateOf<String?>(null) }
     var spendDialog by remember { mutableStateOf<String?>(null) }
     var broadcastSignedTxPath by remember { mutableStateOf<String?>(null) }
@@ -260,78 +259,6 @@ fun TransactionScreen(
             },
         )
     }
-    if (showExitDialog) {
-        AlertDialog(
-            modifier = Modifier
-                .border(
-                    1.dp,
-                    color = MaterialTheme.colorScheme.onSecondary.copy(
-                        alpha = .2f
-                    ),
-                    shape = MaterialTheme.shapes.medium,
-                )
-                .fillMaxWidth(),
-            containerColor = MaterialTheme.colorScheme.background,
-            properties = DialogProperties(
-                securePolicy = SecureFlagPolicy.SecureOn, dismissOnBackPress = false
-            ),
-            title = {
-                Text(
-                    text = "Anon",
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontSize = 18.sp
-                    )
-                )
-            },
-            text = {
-                Text(stringResource(R.string.exit_wallet_prompt, stringResource(R.string.app_name)))
-            },
-            onDismissRequest = {
-                showExitDialog = false
-            },
-            dismissButton = {
-                Button(
-                    onClick = {
-                        showExitDialog = false
-                    },
-                    shape = MaterialTheme.shapes.small,
-                    border = BorderStroke(
-                        1.dp,
-                        color = MaterialTheme.colorScheme.onSecondary
-                    ),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.background,
-                    )
-                ) {
-                    Text(
-                        stringResource(R.string.cancel),
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            color = MaterialTheme.colorScheme.onSecondary.copy(
-                                alpha = 0.8f
-                            )
-                        )
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    shape = MaterialTheme.shapes.small,
-                    border = BorderStroke(
-                        1.dp,
-                        color = MaterialTheme.colorScheme.onBackground
-                    ),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.onBackground,
-                    ),
-                    onClick = {
-                        showExitDialog = false
-                        onBackToWalletList()
-                    }) { Text(stringResource(R.string.exit_wallet)) }
-            },
-        )
-    }
-
     if (qrScannerParam != null) {
         QRExchangeScreen(
             params = qrScannerParam!!,
@@ -480,7 +407,7 @@ fun TransactionScreen(
 
 
     BackHandler {
-        showExitDialog = true
+        onBackToWalletList()
     }
 
     LaunchedEffect(walletState, walletHandler) {
