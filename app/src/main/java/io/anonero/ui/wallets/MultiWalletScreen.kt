@@ -256,10 +256,9 @@ fun MultiWalletScreen(
                                         TextButton(
                                             onClick = {
                                                 screenScope.launch {
-                                                    if (onDeleteWallet(walletFile)) {
-                                                        wallets = AnonConfig.getWalletFiles(context)
-                                                        swipeOffsetPx = 0f
-                                                    }
+                                                    onDeleteWallet(walletFile)
+                                                    wallets = AnonConfig.getWalletFiles(context)
+                                                    swipeOffsetPx = 0f
                                                 }
                                             },
                                             modifier = Modifier.fillMaxSize(),
