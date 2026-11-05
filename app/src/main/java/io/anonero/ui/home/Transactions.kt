@@ -762,7 +762,7 @@ fun TransactionScreen(
                             Text(
                                 balance?.let { amount ->
                                     if (hideAmounts) Formats.maskAmount(amount)
-                                    else Formats.getDisplayAmountAdaptive(amount)
+                                    else Formats.getDisplayAmount(amount)
                                 } ?: "—",
                                 style = MaterialTheme.typography
                                     .displaySmall,
