@@ -59,6 +59,8 @@ class OnboardViewModel(
         if (AnonConfig.context == null) return
         withContext(Dispatchers.IO) {
             val context = AnonConfig.context!!.applicationContext
+        passPhrase = AppPassphraseStore.get(context) ?: passPhrase
+            passPhrase = AppPassphraseStore.get(context) ?: passPhrase
             val walletFile = AnonConfig.getDefaultWalletFile(context)
             AnonConfig.getDefaultWalletDir(context).mkdirs()
             // Reuse an already-unlocked wallet PIN without prompting. If none is
@@ -119,6 +121,7 @@ class OnboardViewModel(
         if (AnonConfig.context == null) return
         withContext(Dispatchers.IO) {
             val context = AnonConfig.context!!.applicationContext
+            passPhrase = AppPassphraseStore.get(context) ?: passPhrase
             val walletFile = AnonConfig.getDefaultWalletFile(context)
             AnonConfig.getDefaultWalletDir(context).mkdirs()
             val anonWallet = WalletManager.instance?.createWalletWithKeys(
