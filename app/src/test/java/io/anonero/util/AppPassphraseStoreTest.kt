@@ -6,24 +6,29 @@ import org.junit.Test
 
 class AppPassphraseStoreTest {
     @Test
-    fun legacyHashFromAnyWalletCanAuthorizeTheAppPassphrase() {
+    fun onlyThePrimaryWalletHashCanMigrateTheAppPassphrase() {
         assertTrue(
             matchesLegacyWalletPassphraseHash(
-                listOf("wallet_one_hash", "primary_wallet_hash", "wallet_three_hash"),
+                "primary_wallet_hash",
                 "primary_wallet_hash"
             )
         )
     }
 
     @Test
-    fun unrelatedOrEmptyHashCannotAuthorizeTheAppPassphrase() {
+    fun secondaryWalletHashCannotAuthorizeTheAppPassphrase() {
         assertFalse(
             matchesLegacyWalletPassphraseHash(
-                listOf("wallet_one_hash", "wallet_two_hash"),
-                "wrong_hash"
+                "primary_wallet_hash",
+                "secondary_wallet_hash"
             )
         )
-        assertFalse(matchesLegacyWalletPassphraseHash(listOf("wallet_one_hash"), ""))
-        assertFalse(matchesLegacyWalletPassphraseHash(emptyList(), "candidate_hash"))
+    }
+
+    @Test
+    fun unrelatedOrEmptyHashCannotAuthorizeTheAppPassphrase() {
+        assertFalse(matchesLegacyWalletPassphraseHash("primary_wallet_hash", "wrong_hash"))
+        assertFalse(matchesLegacyWalletPassphraseHash("primary_wallet_hash", ""))
+        assertFalse(matchesLegacyWalletPassphraseHash(null, "candidate_hash"))
     }
 }
