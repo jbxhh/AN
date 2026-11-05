@@ -66,6 +66,7 @@ class AnonWalletHandler(
     private val pendingWalletReplacements = ConcurrentLinkedQueue<WalletReplacement>()
     private val walletTransitionInProgress = AtomicBoolean(false)
     private val immediateWalletCreationHome = AtomicBoolean(false)
+    private val immediateWalletSelectionPending = AtomicBoolean(false)
 
     val scope get() = _scope
 
@@ -80,6 +81,17 @@ class AnonWalletHandler(
 
     fun isImmediateWalletCreationHomePending(): Boolean =
         immediateWalletCreationHome.get()
+
+    fun beginImmediateWalletSelection() {
+        immediateWalletSelectionPending.set(true)
+    }
+
+    fun endImmediateWalletSelection() {
+        immediateWalletSelectionPending.set(false)
+    }
+
+    fun isImmediateWalletSelectionPending(): Boolean =
+        immediateWalletSelectionPending.get()
 
     /** Prevent overlapping create/switch requests from racing native wallet handles. */
     fun tryBeginWalletTransition(): Boolean =
@@ -364,11 +376,16 @@ class AnonWalletHandler(
             return false
         }
 
-        // Normal PIN unlock publishes its local snapshot before Home. A wallet-list
-        // switch can skip this work so navigation happens as soon as the native handle
-        // is open; its snapshot is published by the background replacement task.
-        if (publishLocalSnapshot) walletState.publishWalletSnapshot(anonWallet)
-        if (prepareInitialReceiveAddress) {
+        // A multi-wallet selection has already shown the PIN screen. Once the
+        // native handle opens, reset the visible state but defer local snapshot and
+        // receive-address work so Home can appear without waiting for those reads.
+        val immediateSelection = immediateWalletSelectionPending.get()
+        if (immediateSelection) {
+            walletState.prepareImmediateWalletHome(anonWallet)
+        } else if (publishLocalSnapshot) {
+            walletState.publishWalletSnapshot(anonWallet)
+        }
+        if (prepareInitialReceiveAddress && !immediateSelection) {
             try {
                 val address = walletState.ensureNextReceiveAddress()
                 Timber.tag(TAG).i(
