@@ -43,6 +43,18 @@ class AppPassphraseStoreTest {
     }
 
     @Test
+    fun anotherWalletPassphraseCannotBeUnlockedBySavedAppPassphrase() {
+        assertFalse(
+            matchesCurrentWalletPassphrase(
+                savedAppPassphrase = "wallet-a-passphrase",
+                activeWalletHash = "wallet-b-hash",
+                candidatePassphrase = "wallet-a-passphrase",
+                candidateHash = "wallet-a-hash"
+            )
+        )
+    }
+
+    @Test
     fun originalAppPassphraseStillWorks() {
         assertTrue(
             matchesCurrentWalletPassphrase(
