@@ -405,25 +405,17 @@ class MainActivity : ComponentActivity() {
                                         navController.navigate(WalletListProxyRoute)
                                     },
                                     onNewWallet = {
-                                        scope.launch {
-                                            if (!anonWalletHandler.tryBeginWalletTransition()) return@launch
-
-                                            var previousWalletName = "anon"
+                                        if (!anonWalletHandler.tryBeginWalletTransition()) {
+                                            Timber.tag(TAG).w(
+                                                "Ignoring new wallet request while another wallet transition is active"
+                                            )
+                                        } else {
+                                            val previousWalletName = AnonConfig.getActiveWalletName(context)
+                                            var managedWalletPin = ""
                                             var replacement: io.anonero.services.WalletReplacement? = null
-                                            var backgroundCreationStarted = false
                                             try {
-                                                val managedWalletPin = WalletManager.instance
+                                                managedWalletPin = WalletManager.instance
                                                     ?.getManagedWalletPassword().orEmpty()
-                                                val primaryPin = AppPinStore.get(context)
-                                                    ?: managedWalletPin.takeIf {
-                                                        it.isNotEmpty() && !anonPrefs.getBoolean(
-                                                            AnonConfig.walletPreferenceKey(context, PREFS_PINLESS_WALLET),
-                                                            false
-                                                        )
-                                                    }.orEmpty().also {
-                                                        AppPinStore.rememberIfMissing(context, it)
-                                                    }
-                                                previousWalletName = AnonConfig.getActiveWalletName(context)
                                                 replacement = anonWalletHandler.prepareWalletReplacement(managedWalletPin)
                                                 stopNotificationService()
 
@@ -439,24 +431,29 @@ class MainActivity : ComponentActivity() {
                                                 onboardViewModel.setPassPhrase("")
                                                 anonWalletHandler.beginImmediateWalletCreationHome()
 
-                                                // Enter the existing Home destination now. Native wallet creation,
-                                                // old-wallet cleanup, address setup and snapshot reads all run below.
-                                                withContext(Dispatchers.Main.immediate) {
-                                                    navController.navigate(HomeScreenRoute(pinVerified = true)) {
-                                                        popUpTo(WalletListRoute) { inclusive = true }
-                                                        launchSingleTop = true
-                                                    }
+                                                // This click callback runs on the Android main thread.
+                                                // Navigate before starting any native wallet work.
+                                                navController.navigate(HomeScreenRoute(pinVerified = true)) {
+                                                    popUpTo(WalletListRoute) { inclusive = true }
+                                                    launchSingleTop = true
                                                 }
 
                                                 val previousWalletReplacement = replacement
-                                                val previousWalletNameSnapshot = previousWalletName
-                                                val configuredNode = context.getSharedPreferences(
-                                                    AnonConfig.PREFS,
-                                                    MODE_PRIVATE
-                                                ).getString(NodeFields.RPC_HOST.value, "")
-
                                                 anonWalletHandler.scope.launch(Dispatchers.IO) {
                                                     try {
+                                                        val primaryPin = AppPinStore.get(context)
+                                                            ?: managedWalletPin.takeIf {
+                                                                it.isNotEmpty() && !anonPrefs.getBoolean(
+                                                                    AnonConfig.walletPreferenceKey(
+                                                                        context,
+                                                                        PREFS_PINLESS_WALLET
+                                                                    ),
+                                                                    false
+                                                                )
+                                                            }.orEmpty().also {
+                                                                AppPinStore.rememberIfMissing(context, it)
+                                                            }
+
                                                         onboardViewModel.create(
                                                             primaryPin,
                                                             prepareInitialReceiveAddress = false
@@ -478,6 +475,10 @@ class MainActivity : ComponentActivity() {
                                                             }
                                                         }
                                                         if (activeWallet === createdWallet) {
+                                                            val configuredNode = context.getSharedPreferences(
+                                                                AnonConfig.PREFS,
+                                                                MODE_PRIVATE
+                                                            ).getString(NodeFields.RPC_HOST.value, "")
                                                             if (!configuredNode.isNullOrBlank()) {
                                                                 anonWalletHandler.startService()
                                                             }
@@ -502,7 +503,7 @@ class MainActivity : ComponentActivity() {
                                                                 runCatching { WalletManager.instance?.close(wallet) }
                                                             }
                                                         }
-                                                        AnonConfig.setActiveWallet(context, previousWalletNameSnapshot)
+                                                        AnonConfig.setActiveWallet(context, previousWalletName)
                                                         val restoredWallet = WalletManager.instance?.wallet
                                                         if (restoredWallet != null) {
                                                             walletState.prepareImmediateWalletHome(restoredWallet)
@@ -528,6 +529,10 @@ class MainActivity : ComponentActivity() {
                                                                 Toast.LENGTH_LONG,
                                                             ).show()
                                                         }
+                                                        val configuredNode = context.getSharedPreferences(
+                                                            AnonConfig.PREFS,
+                                                            MODE_PRIVATE
+                                                        ).getString(NodeFields.RPC_HOST.value, "")
                                                         if (restoredWallet != null && !configuredNode.isNullOrBlank()) {
                                                             runCatching { anonWalletHandler.startService() }
                                                                 .onFailure {
@@ -539,7 +544,6 @@ class MainActivity : ComponentActivity() {
                                                         anonWalletHandler.endWalletTransition()
                                                     }
                                                 }
-                                                backgroundCreationStarted = true
                                             } catch (error: Exception) {
                                                 Timber.tag(TAG).e(error, "Unable to start immediate wallet creation")
                                                 if (replacement != null) {
@@ -551,16 +555,12 @@ class MainActivity : ComponentActivity() {
                                                 }
                                                 AnonConfig.setActiveWallet(context, previousWalletName)
                                                 anonWalletHandler.endImmediateWalletCreationHome()
+                                                anonWalletHandler.endWalletTransition()
                                                 Toast.makeText(
                                                     context,
                                                     error.message ?: "新建钱包失败",
                                                     Toast.LENGTH_LONG,
                                                 ).show()
-                                            } finally {
-                                                if (!backgroundCreationStarted) {
-                                                    anonWalletHandler.endImmediateWalletCreationHome()
-                                                    anonWalletHandler.endWalletTransition()
-                                                }
                                             }
                                         }
                                     },
