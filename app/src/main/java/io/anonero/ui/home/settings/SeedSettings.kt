@@ -161,9 +161,7 @@ fun SeedSettingsPage(onBackPress: () -> Unit = {}) {
     }
     fun getSeed() {
         scope.launch(Dispatchers.IO) {
-            val hash = prefs.getString(AnonConfig.walletPreferenceKey(AnonConfig.context!!, PREFS_PASSPHRASE_HASH), "")
-            val hashedPass = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
-            if (hash == hashedPass) {
+            if (io.anonero.util.AppPassphraseStore.verify(context, passPhrase)) {
                 val seed = getWalletSeed(passPhrase)?.split(" ")
                 val legacy = getLegacySeed(passPhrase)?.split(" ")
                 if (seed != null) {
