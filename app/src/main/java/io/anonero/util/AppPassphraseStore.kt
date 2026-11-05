@@ -1,6 +1,7 @@
 package io.anonero.util
 
 import android.content.Context
+import io.anonero.AnonConfig
 import java.security.MessageDigest
 
 /**
