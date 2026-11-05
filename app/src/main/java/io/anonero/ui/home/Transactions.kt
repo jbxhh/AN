@@ -96,6 +96,7 @@ import io.anonero.model.TransactionInfo
 import io.anonero.model.Wallet
 import io.anonero.model.WalletManager
 import io.anonero.services.WalletState
+import io.anonero.services.AnonWalletHandler
 import io.anonero.ui.components.WalletProgressIndicator
 import io.anonero.ui.home.graph.routes.CoinsScreenRoute
 import io.anonero.ui.home.graph.routes.ReviewTransactionRoute
@@ -168,6 +169,7 @@ fun TransactionScreen(
     var qrScannerParam by remember { mutableStateOf<SpendQRExchangeParam?>(null) }
     var showMenu by remember { mutableStateOf(false) }
     val walletState = koinInject<WalletState>()
+    val walletHandler = koinInject<AnonWalletHandler>()
     val torService = koinInject<TorService>()
     val anonPrefs = koinInject<android.content.SharedPreferences>(named(WALLET_PREFERENCES))
     val showLockScreen by walletState.backgroundSyncFlow.asLiveData().observeAsState(walletState.backgroundSync)
@@ -481,7 +483,8 @@ fun TransactionScreen(
         showExitDialog = true
     }
 
-    LaunchedEffect(walletState) {
+    LaunchedEffect(walletState, walletHandler) {
+        if (walletHandler.isImmediateWalletCreationHomePending()) return@LaunchedEffect
         withContext(Dispatchers.IO) {
             walletState.publishWalletSnapshot()
             // Re-publish balance, history, and status when Home is re-entered even if
