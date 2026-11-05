@@ -47,7 +47,10 @@ fun NavGraphBuilder.homeGraph(navController: NavHostController) {
             val walletHandler = koinInject<AnonWalletHandler>()
             val immediateWalletCreationPending =
                 walletHandler.isImmediateWalletCreationHomePending()
-            val walletIsOpen = WalletManager.instance?.wallet?.status?.isOk == true
+            // Avoid querying the displaced native wallet while the immediate Home
+            // transition is pending; the pending flag itself authorizes this route.
+            val walletIsOpen = immediateWalletCreationPending ||
+                WalletManager.instance?.wallet?.status?.isOk == true
             val unlockCompleted = androidx.compose.runtime.remember {
                 androidx.compose.runtime.mutableStateOf(false)
             }
