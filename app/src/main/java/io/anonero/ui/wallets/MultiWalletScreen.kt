@@ -60,6 +60,9 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -69,7 +72,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.anonero.AnonConfig
 import io.anonero.R
-import io.anonero.ui.home.XmrText
+import io.anonero.ui.home.xqzpFontFamily
 import io.anonero.ui.theme.AnonOutlineButton
 import io.anonero.util.WALLET_PREFERENCES
 import java.io.File
@@ -353,22 +356,20 @@ fun MultiWalletScreen(
                                                 },
                                         )
                                     } else if (usesDefaultXmrLabel) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            XmrText(
-                                                style = MaterialTheme.typography.bodyLarge.copy(
-                                                    color = MaterialTheme.colorScheme.onBackground,
-                                                    fontSize = 18.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                )
-                                            )
-                                            Text(
-                                                text = defaultDisplayName.removePrefix("XMR"),
+                                        Text(
+                                            text = buildAnnotatedString {
+                                                withStyle(SpanStyle(fontFamily = xqzpFontFamily())) {
+                                                    append("XMR")
+                                                }
+                                                append(defaultDisplayName.removePrefix("XMR"))
+                                            },
+                                            style = MaterialTheme.typography.bodyLarge.copy(
                                                 color = MaterialTheme.colorScheme.onBackground,
                                                 fontSize = 18.sp,
                                                 fontWeight = FontWeight.SemiBold,
-                                                maxLines = 1,
-                                            )
-                                        }
+                                            ),
+                                            maxLines = 1,
+                                        )
                                     } else {
                                         Text(
                                             text = defaultDisplayName,
