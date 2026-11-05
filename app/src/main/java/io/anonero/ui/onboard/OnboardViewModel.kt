@@ -44,10 +44,31 @@ class OnboardViewModel(
     private var walllet: Wallet? = null
     private var neroKeyPayload: NeroKeyPayload? = null
     private var restorePayload: RestorePayload? = null
+    private var importWalletFlow = false
 
     fun setMode(mode: Mode) = run { this.mode = mode }
 
     fun getMode() = mode
+
+    fun beginWalletImport() {
+        mode = Mode.RESTORE
+        importWalletFlow = true
+        restorePayload = null
+        passPhrase = ""
+    }
+
+    fun isWalletImport(): Boolean = importWalletFlow
+
+    fun finishWalletImport() {
+        importWalletFlow = false
+    }
+
+    fun cancelWalletImport() {
+        importWalletFlow = false
+        restorePayload = null
+        passPhrase = ""
+        mode = Mode.CREATE
+    }
 
     fun getSeed() = walllet?.getSeed(passPhrase) ?: ""
 
