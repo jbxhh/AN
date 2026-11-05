@@ -63,6 +63,7 @@ import io.anonero.model.WalletManager
 import io.anonero.services.WalletState
 import io.anonero.ui.MainActivity
 import io.anonero.ui.viewmodels.AppViewModel
+import io.anonero.util.AppPinStore
 import io.anonero.util.KeyStoreHelper
 import io.anonero.util.PREFS_PIN_HASH
 import io.anonero.util.PREFS_PINLESS_WALLET
@@ -191,6 +192,12 @@ fun LockScreen(
         return valid
     }
 
+    fun rememberPrimaryPin(pin: String) {
+        AnonConfig.context?.applicationContext?.let { context ->
+            AppPinStore.rememberIfMissing(context, pin)
+        }
+    }
+
     fun checkPin(shortCut: LockScreenShortCut) {
         val pin = currentPin.joinToString(separator = "")
         if (pin.length >= 4) {
@@ -216,6 +223,7 @@ fun LockScreen(
                         val wallet = WalletManager.instance?.wallet
                         if (walletReady && wallet != null) {
                             check(wallet.setPassword(pin)) { "无法设置新钱包 PIN" }
+                            rememberPrimaryPin(pin)
                             WalletManager.instance?.updateManagedWalletPassword(pin)
                             prefs.edit(commit = true) {
                                 putString(walletPinHashPreferenceKey, encodePinHash(pin))
@@ -236,6 +244,7 @@ fun LockScreen(
                         }
                     } else if (mode == LockScreenMode.VERYFY_PIN) {
                         if (verifyExistingWalletPin(pin)) {
+                            rememberPrimaryPin(pin)
                             onUnLocked(pin, shortCut)
                         } else {
                             withContext(Dispatchers.Main) {
@@ -245,6 +254,7 @@ fun LockScreen(
                     } else if (mode == LockScreenMode.OPEN_WALLET) {
                         val result = appViewModel.openWallet(pin)
                         if (result) {
+                            rememberPrimaryPin(pin)
                             // Never overwrite the saved PIN with an unsuccessful attempt.
                             prefs.edit(commit = true) {
                                 putString(walletPinHashPreferenceKey, encodePinHash(pin))
@@ -269,6 +279,7 @@ fun LockScreen(
                         if (!verifyExistingWalletPin(pin)) {
                             withContext(Dispatchers.Main) { showError() }
                         } else {
+                            rememberPrimaryPin(pin)
                             onUnLocked(pin, shortCut)
                         }
                     }
