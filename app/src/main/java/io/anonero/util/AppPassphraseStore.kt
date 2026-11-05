@@ -32,8 +32,8 @@ object AppPassphraseStore {
 
     /**
      * Verify against the app-wide encrypted value. Existing installations may
-     * not have that value yet, so migrate it after matching any wallet's legacy
-     * passphrase hash (not just the currently selected wallet).
+     * not have that value yet, so migrate only from the original primary
+     * wallet's legacy passphrase hash, never from a secondary wallet.
      */
     fun verify(context: Context, passphrase: String): Boolean {
         if (passphrase.isBlank()) return false
