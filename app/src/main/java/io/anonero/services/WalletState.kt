@@ -230,11 +230,13 @@ class WalletState(private val prefs: SharedPreferences) {
         localSnapshotAttemptedWallet.set(null)
         _transactions.value = emptyList()
         _subAddresses.value = emptyList()
-        _balanceInfo.value = null
+        // A new local wallet starts with a known zero balance. Publish zero while
+        // native wallet creation runs so Home never renders an empty balance slot.
+        _balanceInfo.value = 0L
         _walletHeight.value = 0L
         _scanTracking.set(false)
         _scanStartHeight.set(0L)
-        _unLockedBalance.value = null
+        _unLockedBalance.value = 0L
         _walletStatus.value = null
         _nextAddress.value = null
         _coins.value = emptyList()
@@ -1919,6 +1921,16 @@ class WalletState(private val prefs: SharedPreferences) {
     fun resetForWalletSwitch() {
         resetAfterWalletWipe()
         walletWipeInProgress.set(false)
+    }
+
+    /**
+     * Closing a displaced wallet must not clear the snapshot of its replacement.
+     * The replacement's identity is published before old-wallet cleanup starts.
+     */
+    @Synchronized
+    fun resetForWalletSwitchUnlessCurrent(wallet: Wallet?) {
+        if (wallet != null && publishedWalletIdentity.get() === wallet) return
+        resetForWalletSwitch()
     }
 
     fun toggleHideAmounts() {
