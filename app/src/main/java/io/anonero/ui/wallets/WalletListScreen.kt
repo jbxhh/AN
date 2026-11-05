@@ -45,6 +45,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.anonero.AnonConfig
 import io.anonero.R
+import io.anonero.ui.home.xqzpFontFamily
 import java.io.File
 import kotlinx.serialization.Serializable
 
@@ -143,6 +144,7 @@ fun WalletListScreen(
                                     color = Color.White,
                                     fontSize = 21.sp,
                                     fontWeight = FontWeight.SemiBold,
+                                    fontFamily = xqzpFontFamily(),
                                 )
                             }
                             Spacer(Modifier.width(16.dp))
