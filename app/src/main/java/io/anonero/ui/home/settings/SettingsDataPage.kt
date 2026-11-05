@@ -40,6 +40,7 @@ import io.anonero.model.WalletManager
 import io.anonero.ui.home.LockScreen
 import io.anonero.ui.home.LockScreenMode
 import io.anonero.ui.home.graph.routes.SettingsExportBackUp
+import io.anonero.ui.home.graph.routes.SettingsImportWalletRoute
 import io.anonero.ui.onboard.PinSetup
 import io.anonero.util.CrazyPassEncoder
 import io.anonero.util.PREFS_PIN_HASH
@@ -162,12 +163,9 @@ fun SettingsDataPage(
                     HorizontalDivider(thickness = 1.dp)
                 }
                 item {
-                    ListItem(
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                        headlineContent = {
-                            Text("导入钱包", style = MaterialTheme.typography.titleMedium)
-                        }
-                    )
+                    MenuItem("导入钱包") {
+                        navigateTo(SettingsImportWalletRoute)
+                    }
                     HorizontalDivider(thickness = 1.dp)
                 }
             }
