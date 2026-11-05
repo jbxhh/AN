@@ -274,6 +274,8 @@ fun MultiWalletScreen(
                                             Text(
                                                 text = "删除",
                                                 color = MaterialTheme.colorScheme.onError,
+                                                fontSize = 18.sp,
+                                                fontWeight = FontWeight.SemiBold,
                                             )
                                         }
                                     }
