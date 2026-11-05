@@ -485,7 +485,7 @@ class MainActivity : ComponentActivity() {
                                                     }
 
                                                     val dataDeleted = walletDataFile.delete()
-                                                    val keysDeleted = walletKeysFile.delete()
+                                                    val keysDeleted = dataDeleted && walletKeysFile.delete()
                                                     check(dataDeleted && keysDeleted) {
                                                         "钱包文件删除失败，请检查文件状态"
                                                     }
@@ -501,6 +501,13 @@ class MainActivity : ComponentActivity() {
                                                         context.applicationContext,
                                                         walletName
                                                     )
+
+                                                    val notificationPreferences = context.getSharedPreferences(
+                                                        "anonero_prefs", MODE_PRIVATE
+                                                    )
+                                                    if (notificationPreferences.getString("notif_prompt_wallet_id", null) == walletName) {
+                                                        notificationPreferences.edit().remove("notif_prompt_wallet_id").apply()
+                                                    }
 
                                                     val remaining = AnonConfig.getWalletFiles(context)
                                                     if (deletingActiveWallet) {
