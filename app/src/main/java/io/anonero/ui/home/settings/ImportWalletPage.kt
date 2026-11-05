@@ -26,7 +26,6 @@ import io.anonero.ui.onboard.OnboardViewModel
 import io.anonero.ui.onboard.RestorePayload
 import io.anonero.ui.onboard.RestoreWallet
 import io.anonero.ui.onboard.graph.OnboardLoading
-import io.anonero.util.AppPassphraseStore
 import io.anonero.util.AppPinStore
 import io.anonero.util.PREFS_PINLESS_WALLET
 import io.anonero.util.KeyStoreHelper
@@ -55,9 +54,7 @@ fun ImportWalletPage(
     val walletHandler = koinInject<AnonWalletHandler>()
     val walletState = koinInject<WalletState>()
     val walletPrefs = koinInject<SharedPreferences>(named(WALLET_PREFERENCES))
-    val initialPassphrase = remember(appContext) {
-        AppPassphraseStore.get(appContext).orEmpty()
-    }
+    val initialPassphrase = ""
     var importing by remember { mutableStateOf(false) }
 
     fun removePartialWallet(walletFile: File) {
@@ -109,9 +106,6 @@ fun ImportWalletPage(
                             )
                         }.orEmpty()
 
-                    check(AppPassphraseStore.verify(appContext, payload.passPhrase)) {
-                        "密码短语不正确"
-                    }
                     AppPinStore.rememberIfMissing(appContext, globalPin)
 
                     previousReplacement =
@@ -126,7 +120,7 @@ fun ImportWalletPage(
                         AnonConfig.createNewWalletFile(appContext)
                     }
 
-                    onboardViewModel.restoreFromSeed(globalPin)
+                    onboardViewModel.restoreFromSeed(globalPin, payload.passPhrase)
                     val newWallet = WalletManager.instance?.wallet
                         ?: error("导入完成后没有可用的钱包句柄")
                     check(newWallet.name == createdWalletFile?.name) {
@@ -269,7 +263,7 @@ fun ImportWalletPage(
             oNextPressed = ::submitImport,
             onboardViewModel = onboardViewModel,
             initialPassphrase = initialPassphrase,
-            requirePassphrase = true
+            requirePassphrase = false
         )
     }
 }
