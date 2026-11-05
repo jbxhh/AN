@@ -69,6 +69,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.anonero.AnonConfig
 import io.anonero.R
+import io.anonero.ui.home.XmrText
 import io.anonero.ui.theme.AnonOutlineButton
 import io.anonero.util.WALLET_PREFERENCES
 import java.io.File
@@ -232,13 +233,17 @@ fun MultiWalletScreen(
                                 val isEditing = walletToRename?.name == walletFile.name
                                 var swipeOffsetPx by remember(walletFile.name) { mutableStateOf(0f) }
                                 val rowOffsetPx = swipeOffsetPx.coerceIn(-deleteActionWidthPx, 0f)
+                                val customDisplayName = walletPrefs.getString(
+                                    walletDisplayNamePreferenceKey(walletFile),
+                                    null
+                                )
                                 val defaultDisplayName = walletDisplayName(
                                     walletName = walletFile.name,
-                                    customName = walletPrefs.getString(
-                                        walletDisplayNamePreferenceKey(walletFile),
-                                        null
-                                    )
+                                    customName = customDisplayName
                                 )
+                                val usesDefaultXmrLabel =
+                                    customDisplayName.isNullOrBlank() &&
+                                        defaultDisplayName.startsWith("XMR ")
 
                                 Box(
                                     modifier = Modifier
@@ -342,6 +347,23 @@ fun MultiWalletScreen(
                                                     }
                                                 },
                                         )
+                                    } else if (usesDefaultXmrLabel) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            XmrText(
+                                                style = MaterialTheme.typography.bodyLarge.copy(
+                                                    color = MaterialTheme.colorScheme.onBackground,
+                                                    fontSize = 18.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                )
+                                            )
+                                            Text(
+                                                text = defaultDisplayName.removePrefix("XMR"),
+                                                color = MaterialTheme.colorScheme.onBackground,
+                                                fontSize = 18.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                            )
+                                        }
                                     } else {
                                         Text(
                                             text = defaultDisplayName,
