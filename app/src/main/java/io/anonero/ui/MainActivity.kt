@@ -604,10 +604,11 @@ class MainActivity : ComponentActivity() {
                                                         walletState.prepareImmediateNewWalletHome(createdWallet)
                                                     } catch (error: Exception) {
                                                         Timber.tag(TAG).e(error, "Local wallet creation failed")
-                                                        if (previousWalletReplacement != null) {
+                                                        val failedReplacement = previousWalletReplacement
+                                                        if (failedReplacement != null) {
                                                             runCatching {
                                                                 anonWalletHandler.restoreWalletAfterFailedCreation(
-                                                                    previousWalletReplacement
+                                                                    failedReplacement
                                                                 )
                                                             }.onFailure {
                                                                 Timber.tag(TAG).e(it, "Unable to restore previous wallet after creation failure")
