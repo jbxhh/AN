@@ -241,12 +241,11 @@ class AnonWalletHandler(
         }
 
         if (closedDisplacedWallet) {
-            // Keep reset/rescan priority raised until every displaced native refresh
-            // thread has been paused and closed. Then publish the selected wallet again.
-            walletState.resetForWalletSwitch()
-            WalletManager.instance?.wallet?.let { activeWallet ->
-                walletState.publishWalletSnapshot(activeWallet)
-            }
+            // Clear stale state when needed, but preserve a replacement snapshot that
+            // was already published before this background cleanup completed.
+            val activeWallet = WalletManager.instance?.wallet
+            walletState.resetForWalletSwitchUnlessCurrent(activeWallet)
+            activeWallet?.let { walletState.publishWalletSnapshot(it) }
         }
     }
 
