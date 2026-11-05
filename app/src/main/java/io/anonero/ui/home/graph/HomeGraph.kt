@@ -8,12 +8,14 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navigation
 import io.anonero.AnonConfig
 import io.anonero.model.WalletManager
+import io.anonero.services.AnonWalletHandler
 import io.anonero.ui.home.HomeScreenComposable
 import io.anonero.ui.home.LockScreen
 import io.anonero.ui.home.LockScreenMode
 import io.anonero.ui.home.graph.routes.Home
 import io.anonero.ui.home.graph.routes.HomeScreenRoute
 import io.anonero.ui.home.graph.routes.LockScreenRoute
+import org.koin.compose.koinInject
 
 
 fun NavGraphBuilder.homeGraph(navController: NavHostController) {
@@ -40,6 +42,9 @@ fun NavGraphBuilder.homeGraph(navController: NavHostController) {
     ) {
         composable<HomeScreenRoute> { backStackEntry ->
             val homeRoute = backStackEntry.toRoute<HomeScreenRoute>()
+            val walletHandler = koinInject<AnonWalletHandler>()
+            val immediateWalletCreationPending =
+                walletHandler.isImmediateWalletCreationHomePending()
             val walletIsOpen = WalletManager.instance?.wallet?.status?.isOk == true
             val unlockCompleted = androidx.compose.runtime.remember {
                 androidx.compose.runtime.mutableStateOf(false)
@@ -51,7 +56,11 @@ fun NavGraphBuilder.homeGraph(navController: NavHostController) {
             // Navigation state can restore HomeScreenRoute after process death, bypassing
             // the graph start destination. Do not render Home until the wallet is open
             // again through the PIN flow (except while secure wipe is intentionally active).
-            if (secureDeleteInProgress || (homeRoute.pinVerified && walletIsOpen) || unlockCompleted.value) {
+            if (
+                secureDeleteInProgress ||
+                (homeRoute.pinVerified && (walletIsOpen || immediateWalletCreationPending)) ||
+                unlockCompleted.value
+            ) {
                 HomeScreenComposable(
                     mainNavController = navController,
                     initialShortcut = selectedShortcut.value,
