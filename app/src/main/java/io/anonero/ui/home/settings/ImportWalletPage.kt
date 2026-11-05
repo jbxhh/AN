@@ -28,6 +28,7 @@ import io.anonero.ui.onboard.RestoreWallet
 import io.anonero.ui.onboard.graph.OnboardLoading
 import io.anonero.util.AppPassphraseStore
 import io.anonero.util.AppPinStore
+import io.anonero.util.PREFS_PINLESS_WALLET
 import io.anonero.util.KeyStoreHelper
 import io.anonero.util.WALLET_PREFERENCES
 import kotlinx.coroutines.Dispatchers
@@ -101,8 +102,12 @@ fun ImportWalletPage(
                     val managedWalletPin = WalletManager.instance
                         ?.getManagedWalletPassword().orEmpty()
                     val globalPin = AppPinStore.get(appContext)
-                        ?: managedWalletPin.takeIf { it.isNotEmpty() }
-                        ?: error("无法读取应用全局 PIN")
+                        ?: managedWalletPin.takeIf {
+                            it.isNotEmpty() && !walletPrefs.getBoolean(
+                                AnonConfig.walletPreferenceKey(appContext, PREFS_PINLESS_WALLET),
+                                false
+                            )
+                        }.orEmpty()
 
                     check(AppPassphraseStore.verify(appContext, payload.passPhrase)) {
                         "密码短语不正确"
