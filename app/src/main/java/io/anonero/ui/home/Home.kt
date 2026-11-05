@@ -105,6 +105,7 @@ fun HomeScreenComposable(
     modifier: Modifier = Modifier,
     mainNavController: NavHostController?,
     initialShortcut: LockScreenShortCut = LockScreenShortCut.HOME,
+    onboardViewModel: OnboardViewModel,
 ) {
     val context = LocalContext.current
     val appPreferences = remember(context) {
@@ -126,7 +127,6 @@ fun HomeScreenComposable(
     val walletState = koinInject<WalletState>()
     val walletHandler = koinInject<AnonWalletHandler>()
     val appViewModel = koinInject<io.anonero.ui.viewmodels.AppViewModel>()
-    val onboardViewModel = koinInject<OnboardViewModel>()
     val toastState = rememberToasterState()
     val prefs = context.getSharedPreferences("anonero_prefs", android.content.Context.MODE_PRIVATE)
     val pinLockVisible by walletState.pinLockVisibleFlow.collectAsState(
