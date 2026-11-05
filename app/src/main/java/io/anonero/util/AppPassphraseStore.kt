@@ -44,18 +44,24 @@ object AppPassphraseStore {
             WALLET_PREFERENCES,
             Context.MODE_PRIVATE
         )
-        val activeWalletName = AnonConfig.getActiveWalletName(appContext)
-        val activeWalletHash = walletPreferences.getString(
-            "$activeWalletName::$PREFS_PASSPHRASE_HASH",
-            null
-        )
-        if (matchesWalletPassphraseHash(activeWalletHash, candidateHash)) return true
+        // Secure deletion applies to the complete wallet list, so any passphrase
+        // belonging to any wallet in that list may authorize the wipe. Do not scope
+        // this check to the currently active wallet.
+        val walletFiles = AnonConfig.getWalletFiles(appContext)
+        val walletHashes = walletFiles.map { walletFile ->
+            walletPreferences.getString(
+                "${walletFile.name}::$PREFS_PASSPHRASE_HASH",
+                null
+            )
+        }
+        if (matchesAnyWalletPassphraseHash(walletHashes, candidateHash)) return true
 
         // Older single-wallet installations may still have the original unscoped
-        // passphrase hash. It is valid only for the original "anon" wallet.
-        if (activeWalletName != "anon") return false
+        // hash. It remains associated with the primary "anon" wallet even when a
+        // secondary wallet is currently selected.
+        if (walletFiles.none { it.name == "anon" }) return false
         val legacyWalletHash = walletPreferences.getString(PREFS_PASSPHRASE_HASH, null)
-        if (!matchesWalletPassphraseHash(legacyWalletHash, candidateHash)) return false
+        if (!matchesLegacyWalletPassphraseHash(legacyWalletHash, candidateHash)) return false
 
         rememberIfMissing(appContext, passphrase)
         return true
@@ -75,6 +81,14 @@ internal fun matchesWalletPassphraseHash(
 ): Boolean {
     if (candidateHash.isBlank() || walletPassphraseHash.isNullOrBlank()) return false
     return constantTimeEquals(walletPassphraseHash, candidateHash)
+}
+
+internal fun matchesAnyWalletPassphraseHash(
+    walletPassphraseHashes: Iterable<String?>,
+    candidateHash: String
+): Boolean {
+    if (candidateHash.isBlank()) return false
+    return walletPassphraseHashes.any { matchesWalletPassphraseHash(it, candidateHash) }
 }
 
 internal fun matchesLegacyWalletPassphraseHash(
