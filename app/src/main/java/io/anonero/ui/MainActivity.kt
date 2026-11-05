@@ -22,6 +22,7 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
@@ -35,6 +36,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.asLiveData
+import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.NavHost
@@ -49,6 +51,7 @@ import io.anonero.services.AnonNeroService
 import io.anonero.services.AnonWalletHandler
 import io.anonero.services.TorService
 import io.anonero.services.WalletState
+import io.anonero.services.withWalletStateIo
 import io.anonero.store.LogRepository
 import io.anonero.store.NodesRepository
 import io.anonero.services.startAnonService
@@ -282,8 +285,14 @@ class MainActivity : ComponentActivity() {
                     val currentBackStackEntry by navController.currentBackStackEntryAsState()
                     val isHomeGraphVisible = currentBackStackEntry?.destination?.hierarchy
                         ?.any { it.hasRoute<Home>() } == true
-                    navController.addOnDestinationChangedListener { x, destination, d ->
-                        Timber.tag(TAG).d("destination changed to ${destination.route}")
+                    DisposableEffect(navController) {
+                        val destinationListener = NavController.OnDestinationChangedListener { _, destination, _ ->
+                            Timber.tag(TAG).d("destination changed to ${destination.route}")
+                        }
+                        navController.addOnDestinationChangedListener(destinationListener)
+                        onDispose {
+                            navController.removeOnDestinationChangedListener(destinationListener)
+                        }
                     }
                     val showLockScreen by walletState.pinLockVisibleFlow.asLiveData().observeAsState(walletState.pinLockVisible)
                     val deletionWorkflowActive = context.getSharedPreferences(
@@ -401,10 +410,10 @@ class MainActivity : ComponentActivity() {
                                                     null
                                                 }
                                                 targetWallet?.let { wallet ->
-                                                    walletState.prepareImmediateWalletHome(wallet)
-                                                    // Read the selected wallet's local balance before Home composes;
-                                                    // old-wallet cleanup and node startup remain asynchronous.
-                                                    withContext(Dispatchers.IO) {
+                                                    // These synchronized wallet-state operations can wait for
+                                                    // native status reads. Keep the entire snapshot preparation off Main.
+                                                    withWalletStateIo {
+                                                        walletState.prepareImmediateWalletHome(wallet)
                                                         walletState.publishWalletBalanceSnapshot(wallet)
                                                     }
                                                 }
