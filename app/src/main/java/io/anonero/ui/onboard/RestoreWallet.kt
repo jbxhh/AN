@@ -55,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -67,6 +68,7 @@ import kotlin.math.roundToInt
 data class RestorePayload(
     val seed: List<String>,
     val restoreHeight: Long?,
+    val passPhrase: String = "",
 )
 
 @Composable
@@ -74,6 +76,8 @@ fun RestoreWallet(
     onBackPressed: () -> Unit = {},
     oNextPressed: (RestorePayload) -> Unit = {},
     onboardViewModel: OnboardViewModel?,
+    initialPassphrase: String = onboardViewModel?.getRestorePayload()?.passPhrase.orEmpty(),
+    requirePassphrase: Boolean = false,
 ) {
 
     var restoreHeight by remember {
@@ -91,6 +95,7 @@ fun RestoreWallet(
             ) ?: ""
         )
     }
+    var passPhrase by remember { mutableStateOf(initialPassphrase) }
     var seedList by remember { mutableStateOf(emptyList<String>()) }
     var wordsList by remember { mutableStateOf(emptyList<String>()) }
     var moneroWordsList by remember { mutableStateOf(emptyList<String>()) }
@@ -269,8 +274,30 @@ fun RestoreWallet(
                         )
                     },
                 )
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            text = stringResource(R.string.passphrase),
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                    },
+                    supportingContent = {
+                        OutlinedTextField(
+                            value = passPhrase,
+                            shape = MaterialTheme.shapes.medium,
+                            onValueChange = { passPhrase = it },
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(
+                                imeAction = ImeAction.Done,
+                                keyboardType = KeyboardType.Password
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    },
+                )
             }
-            val enabled = seedList.isNotEmpty()
+            val enabled = seedList.isNotEmpty() && (!requirePassphrase || passPhrase.length >= 4)
             AnonOutlineButton(
                 onClick = {
                     if (enabled) {
@@ -287,6 +314,7 @@ fun RestoreWallet(
                             RestorePayload(
                                 seed = seedList,
                                 restoreHeight = selectedRestoreHeight,
+                                passPhrase = passPhrase,
                             )
                         )
                     }
