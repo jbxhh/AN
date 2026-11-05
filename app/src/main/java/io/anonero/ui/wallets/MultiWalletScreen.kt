@@ -3,7 +3,6 @@ package io.anonero.ui.wallets
 import android.content.Context
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -259,7 +258,6 @@ fun MultiWalletScreen(
                                                 .align(Alignment.CenterEnd)
                                                 .width(deleteActionWidth)
                                                 .heightIn(min = 68.dp)
-                                                .background(MaterialTheme.colorScheme.error)
                                                 .clickable(
                                                     interactionSource = remember(walletFile.name) {
                                                         androidx.compose.foundation.interaction.MutableInteractionSource()
@@ -276,7 +274,7 @@ fun MultiWalletScreen(
                                         ) {
                                             Text(
                                                 text = "删除",
-                                                color = MaterialTheme.colorScheme.onError,
+                                                color = io.anonero.ui.theme.Orange,
                                                 fontSize = 18.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                             )
