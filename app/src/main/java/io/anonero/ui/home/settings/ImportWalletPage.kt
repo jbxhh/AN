@@ -120,7 +120,7 @@ fun ImportWalletPage(
                         AnonConfig.createNewWalletFile(appContext)
                     }
 
-                    onboardViewModel.restoreFromSeed(globalPin, payload.passPhrase)
+                    onboardViewModel.restoreFromSeed(globalPin, payload.passPhrase, rememberPassphraseGlobally = false)
                     val newWallet = WalletManager.instance?.wallet
                         ?: error("导入完成后没有可用的钱包句柄")
                     check(newWallet.name == createdWalletFile?.name) {
