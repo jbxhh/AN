@@ -419,16 +419,8 @@ class MainActivity : ComponentActivity() {
                                                     ?.getManagedWalletPassword().orEmpty()
                                                 replacement = anonWalletHandler.prepareWalletReplacement(managedWalletPin)
                                                 anonWalletHandler.detachWalletForReplacement(replacement)
-                                                walletState.preparePendingWalletHome()
                                                 onboardViewModel.setMode(Mode.CREATE)
                                                 anonWalletHandler.beginImmediateWalletCreationHome()
-
-                                                // Show the existing Home screen before file I/O,
-                                                // service shutdown, or native wallet creation.
-                                                navController.navigate(HomeScreenRoute(pinVerified = true)) {
-                                                    popUpTo(WalletListRoute) { inclusive = true }
-                                                    launchSingleTop = true
-                                                }
 
                                                 val previousWalletReplacement = replacement
                                                 anonWalletHandler.scope.launch(Dispatchers.IO) {
@@ -469,6 +461,16 @@ class MainActivity : ComponentActivity() {
 
                                                         walletState.prepareImmediateWalletHome(createdWallet)
                                                         anonWalletHandler.endImmediateWalletCreationHome()
+
+                                                        // Navigate as soon as the native wallet handle is valid.
+                                                        // Do not wait for old-wallet cleanup, local snapshot reads,
+                                                        // node startup, or blockchain synchronization.
+                                                        withContext(Dispatchers.Main) {
+                                                            navController.navigate(HomeScreenRoute(pinVerified = true)) {
+                                                                popUpTo(WalletListRoute) { inclusive = true }
+                                                                launchSingleTop = true
+                                                            }
+                                                        }
 
                                                         // Old wallet shutdown is intentionally after Home navigation.
                                                         anonWalletHandler.finishPendingWalletReplacement()
