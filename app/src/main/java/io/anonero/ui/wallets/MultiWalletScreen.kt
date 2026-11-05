@@ -60,6 +60,12 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.input.ImeAction
@@ -109,6 +115,15 @@ fun MultiWalletScreen(
     val editFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val screenScope = rememberCoroutineScope()
+    val xmrFontFamily = xqzpFontFamily()
+    val xmrVisualTransformation = remember(xmrFontFamily) {
+        VisualTransformation { original ->
+            TransformedText(
+                text = original.withXmrFont(xmrFontFamily),
+                offsetMapping = OffsetMapping.Identity,
+            )
+        }
+    }
     val deleteActionWidth = 80.dp
     val deleteActionWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) {
         deleteActionWidth.toPx()
@@ -118,9 +133,9 @@ fun MultiWalletScreen(
     var editingFieldBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
 
     fun saveWalletName(walletFile: File) {
-        val customName = editedName.trim()
+        val customName = customWalletDisplayNameForSave(walletFile.name, editedName)
         walletPrefs.edit {
-            if (customName.isEmpty()) {
+            if (customName == null) {
                 remove(walletDisplayNamePreferenceKey(walletFile))
             } else {
                 putString(walletDisplayNamePreferenceKey(walletFile), customName)
@@ -329,6 +344,7 @@ fun MultiWalletScreen(
                                             value = editedName,
                                             onValueChange = { editedName = it },
                                             singleLine = true,
+                                            visualTransformation = xmrVisualTransformation,
                                             textStyle = MaterialTheme.typography.bodyLarge.copy(
                                                 color = MaterialTheme.colorScheme.onBackground,
                                                 fontSize = 18.sp,
@@ -355,12 +371,10 @@ fun MultiWalletScreen(
                                         )
                                     } else if (usesDefaultXmrLabel) {
                                         Text(
-                                            text = buildAnnotatedString {
-                                                withStyle(SpanStyle(fontFamily = xqzpFontFamily(), fontSize = 22.sp)) {
-                                                    append("XMR")
-                                                }
-                                                append(defaultDisplayName.removePrefix("XMR"))
-                                            },
+                                            text = AnnotatedString(defaultDisplayName).withXmrFont(
+                                                fontFamily = xmrFontFamily,
+                                                xmrFontSize = 22.sp,
+                                            ),
                                             style = MaterialTheme.typography.bodyLarge.copy(
                                                 color = MaterialTheme.colorScheme.onBackground,
                                                 fontSize = 18.sp,
@@ -370,7 +384,7 @@ fun MultiWalletScreen(
                                         )
                                     } else {
                                         Text(
-                                            text = defaultDisplayName,
+                                            text = AnnotatedString(defaultDisplayName).withXmrFont(xmrFontFamily),
                                             color = MaterialTheme.colorScheme.onBackground,
                                             fontSize = 18.sp,
                                             fontWeight = FontWeight.SemiBold,
@@ -411,6 +425,53 @@ fun MultiWalletScreen(
 
 private fun walletDisplayNamePreferenceKey(walletFile: File): String =
     "${walletFile.name}::$WALLET_DISPLAY_NAME_KEY"
+
+
+/**
+ * Returns null when the edited text should continue using the wallet's default name.
+ * This avoids converting an unchanged default such as "XMR 1" into a custom name
+ * when the rename field loses focus without an edit.
+ */
+internal fun customWalletDisplayNameForSave(walletName: String, editedName: String): String? {
+    val normalized = editedName.trim()
+    if (normalized.isEmpty()) return null
+    return normalized.takeUnless { it == walletDisplayName(walletName, null) }
+}
+
+/** Finds every visible XMR ticker occurrence, regardless of case. */
+internal fun xmrRanges(text: String): List<IntRange> {
+    val ranges = mutableListOf<IntRange>()
+    var searchFrom = 0
+    while (searchFrom <= text.length - 3) {
+        val start = text.indexOf("XMR", startIndex = searchFrom, ignoreCase = true)
+        if (start < 0) break
+        ranges += start until (start + 3)
+        searchFrom = start + 3
+    }
+    return ranges
+}
+
+/** Applies the same embedded typeface used by the Home-screen XMR ticker. */
+private fun AnnotatedString.withXmrFont(
+    fontFamily: FontFamily,
+    xmrFontSize: TextUnit = TextUnit.Unspecified,
+): AnnotatedString {
+    val source = this
+    val ranges = xmrRanges(source.text)
+    if (ranges.isEmpty()) return source
+
+    return buildAnnotatedString {
+        var cursor = 0
+        ranges.forEach { range ->
+            append(source.subSequence(cursor, range.first))
+            withStyle(SpanStyle(fontFamily = fontFamily, fontSize = xmrFontSize)) {
+                append(source.subSequence(range.first, range.last + 1))
+            }
+            cursor = range.last + 1
+        }
+        append(source.subSequence(cursor, source.length))
+    }
+}
 
 /**
  * Use a non-blank custom display name when present; otherwise use the
