@@ -275,7 +275,7 @@ fun MultiWalletScreen(
                                             Text(
                                                 text = "删除",
                                                 color = io.anonero.ui.theme.Orange,
-                                                fontSize = 18.sp,
+                                                fontSize = 15.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                             )
                                         }
