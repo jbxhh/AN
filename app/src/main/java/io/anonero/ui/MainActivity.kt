@@ -587,7 +587,15 @@ class MainActivity : ComponentActivity() {
                                                         val createdWallet = WalletManager.instance?.wallet
                                                             ?: error("新钱包创建后没有可用的钱包句柄")
 
-                                                        walletState.prepareImmediateWalletHome(createdWallet)
+                                                        walletState.prepareImmediateNewWalletHome(createdWallet)
+                                                        runCatching {
+                                                            walletState.publishWalletBalanceSnapshot(createdWallet)
+                                                        }.onFailure {
+                                                            Timber.tag(TAG).w(
+                                                                it,
+                                                                "Unable to read new wallet's initial balance; keeping the zero balance snapshot"
+                                                            )
+                                                        }
 
                                                         // Navigate as soon as the native wallet handle is valid.
                                                         // Do not wait for old-wallet cleanup, local snapshot reads,
