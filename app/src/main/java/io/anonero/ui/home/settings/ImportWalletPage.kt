@@ -225,6 +225,27 @@ fun ImportWalletPage(
                         Toast.LENGTH_LONG
                     ).show()
                 }
+
+                walletHandler.endWalletTransition()
+                transitionReleased = true
+                walletHandler.scope.launch(Dispatchers.IO) {
+                    val configuredNode = appContext.getSharedPreferences(
+                        AnonConfig.PREFS,
+                        android.content.Context.MODE_PRIVATE
+                    ).getString(NodeFields.RPC_HOST.value, "")
+                    if (!configuredNode.isNullOrBlank()) {
+                        runCatching { walletHandler.startService() }
+                            .onFailure {
+                                Timber.tag(TAG).w(it, "Unable to restart previous wallet service")
+                            }
+                    }
+                    withContext(Dispatchers.Main) {
+                        runCatching { activity?.startNotificationService() }
+                            .onFailure {
+                                Timber.tag(TAG).w(it, "Unable to restart previous wallet notifications")
+                            }
+                    }
+                }
             } finally {
                 if (!transitionReleased) {
                     walletHandler.endWalletTransition()
