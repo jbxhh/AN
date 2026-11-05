@@ -66,6 +66,7 @@ import io.anonero.ui.onboard.graph.OnboardImportKeysScreen
 import io.anonero.ui.onboard.graph.OnboardNodeSetupScreen
 import io.anonero.ui.onboard.graph.OnboardMultiWalletCreatePinScreen
 import io.anonero.ui.onboard.graph.onboardingGraph
+import io.anonero.util.AppPinStore
 import io.anonero.util.WALLET_PREFERENCES
 import io.anonero.util.WALLET_USE_TOR
 import io.anonero.ui.wallets.WalletListRoute
@@ -329,25 +330,29 @@ class MainActivity : ComponentActivity() {
 
                                             if (!anonWalletHandler.tryBeginWalletTransition()) return@launch
                                             try {
-                                                val currentPin = WalletManager.instance
+                                                val managedWalletPin = WalletManager.instance
                                                     ?.getManagedWalletPassword().orEmpty()
-                                                val canReuseCurrentPin = currentPin.isNotEmpty() &&
+                                                val primaryPin = AppPinStore.get(context)
+                                                    ?: managedWalletPin.also {
+                                                        AppPinStore.rememberIfMissing(context, it)
+                                                    }
+                                                val canReusePrimaryPin = primaryPin.isNotEmpty() &&
                                                     !walletState.pinLockVisible
-                                                val replacement = anonWalletHandler.prepareWalletReplacement(currentPin)
+                                                val replacement = anonWalletHandler.prepareWalletReplacement(managedWalletPin)
 
                                                 stopNotificationService()
                                                 AnonConfig.setActiveWallet(context, walletFile.name)
                                                 anonWalletHandler.detachWalletForReplacement(replacement)
 
-                                                val targetWalletOpened = if (canReuseCurrentPin) {
+                                                val targetWalletOpened = if (canReusePrimaryPin) {
                                                     runCatching {
                                                         anonWalletHandler.openWallet(
-                                                            currentPin,
+                                                            primaryPin,
                                                             publishLocalSnapshot = false,
                                                             prepareInitialReceiveAddress = false
                                                         )
                                                     }.onFailure {
-                                                        Timber.tag(TAG).w(it, "Unable to auto-open selected wallet with the current PIN")
+                                                        Timber.tag(TAG).w(it, "Unable to auto-open selected wallet with the app's primary PIN")
                                                     }.getOrDefault(false)
                                                 } else {
                                                     false
@@ -395,74 +400,146 @@ class MainActivity : ComponentActivity() {
                                     onNewWallet = {
                                         scope.launch {
                                             if (!anonWalletHandler.tryBeginWalletTransition()) return@launch
+
                                             var previousWalletName = "anon"
                                             var replacement: io.anonero.services.WalletReplacement? = null
+                                            var backgroundCreationStarted = false
                                             try {
-                                                val currentPin = WalletManager.instance
+                                                val managedWalletPin = WalletManager.instance
                                                     ?.getManagedWalletPassword().orEmpty()
+                                                val primaryPin = AppPinStore.get(context)
+                                                    ?: managedWalletPin.also {
+                                                        AppPinStore.rememberIfMissing(context, it)
+                                                    }
                                                 previousWalletName = AnonConfig.getActiveWalletName(context)
-                                                replacement = anonWalletHandler.prepareWalletReplacement(currentPin)
+                                                replacement = anonWalletHandler.prepareWalletReplacement(managedWalletPin)
                                                 stopNotificationService()
 
-                                                val createdWallet = try {
-                                                    if (AnonConfig.getWalletFiles(context).isEmpty()) {
-                                                        AnonConfig.setActiveWallet(context, "anon")
-                                                    } else {
-                                                        AnonConfig.createNewWalletFile(context)
-                                                    }
-
-                                                    onboardViewModel.setMode(Mode.CREATE)
-                                                    onboardViewModel.setPassPhrase("")
-                                                    withContext(Dispatchers.IO) {
-                                                        onboardViewModel.create(
-                                                            currentPin,
-                                                            prepareInitialReceiveAddress = false
-                                                        )
-                                                    }
-                                                    WalletManager.instance?.wallet
-                                                        ?: error("新钱包创建后没有可用的钱包句柄")
-                                                } catch (error: Exception) {
-                                                    Timber.tag(TAG).e(error, "Unable to create a new wallet directly")
-                                                    if (replacement != null) {
-                                                        anonWalletHandler.restoreWalletAfterFailedCreation(replacement)
-                                                    } else {
-                                                        WalletManager.instance?.wallet?.let { wallet ->
-                                                            runCatching { WalletManager.instance?.close(wallet) }
-                                                        }
-                                                    }
-                                                    AnonConfig.setActiveWallet(context, previousWalletName)
-                                                    Toast.makeText(
-                                                        context,
-                                                        error.message ?: "新建钱包失败",
-                                                        Toast.LENGTH_LONG,
-                                                    ).show()
-                                                    return@launch
+                                                if (AnonConfig.getWalletFiles(context).isEmpty()) {
+                                                    AnonConfig.setActiveWallet(context, "anon")
+                                                } else {
+                                                    AnonConfig.createNewWalletFile(context)
                                                 }
 
-                                                walletState.prepareImmediateWalletHome(createdWallet)
-                                                withContext(Dispatchers.Main) {
-                                                    navController.navigate(HomeScreenRoute(pinVerified = true)) {
-                                                        popUpTo(WalletListRoute) { inclusive = true }
-                                                        launchSingleTop = true
-                                                    }
+                                                anonWalletHandler.detachWalletForReplacement(replacement)
+                                                walletState.preparePendingWalletHome()
+                                                onboardViewModel.setMode(Mode.CREATE)
+                                                onboardViewModel.setPassPhrase("")
+                                                anonWalletHandler.beginImmediateWalletCreationHome()
+
+                                                // Enter the existing Home destination now. Native wallet creation,
+                                                // old-wallet cleanup, address setup and snapshot reads all run below.
+                                                navController.navigate(HomeScreenRoute(pinVerified = true)) {
+                                                    popUpTo(WalletListRoute) { inclusive = true }
+                                                    launchSingleTop = true
                                                 }
 
+                                                val previousWalletReplacement = replacement
+                                                val previousWalletNameSnapshot = previousWalletName
                                                 val configuredNode = context.getSharedPreferences(
                                                     AnonConfig.PREFS,
                                                     MODE_PRIVATE
                                                 ).getString(NodeFields.RPC_HOST.value, "")
-                                                scope.launch(Dispatchers.IO) {
-                                                    anonWalletHandler.finishPendingWalletReplacement()
-                                                    val activeWallet = WalletManager.instance?.wallet
-                                                    if (activeWallet === createdWallet) {
-                                                        walletState.publishWalletSnapshot(activeWallet)
-                                                    }
-                                                    if (activeWallet === createdWallet && !configuredNode.isNullOrBlank()) {
-                                                        anonWalletHandler.startService()
+
+                                                anonWalletHandler.scope.launch(Dispatchers.IO) {
+                                                    try {
+                                                        onboardViewModel.create(
+                                                            primaryPin,
+                                                            prepareInitialReceiveAddress = false
+                                                        )
+                                                        val createdWallet = WalletManager.instance?.wallet
+                                                            ?: error("新钱包创建后没有可用的钱包句柄")
+
+                                                        walletState.prepareImmediateWalletHome(createdWallet)
+                                                        anonWalletHandler.endImmediateWalletCreationHome()
+
+                                                        // Old wallet shutdown is intentionally after Home navigation.
+                                                        anonWalletHandler.finishPendingWalletReplacement()
+                                                        val activeWallet = WalletManager.instance?.wallet
+                                                        if (activeWallet === createdWallet) {
+                                                            runCatching {
+                                                                walletState.publishWalletSnapshot(activeWallet)
+                                                            }.onFailure {
+                                                                Timber.tag(TAG).w(it, "Unable to publish new wallet snapshot")
+                                                            }
+                                                        }
+                                                        if (activeWallet === createdWallet && !configuredNode.isNullOrBlank()) {
+                                                            anonWalletHandler.startService()
+                                                        }
+                                                    } catch (error: Exception) {
+                                                        Timber.tag(TAG).e(error, "Unable to create a new wallet in the background")
+                                                        if (previousWalletReplacement != null) {
+                                                            runCatching {
+                                                                anonWalletHandler.restoreWalletAfterFailedCreation(
+                                                                    previousWalletReplacement
+                                                                )
+                                                            }.onFailure {
+                                                                Timber.tag(TAG).e(it, "Unable to restore previous wallet after creation failure")
+                                                            }
+                                                        } else {
+                                                            WalletManager.instance?.wallet?.let { wallet ->
+                                                                runCatching { WalletManager.instance?.close(wallet) }
+                                                            }
+                                                        }
+                                                        AnonConfig.setActiveWallet(context, previousWalletNameSnapshot)
+                                                        val restoredWallet = WalletManager.instance?.wallet
+                                                        if (restoredWallet != null) {
+                                                            walletState.prepareImmediateWalletHome(restoredWallet)
+                                                            runCatching {
+                                                                walletState.publishWalletSnapshot(restoredWallet)
+                                                            }.onFailure {
+                                                                Timber.tag(TAG).w(it, "Unable to restore previous wallet snapshot")
+                                                            }
+                                                        }
+
+                                                        withContext(Dispatchers.Main) {
+                                                            runCatching {
+                                                                navController.navigate(WalletListRoute) {
+                                                                    popUpTo(Home::class.qualifiedName!!) { inclusive = true }
+                                                                    launchSingleTop = true
+                                                                }
+                                                            }.onFailure {
+                                                                Timber.tag(TAG).w(it, "Unable to return to wallet list after creation failure")
+                                                            }
+                                                            Toast.makeText(
+                                                                context,
+                                                                error.message ?: "新建钱包失败",
+                                                                Toast.LENGTH_LONG,
+                                                            ).show()
+                                                        }
+                                                        if (restoredWallet != null && !configuredNode.isNullOrBlank()) {
+                                                            runCatching { anonWalletHandler.startService() }
+                                                                .onFailure {
+                                                                    Timber.tag(TAG).w(it, "Unable to restart previous wallet service")
+                                                                }
+                                                        }
+                                                    } finally {
+                                                        anonWalletHandler.endImmediateWalletCreationHome()
+                                                        anonWalletHandler.endWalletTransition()
                                                     }
                                                 }
+                                                backgroundCreationStarted = true
+                                            } catch (error: Exception) {
+                                                Timber.tag(TAG).e(error, "Unable to start immediate wallet creation")
+                                                if (replacement != null) {
+                                                    runCatching {
+                                                        anonWalletHandler.restoreWalletAfterFailedCreation(replacement)
+                                                    }.onFailure {
+                                                        Timber.tag(TAG).e(it, "Unable to restore wallet after immediate creation could not start")
+                                                    }
+                                                }
+                                                AnonConfig.setActiveWallet(context, previousWalletName)
+                                                anonWalletHandler.endImmediateWalletCreationHome()
+                                                Toast.makeText(
+                                                    context,
+                                                    error.message ?: "新建钱包失败",
+                                                    Toast.LENGTH_LONG,
+                                                ).show()
                                             } finally {
-                                                anonWalletHandler.endWalletTransition()
+                                                if (!backgroundCreationStarted) {
+                                                    anonWalletHandler.endImmediateWalletCreationHome()
+                                                    anonWalletHandler.endWalletTransition()
+                                                }
                                             }
                                         }
                                     },
