@@ -45,6 +45,7 @@ import java.security.SignatureException;
 import java.security.UnrecoverableEntryException;
 import java.security.cert.CertificateException;
 import java.util.Calendar;
+import java.util.ArrayList;
 import java.util.GregorianCalendar;
 
 import javax.crypto.BadPaddingException;
@@ -163,6 +164,19 @@ public class KeyStoreHelper {
         }
         context.getSharedPreferences(SecurityConstants.WALLET_PASS_PREFS_NAME, Context.MODE_PRIVATE).edit()
                 .remove(wallet).apply();
+    }
+
+    public static void clearAllStoredPasswords(@NonNull Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(
+                SecurityConstants.WALLET_PASS_PREFS_NAME, Context.MODE_PRIVATE);
+        for (String wallet : new ArrayList<>(prefs.getAll().keySet())) {
+            removeWalletUserPass(context, wallet);
+        }
+        try {
+            deleteKeys(RSA_ALIAS);
+        } catch (KeyStoreException ex) {
+            Timber.tag(TAG).e(ex);
+        }
     }
 
     public static void copyWalletUserPass(Context context, String srcWallet, String dstWallet) throws BrokenPasswordStoreException {
