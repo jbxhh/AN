@@ -169,11 +169,14 @@ class OnboardViewModel(
         return restorePayload
     }
 
-    suspend fun restoreFromSeed(pin: String) {
+    suspend fun restoreFromSeed(
+        pin: String,
+        passphraseOverride: String? = null
+    ) {
         if (restorePayload == null) return
 
         val context = AnonConfig.context!!.applicationContext
-        passPhrase = AppPassphraseStore.get(context) ?: passPhrase
+        passPhrase = passphraseOverride ?: AppPassphraseStore.get(context) ?: passPhrase
         val walletFile = AnonConfig.getDefaultWalletFile(context)
         AnonConfig.getDefaultWalletDir(context).mkdirs()
         delay(100)
