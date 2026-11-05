@@ -68,6 +68,7 @@ import io.anonero.ui.onboard.graph.OnboardMultiWalletCreatePinScreen
 import io.anonero.ui.onboard.graph.onboardingGraph
 import io.anonero.util.AppPinStore
 import io.anonero.util.AppPassphraseStore
+import io.anonero.util.KeyStoreHelper
 import io.anonero.util.PREFS_PINLESS_WALLET
 import io.anonero.util.WALLET_PREFERENCES
 import io.anonero.util.WALLET_USE_TOR
@@ -440,6 +441,90 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onProxySettings = {
                                         navController.navigate(WalletListProxyRoute)
+                                    },
+                                    onDeleteWallet = { walletFile ->
+                                        if (!anonWalletHandler.tryBeginWalletTransition()) {
+                                            Toast.makeText(
+                                                context,
+                                                "钱包正在切换，请稍后重试删除",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                            false
+                                        } else {
+                                            try {
+                                                val walletName = walletFile.name
+                                                check(
+                                                    walletName.isNotBlank() &&
+                                                        java.io.File(walletName).name == walletName &&
+                                                        walletName != "." && walletName != ".."
+                                                ) { "无效的钱包文件名" }
+                                                val activeWalletName = AnonConfig.getActiveWalletName(context)
+                                                val managedWalletMatches =
+                                                    WalletManager.instance?.wallet?.name == walletName
+                                                val deletingActiveWallet =
+                                                    activeWalletName == walletName || managedWalletMatches
+
+                                                if (deletingActiveWallet) stopNotificationService()
+
+                                                val nativeWalletClosed = withContext(Dispatchers.IO) {
+                                                    anonWalletHandler.closeWalletForDeletion(walletName)
+                                                }
+                                                check(nativeWalletClosed) {
+                                                    "钱包仍有原生操作未结束，请稍后重试删除"
+                                                }
+
+                                                val remainingWallets = withContext(Dispatchers.IO) {
+                                                    val walletDirectory = AnonConfig.getDefaultWalletDir(context).canonicalFile
+                                                    val walletDataFile = java.io.File(walletDirectory, walletName)
+                                                    val walletKeysFile = java.io.File(walletDirectory, "$walletName.keys")
+                                                    check(walletDataFile.canonicalFile.parentFile == walletDirectory) {
+                                                        "钱包文件路径无效"
+                                                    }
+                                                    check(walletDataFile.isFile && walletKeysFile.isFile) {
+                                                        "钱包文件不存在或已被删除"
+                                                    }
+
+                                                    val dataDeleted = walletDataFile.delete()
+                                                    val keysDeleted = walletKeysFile.delete()
+                                                    check(dataDeleted && keysDeleted) {
+                                                        "钱包文件删除失败，请检查文件状态"
+                                                    }
+
+                                                    val walletPreferenceEditor = anonPrefs.edit()
+                                                    anonPrefs.all.keys
+                                                        .filter { it.startsWith("$walletName::") }
+                                                        .forEach(walletPreferenceEditor::remove)
+                                                    check(walletPreferenceEditor.commit()) {
+                                                        "钱包设置清理失败"
+                                                    }
+                                                    KeyStoreHelper.removeWalletUserPass(
+                                                        context.applicationContext,
+                                                        walletName
+                                                    )
+
+                                                    val remaining = AnonConfig.getWalletFiles(context)
+                                                    if (deletingActiveWallet) {
+                                                        AnonConfig.setActiveWallet(
+                                                            context,
+                                                            remaining.firstOrNull()?.name ?: "anon"
+                                                        )
+                                                    }
+                                                    remaining
+                                                }
+                                                walletExist = remainingWallets.isNotEmpty()
+                                                true
+                                            } catch (error: Exception) {
+                                                Timber.tag(TAG).e(error, "Unable to delete wallet %s", walletFile.name)
+                                                Toast.makeText(
+                                                    context,
+                                                    error.message ?: "删除钱包失败",
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                                false
+                                            } finally {
+                                                anonWalletHandler.endWalletTransition()
+                                            }
+                                        }
                                     },
                                     onNewWallet = {
                                         if (!anonWalletHandler.tryBeginWalletTransition()) {
