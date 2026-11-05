@@ -65,8 +65,21 @@ class AnonWalletHandler(
     @Volatile private var serviceStartedWallet: Wallet? = null
     private val pendingWalletReplacements = ConcurrentLinkedQueue<WalletReplacement>()
     private val walletTransitionInProgress = AtomicBoolean(false)
+    private val immediateWalletCreationHome = AtomicBoolean(false)
 
     val scope get() = _scope
+
+    /** Allow the existing Home destination while a new native wallet is being created. */
+    fun beginImmediateWalletCreationHome() {
+        immediateWalletCreationHome.set(true)
+    }
+
+    fun endImmediateWalletCreationHome() {
+        immediateWalletCreationHome.set(false)
+    }
+
+    fun isImmediateWalletCreationHomePending(): Boolean =
+        immediateWalletCreationHome.get()
 
     /** Prevent overlapping create/switch requests from racing native wallet handles. */
     fun tryBeginWalletTransition(): Boolean =
