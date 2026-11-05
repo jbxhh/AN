@@ -254,6 +254,17 @@ class WalletState(private val prefs: SharedPreferences) {
         _isSyncing.set(false)
         _backgroundSync.value = false
         _pinLockVisible.value = false
+        refreshDeferredDuringResync.set(false)
+        _blockUpdates.set(false)
+        daemonHeightQueryInFlight.set(false)
+        forcedRestoreScanInFlight.set(false)
+        forcedRestoreScanStarted.set(false)
+        manualResyncNativeWorkerStarted.set(false)
+        manualResyncInProgress.set(false)
+        manualResyncScanPrepared.set(false)
+        activeManualResyncReservation.set(null)
+        resetPriorityActive.set(false)
+        clearSyncProgress()
         scanPreferenceIdentity.set(null)
     }
 
@@ -1936,7 +1947,22 @@ class WalletState(private val prefs: SharedPreferences) {
      */
     @Synchronized
     fun resetForWalletSwitchUnlessCurrent(wallet: Wallet?) {
-        if (wallet != null && publishedWalletIdentity.get() === wallet) return
+        if (wallet != null && publishedWalletIdentity.get() === wallet) {
+            // The incoming wallet's snapshot is already current. Clear only transient
+            // operation gates; do not replace its visible zero balance with null.
+            refreshDeferredDuringResync.set(false)
+            _blockUpdates.set(false)
+            daemonHeightQueryInFlight.set(false)
+            forcedRestoreScanInFlight.set(false)
+            forcedRestoreScanStarted.set(false)
+            manualResyncNativeWorkerStarted.set(false)
+            manualResyncInProgress.set(false)
+            manualResyncScanPrepared.set(false)
+            activeManualResyncReservation.set(null)
+            resetPriorityActive.set(false)
+            walletWipeInProgress.set(walletWipeRequestReserved.get())
+            return
+        }
         resetForWalletSwitch()
     }
 
