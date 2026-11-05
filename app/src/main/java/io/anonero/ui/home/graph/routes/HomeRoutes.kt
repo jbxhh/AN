@@ -44,6 +44,9 @@ data object SettingsTradeRoute
 data object SettingsDataRoute
 
 @Serializable
+data object SettingsImportWalletRoute
+
+@Serializable
 data object SettingsExportBackUp
 
 @Serializable
