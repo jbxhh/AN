@@ -419,9 +419,8 @@ fun SecureWipe(
                 return@launch
             }
 
-            // The persisted deletion-passphrase hash is authoritative. Do not block
-            // secure deletion on reading/exporting the wallet seed; it is not needed to erase
-            // the wallet once the user has verified the deletion password.
+            // The app-wide extra passphrase has been verified. Reading or exporting
+            // the wallet seed is not needed to erase every wallet in the app.
 
             if (currentActivity == null) {
                 withContext(Dispatchers.Main) {
