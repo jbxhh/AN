@@ -137,11 +137,6 @@ private fun SettingsPageContent(
     onBackPress: () -> Unit = {},
     navigateTo: (param: Any) -> Unit = {},
 ) {
-
-    modifier: Modifier = Modifier,
-    onBackPress: () -> Unit = {},
-    navigateTo: (param: Any) -> Unit = {},
-) {
     Scaffold(
         topBar = {
             TopAppBar(
