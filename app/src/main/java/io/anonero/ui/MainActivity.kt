@@ -117,6 +117,7 @@ class MainActivity : ComponentActivity() {
     // interpret that system-owned UI as the user leaving the wallet and lock it again.
     @Volatile
     private var notificationPermissionRequestInProgress = false
+    private val walletSelectionUnlockInProgress = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashscreen = installSplashScreen()
@@ -276,7 +277,7 @@ class MainActivity : ComponentActivity() {
             TorSplash(enableTor = useTor) {
                 AnonNeroTheme {
                     val navController = rememberNavController()
-                    var walletSelectedForUnlock by remember { mutableStateOf(false) }
+                    var walletSelectedForUnlock by walletSelectionUnlockInProgress
                     val currentBackStackEntry by navController.currentBackStackEntryAsState()
                     val isHomeGraphVisible = currentBackStackEntry?.destination?.hierarchy
                         ?.any { it.hasRoute<Home>() } == true
@@ -735,6 +736,7 @@ class MainActivity : ComponentActivity() {
             Timber.tag(TAG).d("Skipping background wallet lock while notification permission is requested")
             return
         }
+        walletSelectionUnlockInProgress.value = false
         val wipePrefs = getSharedPreferences(AnonConfig.APP_PREFERENCES, MODE_PRIVATE)
         if (
             wipePrefs.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false) ||
