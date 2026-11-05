@@ -148,6 +148,21 @@ class AnonWalletHandler(
         }
     }
 
+    /** Close a wallet's native handle before its wallet files are removed. */
+    suspend fun closeWalletForDeletion(walletName: String): Boolean {
+        val manager = WalletManager.instance ?: return true
+        val activeWallet = manager.wallet?.takeIf { it.name == walletName }
+        if (activeWallet != null) {
+            val password = manager.getManagedWalletPassword().orEmpty()
+            val replacement = prepareWalletReplacement(password) ?: return false
+            detachWalletForReplacement(replacement)
+        }
+
+        finishPendingWalletReplacement()
+        return WalletManager.instance?.wallet?.name != walletName &&
+            pendingWalletReplacements.none { it.wallet.name == walletName }
+    }
+
     private suspend fun finishPendingWalletReplacementLocked() {
         var closedDisplacedWallet = false
         while (true) {
