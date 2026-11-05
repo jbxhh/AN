@@ -419,8 +419,8 @@ fun SecureWipe(
                 return@launch
             }
 
-            // The app-wide extra passphrase has been verified. Reading or exporting
-            // the wallet seed is not needed to erase every wallet in the app.
+            // A passphrase belonging to any wallet in the wallet list has been
+            // verified. Reading or exporting wallet seeds is not needed to erase all wallets.
 
             if (currentActivity == null) {
                 withContext(Dispatchers.Main) {
@@ -431,8 +431,8 @@ fun SecureWipe(
             }
 
             withContext(Dispatchers.Main) {
-                // Password and wallet seed are now validated. Hide the prompt before
-                // the priority gate is raised so no cancel path races deletion startup.
+                // The wallet passphrase is now validated. Hide the prompt before the
+                // priority gate is raised so no cancel path races deletion startup.
                 passPhraseDialog = false
                 requestClearScreen(false)
             }
