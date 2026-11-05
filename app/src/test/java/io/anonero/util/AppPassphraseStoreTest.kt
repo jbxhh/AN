@@ -59,6 +59,38 @@ class AppPassphraseStoreTest {
     }
 
     @Test
+    fun secureDeleteAcceptsPassphraseFromAnyWalletInTheList() {
+        assertTrue(
+            matchesAnyWalletPassphraseHash(
+                listOf("wallet_a_hash", "wallet_b_hash"),
+                "wallet_b_hash"
+            )
+        )
+        assertTrue(
+            matchesAnyWalletPassphraseHash(
+                listOf("wallet_a_hash", "wallet_b_hash"),
+                "wallet_a_hash"
+            )
+        )
+    }
+
+    @Test
+    fun secureDeleteRejectsPassphraseNotBelongingToAnyWallet() {
+        assertFalse(
+            matchesAnyWalletPassphraseHash(
+                listOf("wallet_a_hash", "wallet_b_hash"),
+                "unrelated_hash"
+            )
+        )
+        assertFalse(
+            matchesAnyWalletPassphraseHash(
+                listOf(null, ""),
+                "candidate_hash"
+            )
+        )
+    }
+
+    @Test
     fun onlyThePrimaryWalletHashCanMigrateLegacyPassphrase() {
         assertTrue(
             matchesLegacyWalletPassphraseHash(
