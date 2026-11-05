@@ -127,9 +127,7 @@ fun ExportBackUp(onBackPress: () -> Unit = {}) {
 
     fun createBackUp() {
         scope.launch(Dispatchers.IO) {
-            val hash = prefs.getString(PREFS_PASSPHRASE_HASH, "")
-            val hashedPass = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
-            if (hash == hashedPass) {
+            if (io.anonero.util.AppPassphraseStore.verify(context, passPhrase)) {
                 passPhraseDialog = false
                 exportViewModel.createBackUp(passPhrase)
             } else {
