@@ -80,12 +80,13 @@ import io.anonero.ui.home.settings.ProxySettings
 import io.anonero.ui.home.settings.SecureWipe
 import io.anonero.ui.home.settings.SeedSettingsPage
 import io.anonero.ui.home.settings.SettingsDataPage
-import io.anonero.ui.home.settings.ImportWalletPage
 import io.anonero.ui.home.settings.SettingsTradePage
 import io.anonero.ui.home.settings.SettingsPage
 import io.anonero.ui.home.settings.WalletSettingsPage
 import io.anonero.ui.home.spend.ReviewTransactionScreen
 import io.anonero.ui.onboard.graph.LandingScreenRoute
+import io.anonero.ui.onboard.graph.OnboardRestoreScreen
+import io.anonero.ui.onboard.OnboardViewModel
 import io.anonero.util.isIgnoringBatteryOptimizations
 import org.koin.compose.koinInject
 import com.dokar.sonner.Toaster
@@ -125,6 +126,7 @@ fun HomeScreenComposable(
     val walletState = koinInject<WalletState>()
     val walletHandler = koinInject<AnonWalletHandler>()
     val appViewModel = koinInject<io.anonero.ui.viewmodels.AppViewModel>()
+    val onboardViewModel = koinInject<OnboardViewModel>()
     val toastState = rememberToasterState()
     val prefs = context.getSharedPreferences("anonero_prefs", android.content.Context.MODE_PRIVATE)
     val pinLockVisible by walletState.pinLockVisibleFlow.collectAsState(
@@ -465,19 +467,12 @@ fun HomeScreenComposable(
                     composable<SettingsDataRoute> {
                         SettingsDataPage(
                             onBackPress = { bottomNavController.popBackStack() },
-                            navigateTo = { bottomNavController.navigate(it) }
-                        )
-                    }
-                    composable<SettingsImportWalletRoute> {
-                        ImportWalletPage(
-                            onBackPress = { bottomNavController.popBackStack() },
-                            onImportCompleted = {
-                                showBottomNavigation = true
-                                bottomNavController.navigate(TransactionsRoute) {
-                                    popUpTo(bottomNavController.graph.startDestinationId) {
-                                        inclusive = false
-                                    }
-                                    launchSingleTop = true
+                            navigateTo = { route ->
+                                if (route == SettingsImportWalletRoute) {
+                                    onboardViewModel.beginWalletImport()
+                                    mainNavController?.navigate(OnboardRestoreScreen)
+                                } else {
+                                    bottomNavController.navigate(route)
                                 }
                             }
                         )
