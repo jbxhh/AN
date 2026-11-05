@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
@@ -29,14 +31,18 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -66,6 +72,8 @@ import io.anonero.R
 import io.anonero.ui.theme.AnonOutlineButton
 import io.anonero.util.WALLET_PREFERENCES
 import java.io.File
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 private const val WALLET_DISPLAY_NAME_KEY = "wallet_display_name"
 
@@ -82,6 +90,7 @@ fun MultiWalletScreen(
     onWalletSelected: (File) -> Unit,
     onProxySettings: () -> Unit,
     onNewWallet: () -> Unit,
+    onDeleteWallet: suspend (File) -> Boolean,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -96,6 +105,11 @@ fun MultiWalletScreen(
     var editFieldHadFocus by remember { mutableStateOf(false) }
     val editFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val screenScope = rememberCoroutineScope()
+    val deleteActionWidth = 80.dp
+    val deleteActionWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) {
+        deleteActionWidth.toPx()
+    }
     val focusManager = LocalFocusManager.current
     var screenCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var editingFieldBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
@@ -216,6 +230,8 @@ fun MultiWalletScreen(
                         ) {
                             items(wallets, key = { it.name }) { walletFile ->
                                 val isEditing = walletToRename?.name == walletFile.name
+                                var swipeOffsetPx by remember(walletFile.name) { mutableStateOf(0f) }
+                                val rowOffsetPx = swipeOffsetPx.coerceIn(-deleteActionWidthPx, 0f)
                                 val defaultDisplayName = walletDisplayName(
                                     walletName = walletFile.name,
                                     customName = walletPrefs.getString(
@@ -224,27 +240,80 @@ fun MultiWalletScreen(
                                     )
                                 )
 
-                                Row(
+                                Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .heightIn(min = 68.dp)
-                                        .then(
-                                            if (isEditing) {
-                                                Modifier
-                                            } else {
-                                                Modifier.combinedClickable(
+                                        .heightIn(min = 68.dp),
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.CenterEnd)
+                                            .width(deleteActionWidth)
+                                            .heightIn(min = 68.dp)
+                                            .background(MaterialTheme.colorScheme.error),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        TextButton(
+                                            onClick = {
+                                                screenScope.launch {
+                                                    if (onDeleteWallet(walletFile)) {
+                                                        wallets = AnonConfig.getWalletFiles(context)
+                                                        swipeOffsetPx = 0f
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxSize(),
+                                        ) {
+                                            Text(
+                                                text = "删除",
+                                                color = MaterialTheme.colorScheme.onError,
+                                            )
+                                        }
+                                    }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 68.dp)
+                                            .offset { IntOffset(rowOffsetPx.roundToInt(), 0) }
+                                            .then(
+                                                if (isEditing) Modifier else Modifier.pointerInput(walletFile.name) {
+                                                    detectHorizontalDragGestures(
+                                                        onHorizontalDrag = { change, dragAmount ->
+                                                            change.consume()
+                                                            swipeOffsetPx = (swipeOffsetPx + dragAmount)
+                                                                .coerceIn(-deleteActionWidthPx, 0f)
+                                                        },
+                                                        onDragEnd = {
+                                                            swipeOffsetPx = if (swipeOffsetPx <= -deleteActionWidthPx / 2f) {
+                                                                -deleteActionWidthPx
+                                                            } else {
+                                                                0f
+                                                            }
+                                                        },
+                                                        onDragCancel = {
+                                                            swipeOffsetPx = if (swipeOffsetPx <= -deleteActionWidthPx / 2f) {
+                                                                -deleteActionWidthPx
+                                                            } else {
+                                                                0f
+                                                            }
+                                                        },
+                                                    )
+                                                }
+                                            )
+                                            .then(
+                                                if (isEditing) Modifier else Modifier.combinedClickable(
                                                     onClick = { onWalletSelected(walletFile) },
                                                     onLongClick = {
+                                                        swipeOffsetPx = 0f
                                                         editedName = defaultDisplayName
                                                         editFieldHadFocus = false
                                                         walletToRename = walletFile
                                                     }
                                                 )
-                                            }
-                                        )
-                                        .padding(horizontal = 16.dp, vertical = 18.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
+                                            )
+                                            .padding(horizontal = 16.dp, vertical = 18.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
                                     if (isEditing) {
                                         BasicTextField(
                                             value = editedName,
@@ -282,6 +351,7 @@ fun MultiWalletScreen(
                                             fontWeight = FontWeight.SemiBold,
                                             maxLines = 1,
                                         )
+                                    }
                                     }
                                 }
                                 HorizontalDivider(
