@@ -171,7 +171,8 @@ class OnboardViewModel(
 
     suspend fun restoreFromSeed(
         pin: String,
-        passphraseOverride: String? = null
+        passphraseOverride: String? = null,
+        rememberPassphraseGlobally: Boolean = true
     ) {
         if (restorePayload == null) return
 
@@ -213,7 +214,9 @@ class OnboardViewModel(
             throw CancellationException("unable to create wallet ${anonWallet?.status?.errorString}")
         }
         AppPinStore.rememberIfMissing(context, pin)
-        AppPassphraseStore.rememberIfMissing(context, passPhrase)
+        if (rememberPassphraseGlobally) {
+            AppPassphraseStore.rememberIfMissing(context, passPhrase)
+        }
         val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
         // For a standard Monero seed, persist the exact height chosen on the restore
         // screen. Polyseed has no height field, so fall back to the native wallet value.
