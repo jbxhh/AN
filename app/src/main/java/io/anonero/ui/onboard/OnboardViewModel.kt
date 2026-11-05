@@ -11,6 +11,7 @@ import io.anonero.model.WalletManager
 import io.anonero.services.PREF_FORCE_FRESH_WALLET_SCAN
 import io.anonero.services.PREF_NEW_WALLET_SCAN_FROM_NODE_HEIGHT
 import io.anonero.services.WalletState
+import io.anonero.util.AppPinStore
 import io.anonero.util.KeyStoreHelper
 import io.anonero.util.PREFS_PASSPHRASE_HASH
 import io.anonero.util.PREFS_PIN_HASH
@@ -74,6 +75,7 @@ class OnboardViewModel(
                 walletFile.delete()
                 throw CancellationException(context.getString(R.string.unable_to_create_wallet))
             }
+            AppPinStore.rememberIfMissing(context, pin)
             // A newly created wallet has no historical activity. Wait for its selected
             // daemon to report the live chain height, then start scanning from that tip.
             val initialRestoreHeight = anonWallet.getRestoreHeight().coerceAtLeast(0L)
@@ -132,6 +134,7 @@ class OnboardViewModel(
                 walletFile.delete()
                 throw CancellationException(context.getString(R.string.unable_to_create_wallet))
             }
+            AppPinStore.rememberIfMissing(context, pin)
             val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
             prefs.edit(commit = true) {
                 putString(AnonConfig.walletPreferenceKey(context, "passPhraseHash"), crazyPass)
@@ -200,6 +203,7 @@ class OnboardViewModel(
             walletFile.delete()
             throw CancellationException("unable to create wallet ${anonWallet?.status?.errorString}")
         }
+        AppPinStore.rememberIfMissing(context, pin)
         val crazyPass: String = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
         // For a standard Monero seed, persist the exact height chosen on the restore
         // screen. Polyseed has no height field, so fall back to the native wallet value.
