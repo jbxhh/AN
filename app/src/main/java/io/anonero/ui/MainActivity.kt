@@ -67,6 +67,7 @@ import io.anonero.ui.onboard.graph.OnboardNodeSetupScreen
 import io.anonero.ui.onboard.graph.OnboardMultiWalletCreatePinScreen
 import io.anonero.ui.onboard.graph.onboardingGraph
 import io.anonero.util.AppPinStore
+import io.anonero.util.PREFS_PINLESS_WALLET
 import io.anonero.util.WALLET_PREFERENCES
 import io.anonero.util.WALLET_USE_TOR
 import io.anonero.ui.wallets.WalletListRoute
@@ -333,7 +334,12 @@ class MainActivity : ComponentActivity() {
                                                 val managedWalletPin = WalletManager.instance
                                                     ?.getManagedWalletPassword().orEmpty()
                                                 val primaryPin = AppPinStore.get(context)
-                                                    ?: managedWalletPin.also {
+                                                    ?: managedWalletPin.takeIf {
+                                                        it.isNotEmpty() && !anonPrefs.getBoolean(
+                                                            AnonConfig.walletPreferenceKey(context, PREFS_PINLESS_WALLET),
+                                                            false
+                                                        )
+                                                    }.orEmpty().also {
                                                         AppPinStore.rememberIfMissing(context, it)
                                                     }
                                                 val canReusePrimaryPin = primaryPin.isNotEmpty() &&
@@ -408,7 +414,12 @@ class MainActivity : ComponentActivity() {
                                                 val managedWalletPin = WalletManager.instance
                                                     ?.getManagedWalletPassword().orEmpty()
                                                 val primaryPin = AppPinStore.get(context)
-                                                    ?: managedWalletPin.also {
+                                                    ?: managedWalletPin.takeIf {
+                                                        it.isNotEmpty() && !anonPrefs.getBoolean(
+                                                            AnonConfig.walletPreferenceKey(context, PREFS_PINLESS_WALLET),
+                                                            false
+                                                        )
+                                                    }.orEmpty().also {
                                                         AppPinStore.rememberIfMissing(context, it)
                                                     }
                                                 previousWalletName = AnonConfig.getActiveWalletName(context)
