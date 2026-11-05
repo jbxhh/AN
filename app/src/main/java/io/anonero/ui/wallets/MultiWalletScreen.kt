@@ -256,24 +256,25 @@ fun MultiWalletScreen(
                                                 .align(Alignment.CenterEnd)
                                                 .width(deleteActionWidth)
                                                 .heightIn(min = 68.dp)
-                                                .background(MaterialTheme.colorScheme.error),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            TextButton(
-                                                onClick = {
+                                                .background(MaterialTheme.colorScheme.error)
+                                                .clickable(
+                                                    interactionSource = remember(walletFile.name) {
+                                                        androidx.compose.foundation.interaction.MutableInteractionSource()
+                                                    },
+                                                    indication = null,
+                                                ) {
                                                     screenScope.launch {
                                                         onDeleteWallet(walletFile)
                                                         wallets = AnonConfig.getWalletFiles(context)
                                                         swipeOffsetPx = 0f
                                                     }
                                                 },
-                                                modifier = Modifier.fillMaxSize(),
-                                            ) {
-                                                Text(
-                                                    text = "删除",
-                                                    color = MaterialTheme.colorScheme.onError,
-                                                )
-                                            }
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Text(
+                                                text = "删除",
+                                                color = MaterialTheme.colorScheme.onError,
+                                            )
                                         }
                                     }
                                     Row(
