@@ -67,6 +67,7 @@ import io.anonero.ui.onboard.graph.OnboardNodeSetupScreen
 import io.anonero.ui.onboard.graph.OnboardMultiWalletCreatePinScreen
 import io.anonero.ui.onboard.graph.onboardingGraph
 import io.anonero.util.AppPinStore
+import io.anonero.util.AppPassphraseStore
 import io.anonero.util.PREFS_PINLESS_WALLET
 import io.anonero.util.WALLET_PREFERENCES
 import io.anonero.util.WALLET_USE_TOR
@@ -428,7 +429,7 @@ class MainActivity : ComponentActivity() {
                                                 anonWalletHandler.detachWalletForReplacement(replacement)
                                                 walletState.preparePendingWalletHome()
                                                 onboardViewModel.setMode(Mode.CREATE)
-                                                onboardViewModel.setPassPhrase("")
+                                                onboardViewModel.setPassPhrase(AppPassphraseStore.get(context).orEmpty())
                                                 anonWalletHandler.beginImmediateWalletCreationHome()
 
                                                 // This click callback runs on the Android main thread.
