@@ -250,28 +250,30 @@ fun MultiWalletScreen(
                                         .fillMaxWidth()
                                         .heightIn(min = 68.dp),
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.CenterEnd)
-                                            .width(deleteActionWidth)
-                                            .heightIn(min = 68.dp)
-                                            .background(MaterialTheme.colorScheme.error),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        TextButton(
-                                            onClick = {
-                                                screenScope.launch {
-                                                    onDeleteWallet(walletFile)
-                                                    wallets = AnonConfig.getWalletFiles(context)
-                                                    swipeOffsetPx = 0f
-                                                }
-                                            },
-                                            modifier = Modifier.fillMaxSize(),
+                                    if (swipeOffsetPx < 0f) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.CenterEnd)
+                                                .width(deleteActionWidth)
+                                                .heightIn(min = 68.dp)
+                                                .background(MaterialTheme.colorScheme.error),
+                                            contentAlignment = Alignment.Center,
                                         ) {
-                                            Text(
-                                                text = "删除",
-                                                color = MaterialTheme.colorScheme.onError,
-                                            )
+                                            TextButton(
+                                                onClick = {
+                                                    screenScope.launch {
+                                                        onDeleteWallet(walletFile)
+                                                        wallets = AnonConfig.getWalletFiles(context)
+                                                        swipeOffsetPx = 0f
+                                                    }
+                                                },
+                                                modifier = Modifier.fillMaxSize(),
+                                            ) {
+                                                Text(
+                                                    text = "删除",
+                                                    color = MaterialTheme.colorScheme.onError,
+                                                )
+                                            }
                                         }
                                     }
                                     Row(
