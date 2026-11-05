@@ -16,6 +16,8 @@ import io.anonero.ui.home.graph.routes.Home
 import io.anonero.ui.home.graph.routes.HomeScreenRoute
 import io.anonero.ui.home.graph.routes.LockScreenRoute
 import org.koin.compose.koinInject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 
 fun NavGraphBuilder.homeGraph(navController: NavHostController) {
@@ -71,6 +73,11 @@ fun NavGraphBuilder.homeGraph(navController: NavHostController) {
                     onUnLocked = { _, shortCut ->
                         selectedShortcut.value = shortCut
                         unlockCompleted.value = true
+                        // A wallet opened after selecting it from the locked wallet list
+                        // is now active; close any displaced background wallet off the UI thread.
+                        walletHandler.scope.launch(Dispatchers.IO) {
+                            walletHandler.finishPendingWalletReplacement()
+                        }
                     }
                 )
             }
