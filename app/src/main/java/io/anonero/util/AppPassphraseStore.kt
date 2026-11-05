@@ -5,8 +5,8 @@ import io.anonero.AnonConfig
 import java.security.MessageDigest
 
 /**
- * Stores and verifies the one extra passphrase configured during the app's
- * first wallet setup. It is app-scoped, not tied to the currently selected wallet.
+ * Stores the original first-run passphrase. Wallet-specific hashes remain scoped
+ * to each wallet; secure deletion accepts a matching phrase from any listed wallet.
  */
 object AppPassphraseStore {
     private const val PRIMARY_PASSPHRASE_STORE_ID = "__anonero_primary_app_passphrase__"
@@ -31,9 +31,9 @@ object AppPassphraseStore {
     }
 
     /**
-     * Verify against the app-wide encrypted value. Existing installations may
-     * not have that value yet, so migrate only from the original primary
-     * wallet's legacy passphrase hash, never from a secondary wallet.
+     * Verify a secure-delete passphrase against every wallet currently in the list.
+     * Older single-wallet installations may still keep the primary wallet hash
+     * in the original unscoped preference key.
      */
     fun verify(context: Context, passphrase: String): Boolean {
         val appContext = context.applicationContext
