@@ -327,7 +327,7 @@ class MainActivity : ComponentActivity() {
                             //landing screen and onboarding screens
                             onboardingGraph(navController, onboardViewModel)
                             //home bottom navigation
-                            homeGraph(navController)
+                            homeGraph(navController, onboardViewModel)
                             composable<WalletListRoute> {
                                 MultiWalletScreen(
                                     onWalletSelected = { walletFile ->
