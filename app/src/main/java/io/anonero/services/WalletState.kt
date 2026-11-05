@@ -766,6 +766,14 @@ class WalletState(private val prefs: SharedPreferences) {
      * Publish local wallet data independently from daemon startup and blockchain scanning.
      * The UI should not need a successful Tor/RPC connection just to show an address.
      */
+    /** Publish only the selected wallet's local balance before Home is shown. */
+    @Synchronized
+    fun publishWalletBalanceSnapshot(wallet: Wallet) {
+        if (walletWipeInProgress.get() || wallet !== getWallet) return
+        resetSnapshotForWalletChange(wallet)
+        updateBalanceFromWallet(wallet)
+    }
+
     @Synchronized
     fun publishWalletSnapshot(wallet: Wallet? = getWallet) {
         if (walletWipeInProgress.get() || wallet == null) return
