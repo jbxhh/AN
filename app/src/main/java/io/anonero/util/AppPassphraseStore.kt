@@ -37,11 +37,6 @@ object AppPassphraseStore {
      */
     fun verify(context: Context, passphrase: String): Boolean {
         val appContext = context.applicationContext
-        val savedPassphrase = get(appContext)
-        if (savedPassphrase != null && constantTimeEquals(savedPassphrase, passphrase)) {
-            return true
-        }
-
         val candidateHash = runCatching {
             KeyStoreHelper.getCrazyPass(appContext, passphrase)
         }.getOrNull() ?: return false
@@ -49,28 +44,18 @@ object AppPassphraseStore {
             WALLET_PREFERENCES,
             Context.MODE_PRIVATE
         )
+        val activeWalletName = AnonConfig.getActiveWalletName(appContext)
         val activeWalletHash = walletPreferences.getString(
-            AnonConfig.walletPreferenceKey(appContext, PREFS_PASSPHRASE_HASH),
+            "$activeWalletName::$PREFS_PASSPHRASE_HASH",
             null
         )
-        if (
-            matchesCurrentWalletPassphrase(
-                savedPassphrase,
-                activeWalletHash,
-                passphrase,
-                candidateHash
-            )
-        ) return true
-        if (savedPassphrase != null) return false
-        // The original single wallet is created as "anon". Never migrate the
-        // app-wide passphrase from a secondary wallet's legacy password hash.
-        val primaryWalletName = AnonConfig.getWalletFiles(appContext)
-            .firstOrNull()?.name ?: "anon"
-        val primaryWalletHash = walletPreferences.getString(
-            "$primaryWalletName::$PREFS_PASSPHRASE_HASH",
-            null
-        ) ?: walletPreferences.getString(PREFS_PASSPHRASE_HASH, null)
-        if (!matchesLegacyWalletPassphraseHash(primaryWalletHash, candidateHash)) return false
+        if (matchesWalletPassphraseHash(activeWalletHash, candidateHash)) return true
+
+        // Older single-wallet installations may still have the original unscoped
+        // passphrase hash. It is valid only for the original "anon" wallet.
+        if (activeWalletName != "anon") return false
+        val legacyWalletHash = walletPreferences.getString(PREFS_PASSPHRASE_HASH, null)
+        if (!matchesWalletPassphraseHash(legacyWalletHash, candidateHash)) return false
 
         rememberIfMissing(appContext, passphrase)
         return true
@@ -84,18 +69,12 @@ object AppPassphraseStore {
     }
 }
 
-internal fun matchesCurrentWalletPassphrase(
-    savedAppPassphrase: String?,
-    activeWalletHash: String?,
-    candidatePassphrase: String,
+internal fun matchesWalletPassphraseHash(
+    walletPassphraseHash: String?,
     candidateHash: String
 ): Boolean {
-    if (candidateHash.isBlank()) return false
-    if (
-        savedAppPassphrase != null &&
-        constantTimeEquals(savedAppPassphrase, candidatePassphrase)
-    ) return true
-    return matchesLegacyWalletPassphraseHash(activeWalletHash, candidateHash)
+    if (candidateHash.isBlank() || walletPassphraseHash.isNullOrBlank()) return false
+    return constantTimeEquals(walletPassphraseHash, candidateHash)
 }
 
 internal fun matchesLegacyWalletPassphraseHash(
