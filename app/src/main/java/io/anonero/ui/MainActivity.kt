@@ -418,22 +418,13 @@ class MainActivity : ComponentActivity() {
                                                 managedWalletPin = WalletManager.instance
                                                     ?.getManagedWalletPassword().orEmpty()
                                                 replacement = anonWalletHandler.prepareWalletReplacement(managedWalletPin)
-                                                stopNotificationService()
-
-                                                if (AnonConfig.getWalletFiles(context).isEmpty()) {
-                                                    AnonConfig.setActiveWallet(context, "anon")
-                                                } else {
-                                                    AnonConfig.createNewWalletFile(context)
-                                                }
-
                                                 anonWalletHandler.detachWalletForReplacement(replacement)
                                                 walletState.preparePendingWalletHome()
                                                 onboardViewModel.setMode(Mode.CREATE)
-                                                onboardViewModel.setPassPhrase(AppPassphraseStore.get(context).orEmpty())
                                                 anonWalletHandler.beginImmediateWalletCreationHome()
 
-                                                // This click callback runs on the Android main thread.
-                                                // Navigate before starting any native wallet work.
+                                                // Show the existing Home screen before file I/O,
+                                                // service shutdown, or native wallet creation.
                                                 navController.navigate(HomeScreenRoute(pinVerified = true)) {
                                                     popUpTo(WalletListRoute) { inclusive = true }
                                                     launchSingleTop = true
@@ -442,6 +433,22 @@ class MainActivity : ComponentActivity() {
                                                 val previousWalletReplacement = replacement
                                                 anonWalletHandler.scope.launch(Dispatchers.IO) {
                                                     try {
+                                                        withContext(Dispatchers.Main) {
+                                                            stopNotificationService()
+                                                        }
+
+                                                        // File enumeration/creation belongs off the
+                                                        // navigation thread; the visible Home screen
+                                                        // must not wait for this disk work.
+                                                        if (AnonConfig.getWalletFiles(context).isEmpty()) {
+                                                            AnonConfig.setActiveWallet(context, "anon")
+                                                        } else {
+                                                            AnonConfig.createNewWalletFile(context)
+                                                        }
+
+                                                        onboardViewModel.setPassPhrase(
+                                                            AppPassphraseStore.get(context).orEmpty()
+                                                        )
                                                         val primaryPin = AppPinStore.get(context)
                                                             ?: managedWalletPin.takeIf {
                                                                 it.isNotEmpty() && !anonPrefs.getBoolean(
