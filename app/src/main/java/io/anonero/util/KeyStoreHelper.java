@@ -45,7 +45,7 @@ import java.security.SignatureException;
 import java.security.UnrecoverableEntryException;
 import java.security.cert.CertificateException;
 import java.util.Calendar;
-import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.GregorianCalendar;
 
 import javax.crypto.BadPaddingException;
@@ -169,18 +169,21 @@ public class KeyStoreHelper {
     public static void clearAllStoredPasswords(@NonNull Context context) {
         SharedPreferences prefs = context.getSharedPreferences(
                 SecurityConstants.WALLET_PASS_PREFS_NAME, Context.MODE_PRIVATE);
-        for (String wallet : new ArrayList<>(prefs.getAll().keySet())) {
-            String walletKeyAlias = SecurityConstants.WALLET_PASS_KEY_PREFIX + wallet;
-            try {
-                deleteKeys(walletKeyAlias);
-            } catch (KeyStoreException ex) {
-                throw new IllegalStateException("Unable to delete stored wallet credential key", ex);
-            }
-        }
         try {
-            deleteKeys(RSA_ALIAS);
-        } catch (KeyStoreException ex) {
-            throw new IllegalStateException("Unable to delete app credential hash key", ex);
+            KeyStore keyStore = KeyStore.getInstance(
+                    SecurityConstants.KEYSTORE_PROVIDER_ANDROID_KEYSTORE);
+            keyStore.load(null);
+            Enumeration<String> aliases = keyStore.aliases();
+            while (aliases.hasMoreElements()) {
+                String alias = aliases.nextElement();
+                if (alias.startsWith(SecurityConstants.WALLET_PASS_KEY_PREFIX) ||
+                        RSA_ALIAS.equals(alias)) {
+                    keyStore.deleteEntry(alias);
+                }
+            }
+        } catch (IOException | NoSuchAlgorithmException | CertificateException |
+                 KeyStoreException ex) {
+            throw new IllegalStateException("Unable to clear app and wallet credential keys", ex);
         }
         if (!prefs.edit().clear().commit()) {
             throw new IllegalStateException("Unable to persist credential-store cleanup");
