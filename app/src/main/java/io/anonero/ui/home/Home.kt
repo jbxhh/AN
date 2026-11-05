@@ -105,7 +105,7 @@ fun HomeScreenComposable(
     modifier: Modifier = Modifier,
     mainNavController: NavHostController?,
     initialShortcut: LockScreenShortCut = LockScreenShortCut.HOME,
-    onboardViewModel: OnboardViewModel,
+    onboardViewModel: OnboardViewModel? = null,
 ) {
     val context = LocalContext.current
     val appPreferences = remember(context) {
@@ -469,8 +469,10 @@ fun HomeScreenComposable(
                             onBackPress = { bottomNavController.popBackStack() },
                             navigateTo = { route ->
                                 if (route == SettingsImportWalletRoute) {
-                                    onboardViewModel.beginWalletImport()
-                                    mainNavController?.navigate(OnboardRestoreScreen)
+                                    onboardViewModel?.let {
+                                        it.beginWalletImport()
+                                        mainNavController?.navigate(OnboardRestoreScreen)
+                                    }
                                 } else {
                                     bottomNavController.navigate(route)
                                 }
