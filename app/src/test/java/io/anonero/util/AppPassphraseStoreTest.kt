@@ -19,6 +19,18 @@ class AppPassphraseStoreTest {
     }
 
     @Test
+    fun emptyPassphraseCanMatchWalletRestoredWithoutAnOffset() {
+        assertTrue(
+            matchesCurrentWalletPassphrase(
+                savedAppPassphrase = "first-app-passphrase",
+                activeWalletHash = "empty_offset_wallet_hash",
+                candidatePassphrase = "",
+                candidateHash = "empty_offset_wallet_hash"
+            )
+        )
+    }
+
+    @Test
     fun wrongPassphraseDoesNotMatchImportedWalletHash() {
         assertFalse(
             matchesCurrentWalletPassphrase(
