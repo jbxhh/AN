@@ -170,12 +170,20 @@ public class KeyStoreHelper {
         SharedPreferences prefs = context.getSharedPreferences(
                 SecurityConstants.WALLET_PASS_PREFS_NAME, Context.MODE_PRIVATE);
         for (String wallet : new ArrayList<>(prefs.getAll().keySet())) {
-            removeWalletUserPass(context, wallet);
+            String walletKeyAlias = SecurityConstants.WALLET_PASS_KEY_PREFIX + wallet;
+            try {
+                deleteKeys(walletKeyAlias);
+            } catch (KeyStoreException ex) {
+                throw new IllegalStateException("Unable to delete stored wallet credential key", ex);
+            }
         }
         try {
             deleteKeys(RSA_ALIAS);
         } catch (KeyStoreException ex) {
-            Timber.tag(TAG).e(ex);
+            throw new IllegalStateException("Unable to delete app credential hash key", ex);
+        }
+        if (!prefs.edit().clear().commit()) {
+            throw new IllegalStateException("Unable to persist credential-store cleanup");
         }
     }
 
