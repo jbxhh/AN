@@ -39,6 +39,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
@@ -88,6 +96,19 @@ fun MultiWalletScreen(
     var editFieldHadFocus by remember { mutableStateOf(false) }
     val editFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    var screenCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var editingFieldBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+
+    fun finishEditing() {
+        val walletFile = walletToRename ?: return
+        editFieldHadFocus = false
+        saveWalletName(walletFile)
+        walletToRename = null
+        keyboardController?.hide()
+        focusManager.clearFocus(force = true)
+        editingFieldBounds = null
+    }
 
     fun saveWalletName(walletFile: File) {
         val customName = editedName.trim()
@@ -118,7 +139,26 @@ fun MultiWalletScreen(
         }
     }
 
-    Scaffold { paddingValues ->
+    Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { screenCoordinates = it }
+            .pointerInput(walletToRename?.name, editingFieldBounds) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val down = event.changes.firstOrNull {
+                            it.pressed && !it.previousPressed
+                        } ?: continue
+                        val fieldBounds = editingFieldBounds ?: continue
+                        val screenOrigin = screenCoordinates?.positionInRoot() ?: Offset.Zero
+                        if (!fieldBounds.contains(down.position + screenOrigin)) {
+                            finishEditing()
+                        }
+                    }
+                }
+            }
+    ) { paddingValues ->
         Column(
             modifier = Modifier
                 .padding(paddingValues)
@@ -184,13 +224,6 @@ fun MultiWalletScreen(
                                     )
                                 )
 
-                                val finishEditing = {
-                                    editFieldHadFocus = false
-                                    saveWalletName(walletFile)
-                                    walletToRename = null
-                                    keyboardController?.hide()
-                                }
-
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -232,6 +265,7 @@ fun MultiWalletScreen(
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .focusRequester(editFocusRequester)
+                                                .onGloballyPositioned { editingFieldBounds = it.boundsInRoot() }
                                                 .onFocusChanged { focusState ->
                                                     if (focusState.isFocused) {
                                                         editFieldHadFocus = true
