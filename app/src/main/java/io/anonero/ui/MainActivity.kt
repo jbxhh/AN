@@ -441,9 +441,11 @@ class MainActivity : ComponentActivity() {
 
                                                 // Enter the existing Home destination now. Native wallet creation,
                                                 // old-wallet cleanup, address setup and snapshot reads all run below.
-                                                navController.navigate(HomeScreenRoute(pinVerified = true)) {
-                                                    popUpTo(WalletListRoute) { inclusive = true }
-                                                    launchSingleTop = true
+                                                withContext(Dispatchers.Main.immediate) {
+                                                    navController.navigate(HomeScreenRoute(pinVerified = true)) {
+                                                        popUpTo(WalletListRoute) { inclusive = true }
+                                                        launchSingleTop = true
+                                                    }
                                                 }
 
                                                 val previousWalletReplacement = replacement
