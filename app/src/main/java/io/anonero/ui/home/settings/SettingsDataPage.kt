@@ -161,6 +161,15 @@ fun SettingsDataPage(
                     }
                     HorizontalDivider(thickness = 1.dp)
                 }
+                item {
+                    ListItem(
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                        headlineContent = {
+                            Text("导入钱包", style = MaterialTheme.typography.titleMedium)
+                        }
+                    )
+                    HorizontalDivider(thickness = 1.dp)
+                }
             }
         }
     }
