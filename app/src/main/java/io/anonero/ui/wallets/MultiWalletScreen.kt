@@ -415,10 +415,10 @@ private fun walletDisplayNamePreferenceKey(walletFile: File): String =
 internal fun walletDisplayName(walletName: String, customName: String?): String {
     customName?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
 
-    if (walletName == "anon") return "Monero Wallet 1"
+    if (walletName == "anon") return "XMR 1"
     val walletNumber = walletName.removePrefix("wallet_").toIntOrNull()
     return if (walletNumber != null) {
-        "Monero Wallet $walletNumber"
+        "XMR $walletNumber"
     } else {
         walletName
     }
