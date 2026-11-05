@@ -59,7 +59,6 @@ class OnboardViewModel(
         if (AnonConfig.context == null) return
         withContext(Dispatchers.IO) {
             val context = AnonConfig.context!!.applicationContext
-        passPhrase = AppPassphraseStore.get(context) ?: passPhrase
             passPhrase = AppPassphraseStore.get(context) ?: passPhrase
             val walletFile = AnonConfig.getDefaultWalletFile(context)
             AnonConfig.getDefaultWalletDir(context).mkdirs()
@@ -174,6 +173,7 @@ class OnboardViewModel(
         if (restorePayload == null) return
 
         val context = AnonConfig.context!!.applicationContext
+        passPhrase = AppPassphraseStore.get(context) ?: passPhrase
         val walletFile = AnonConfig.getDefaultWalletFile(context)
         AnonConfig.getDefaultWalletDir(context).mkdirs()
         delay(100)
