@@ -542,8 +542,7 @@ class MainActivity : ComponentActivity() {
                                             val previousWalletName = AnonConfig.getActiveWalletName(context)
                                             var managedWalletPin = ""
                                             var replacement: io.anonero.services.WalletReplacement? = null
-                                            try {
-                                                managedWalletPin = WalletManager.instance
+                                            managedWalletPin = WalletManager.instance
                                                     ?.getManagedWalletPassword().orEmpty()
                                                 replacement = anonWalletHandler.prepareWalletReplacement(managedWalletPin)
                                                 anonWalletHandler.detachWalletForReplacement(replacement)
@@ -700,7 +699,6 @@ class MainActivity : ComponentActivity() {
                                                         anonWalletHandler.endWalletTransition()
                                                     }
                                                 }
-                                            }
                                         }
                                     },
                                 )
