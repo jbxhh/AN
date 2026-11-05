@@ -258,6 +258,15 @@ class WalletState(private val prefs: SharedPreferences) {
     }
 
     @Synchronized
+    fun prepareImmediateNewWalletHome(wallet: Wallet) {
+        resetSnapshotForWalletChange(wallet)
+        // A newly created wallet has no prior funds. Publish a known zero balance
+        // before Home starts collecting balanceInfo, so the UI never sees null.
+        _balanceInfo.value = 0L
+        _unLockedBalance.value = 0L
+    }
+
+    @Synchronized
     private fun resetSnapshotForWalletChange(wallet: Wallet) {
         if (publishedWalletIdentity.get() === wallet) return
         publishedWalletIdentity.set(wallet)
