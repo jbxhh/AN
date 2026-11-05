@@ -225,7 +225,6 @@ class WalletState(private val prefs: SharedPreferences) {
      * gates. This is used immediately before navigating to a newly opened wallet; the
      * full native snapshot is read afterward on a background dispatcher.
      */
-    @Synchronized
     fun preparePendingWalletHome() {
         publishedWalletIdentity.set(null)
         localSnapshotAttemptedWallet.set(null)
