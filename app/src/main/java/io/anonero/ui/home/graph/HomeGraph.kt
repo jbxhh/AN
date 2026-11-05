@@ -23,7 +23,7 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 
-fun NavGraphBuilder.homeGraph(navController: NavHostController) {
+fun NavGraphBuilder.homeGraph(navController: NavHostController, onboardViewModel: io.anonero.ui.onboard.OnboardViewModel) {
     val walletStatus = WalletManager.instance?.wallet?.status?.isOk
     // After process death there is no live WalletManager handle, so walletStatus
     // is false even if a secure wipe was already accepted. The durable wipe marker
@@ -75,6 +75,7 @@ fun NavGraphBuilder.homeGraph(navController: NavHostController) {
                 HomeScreenComposable(
                     mainNavController = navController,
                     initialShortcut = selectedShortcut.value,
+                    onboardViewModel = onboardViewModel,
                 )
             } else {
                 if (immediateWalletSelectionPending) {
