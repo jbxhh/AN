@@ -276,6 +276,7 @@ class MainActivity : ComponentActivity() {
             TorSplash(enableTor = useTor) {
                 AnonNeroTheme {
                     val navController = rememberNavController()
+                    var walletSelectedForUnlock by remember { mutableStateOf(false) }
                     val currentBackStackEntry by navController.currentBackStackEntryAsState()
                     val isHomeGraphVisible = currentBackStackEntry?.destination?.hierarchy
                         ?.any { it.hasRoute<Home>() } == true
@@ -288,6 +289,24 @@ class MainActivity : ComponentActivity() {
                     ).let { appPreferences ->
                         appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_REQUESTED, false) ||
                             appPreferences.getBoolean(AnonConfig.PREF_WALLET_WIPE_PENDING, false)
+                    }
+                    LaunchedEffect(
+                        showLockScreen,
+                        isHomeGraphVisible,
+                        walletSelectedForUnlock,
+                        deletionWorkflowActive
+                    ) {
+                        if (
+                            showLockScreen &&
+                            isHomeGraphVisible &&
+                            !walletSelectedForUnlock &&
+                            !deletionWorkflowActive
+                        ) {
+                            navController.navigate(WalletListRoute) {
+                                popUpTo(Home::class.qualifiedName!!) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        }
                     }
                     Box(modifier = androidx.compose.ui.Modifier.fillMaxSize()) {
                         NavHost(
@@ -315,11 +334,15 @@ class MainActivity : ComponentActivity() {
                                             val isSameWallet = previousWalletName == walletFile.name
                                             if (isSameWallet) {
                                                 val walletAlreadyOpen =
-                                                    !walletState.pinLockVisible &&
-                                                        WalletManager.instance?.wallet?.let {
-                                                            it.name == walletFile.name && it.status.isOk
-                                                        } == true
+                                                    WalletManager.instance?.wallet?.let {
+                                                        it.name == walletFile.name && it.status.isOk
+                                                    } == true
                                                 withContext(Dispatchers.Main) {
+                                                    walletSelectedForUnlock =
+                                                        walletState.pinLockVisible && walletAlreadyOpen
+                                                    if (walletState.pinLockVisible && !walletAlreadyOpen) {
+                                                        walletState.dismissPinLockScreen()
+                                                    }
                                                     navController.navigate(
                                                         HomeScreenRoute(pinVerified = walletAlreadyOpen)
                                                     ) {
@@ -332,6 +355,8 @@ class MainActivity : ComponentActivity() {
 
                                             if (!anonWalletHandler.tryBeginWalletTransition()) return@launch
                                             try {
+                                                val walletWasPinLocked = walletState.pinLockVisible
+                                                walletSelectedForUnlock = false
                                                 val managedWalletPin = WalletManager.instance
                                                     ?.getManagedWalletPassword().orEmpty()
                                                 val primaryPin = AppPinStore.get(context)
@@ -345,12 +370,15 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                 val canReusePrimaryPin = primaryPin.isNotEmpty() &&
                                                     managedWalletPin.isNotEmpty() &&
-                                                    !walletState.pinLockVisible
+                                                    !walletWasPinLocked
                                                 val replacement = anonWalletHandler.prepareWalletReplacement(managedWalletPin)
 
                                                 stopNotificationService()
                                                 AnonConfig.setActiveWallet(context, walletFile.name)
                                                 anonWalletHandler.detachWalletForReplacement(replacement)
+                                                if (walletWasPinLocked) {
+                                                    walletState.dismissPinLockScreen()
+                                                }
 
                                                 val targetWalletOpened = if (canReusePrimaryPin) {
                                                     runCatching {
@@ -587,6 +615,7 @@ class MainActivity : ComponentActivity() {
                                     // The PIN has already been verified by LockScreen. Dismiss
                                     // the overlay immediately; background-sync shutdown and refresh
                                     // recovery must never trap the user on the PIN screen.
+                                    walletSelectedForUnlock = false
                                     val appPreferences = getSharedPreferences(
                                         AnonConfig.APP_PREFERENCES, MODE_PRIVATE
                                     )
