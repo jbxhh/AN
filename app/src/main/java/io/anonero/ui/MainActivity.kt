@@ -474,8 +474,15 @@ class MainActivity : ComponentActivity() {
                                                                 Timber.tag(TAG).w(it, "Unable to publish new wallet snapshot")
                                                             }
                                                         }
-                                                        if (activeWallet === createdWallet && !configuredNode.isNullOrBlank()) {
-                                                            anonWalletHandler.startService()
+                                                        if (activeWallet === createdWallet) {
+                                                            if (!configuredNode.isNullOrBlank()) {
+                                                                anonWalletHandler.startService()
+                                                            }
+                                                            withContext(Dispatchers.Main) {
+                                                                if (!notificationPermissionRequestInProgress) {
+                                                                    startNotificationService()
+                                                                }
+                                                            }
                                                         }
                                                     } catch (error: Exception) {
                                                         Timber.tag(TAG).e(error, "Unable to create a new wallet in the background")
