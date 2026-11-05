@@ -343,6 +343,7 @@ class MainActivity : ComponentActivity() {
                                                         AppPinStore.rememberIfMissing(context, it)
                                                     }
                                                 val canReusePrimaryPin = primaryPin.isNotEmpty() &&
+                                                    managedWalletPin.isNotEmpty() &&
                                                     !walletState.pinLockVisible
                                                 val replacement = anonWalletHandler.prepareWalletReplacement(managedWalletPin)
 
