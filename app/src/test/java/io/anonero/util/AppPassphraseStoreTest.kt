@@ -5,6 +5,43 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AppPassphraseStoreTest {
+
+    @Test
+    fun importedWalletPassphraseWorksEvenWhenAppPassphraseIsDifferent() {
+        assertTrue(
+            matchesCurrentWalletPassphrase(
+                savedAppPassphrase = "first-app-passphrase",
+                activeWalletHash = "imported_wallet_hash",
+                candidatePassphrase = "imported-wallet-passphrase",
+                candidateHash = "imported_wallet_hash"
+            )
+        )
+    }
+
+    @Test
+    fun wrongPassphraseDoesNotMatchImportedWalletHash() {
+        assertFalse(
+            matchesCurrentWalletPassphrase(
+                savedAppPassphrase = "first-app-passphrase",
+                activeWalletHash = "imported_wallet_hash",
+                candidatePassphrase = "wrong-passphrase",
+                candidateHash = "wrong_wallet_hash"
+            )
+        )
+    }
+
+    @Test
+    fun originalAppPassphraseStillWorks() {
+        assertTrue(
+            matchesCurrentWalletPassphrase(
+                savedAppPassphrase = "first-app-passphrase",
+                activeWalletHash = "imported_wallet_hash",
+                candidatePassphrase = "first-app-passphrase",
+                candidateHash = "first_wallet_hash"
+            )
+        )
+    }
+
     @Test
     fun onlyThePrimaryWalletHashCanMigrateTheAppPassphrase() {
         assertTrue(
