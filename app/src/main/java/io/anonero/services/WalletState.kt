@@ -226,6 +226,34 @@ class WalletState(private val prefs: SharedPreferences) {
      * full native snapshot is read afterward on a background dispatcher.
      */
     @Synchronized
+    fun preparePendingWalletHome() {
+        publishedWalletIdentity.set(null)
+        localSnapshotAttemptedWallet.set(null)
+        _transactions.value = emptyList()
+        _subAddresses.value = emptyList()
+        _balanceInfo.value = null
+        _walletHeight.value = 0L
+        _scanTracking.set(false)
+        _scanStartHeight.set(0L)
+        _unLockedBalance.value = null
+        _walletStatus.value = null
+        _nextAddress.value = null
+        _coins.value = emptyList()
+        _syncProgress.value = null
+        _connectedDaemon.value = null
+        _daemonTargetHeight.set(0L)
+        _scanDaemonHeight.set(0L)
+        _connectionStatus.value = null
+        _previousConnectionStatus.set(null)
+        _isLoading.value = false
+        _manualRefreshInProgress.value = false
+        _isSyncing.set(false)
+        _backgroundSync.value = false
+        _pinLockVisible.value = false
+        scanPreferenceIdentity.set(null)
+    }
+
+    @Synchronized
     fun prepareImmediateWalletHome(wallet: Wallet) {
         resetSnapshotForWalletChange(wallet)
     }
