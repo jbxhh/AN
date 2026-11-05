@@ -14,6 +14,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
@@ -23,10 +26,16 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -43,10 +52,92 @@ import io.anonero.ui.home.graph.routes.SettingsNodeRoute
 import io.anonero.ui.home.graph.routes.SettingsTradeRoute
 import io.anonero.ui.home.graph.routes.SettingsWalletRoute
 import io.anonero.ui.home.graph.routes.SettingsViewSeedRoute
+import io.anonero.util.AppPassphraseStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsPage(
+    modifier: Modifier = Modifier,
+    onBackPress: () -> Unit = {},
+    navigateTo: (param: Any) -> Unit = {},
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var accessGranted by remember { mutableStateOf(false) }
+    var passphrase by remember { mutableStateOf("") }
+    var verifying by remember { mutableStateOf(false) }
+    var passwordIncorrect by remember { mutableStateOf(false) }
+
+    if (accessGranted) {
+        SettingsPageContent(modifier, onBackPress, navigateTo)
+    } else {
+        AlertDialog(
+            onDismissRequest = onBackPress,
+            title = { Text("验证设置密码") },
+            text = {
+                Column {
+                    Text("请输入首次打开 APP 时设置的外加密码")
+                    OutlinedTextField(
+                        value = passphrase,
+                        onValueChange = {
+                            passphrase = it
+                            passwordIncorrect = false
+                        },
+                        singleLine = true,
+                        label = { Text("外加密码") },
+                        visualTransformation = PasswordVisualTransformation(),
+                    )
+                    if (passwordIncorrect) {
+                        Text(
+                            text = "外加密码错误",
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = passphrase.isNotEmpty() && !verifying,
+                    onClick = {
+                        if (verifying) return@TextButton
+                        verifying = true
+                        scope.launch {
+                            val valid = withContext(Dispatchers.IO) {
+                                AppPassphraseStore.verify(context, passphrase)
+                            }
+                            verifying = false
+                            if (valid) {
+                                passphrase = ""
+                                accessGranted = true
+                            } else {
+                                passwordIncorrect = true
+                            }
+                        }
+                    },
+                ) {
+                    Text(if (verifying) "验证中…" else "确认")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onBackPress) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsPageContent(
+    modifier: Modifier = Modifier,
+    onBackPress: () -> Unit = {},
+    navigateTo: (param: Any) -> Unit = {},
+) {
+
     modifier: Modifier = Modifier,
     onBackPress: () -> Unit = {},
     navigateTo: (param: Any) -> Unit = {},
