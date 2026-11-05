@@ -66,9 +66,8 @@ import io.anonero.store.LogRepository
 import io.anonero.store.NodesRepository
 import io.anonero.ui.MainActivity
 import io.anonero.util.KeyStoreHelper
-import io.anonero.util.PREFS_PASSPHRASE_HASH
+import io.anonero.util.AppPassphraseStore
 import io.anonero.util.ShakeConfig
-import io.anonero.util.WALLET_PREFERENCES
 import io.anonero.util.rememberShakeController
 import io.anonero.util.shake
 import kotlinx.coroutines.Dispatchers
@@ -80,7 +79,6 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
-import org.koin.core.qualifier.named
 import timber.log.Timber
 import androidx.core.content.edit
 import io.anonero.R
@@ -162,10 +160,10 @@ class SecureWipeViewModel(
                         _wipeProgress.postValue(.86f)
                         delay(1_200)
 
-                        check(recoveryPrefs.edit()
-                            .remove(AnonConfig.PREF_WALLET_WIPE_PENDING)
-                            .remove(AnonConfig.PREF_WALLET_WIPE_REQUESTED)
-                            .commit()) { "Unable to finalize secure-delete state" }
+                        KeyStoreHelper.clearAllStoredPasswords(activity.applicationContext)
+                        check(recoveryPrefs.edit().clear().commit()) {
+                            "Unable to clear app-level wallet metadata"
+                        }
 
                         anonWalletHandler.releaseSecureWipePriority()
                         _wipeProgress.postValue(1f)
@@ -192,7 +190,7 @@ class SecureWipeViewModel(
         }
     }
 
-    fun wipe(passPhrase: String, activity: Activity): Job {
+    fun wipe(activity: Activity): Job {
         wipeTaskStarted.set(true)
         anonWalletHandler.markSecureWipeRequestStartedInProcess()
         anonWalletHandler.markSecureWipeCleanupStarted()
@@ -218,7 +216,7 @@ class SecureWipeViewModel(
                             _wipeProgressMessage.postValue("正在安全清除钱包")
                             // If close succeeded but file removal failed, the handler can
                             // resume cleanup when no native wallet handle remains.
-                            anonWalletHandler.wipe(passPhrase)
+                            anonWalletHandler.wipe()
                             nativeWalletDeletionCompleted = true
                             delay(800)
                             _wipeProgress.postValue(.48f)
@@ -244,10 +242,10 @@ class SecureWipeViewModel(
                         _wipeProgress.postValue(.86f)
                         delay(1_200)
 
-                        check(recoveryPrefs.edit()
-                            .remove(AnonConfig.PREF_WALLET_WIPE_PENDING)
-                            .remove(AnonConfig.PREF_WALLET_WIPE_REQUESTED)
-                            .commit()) { "Unable to finalize secure-delete state" }
+                        KeyStoreHelper.clearAllStoredPasswords(activity.applicationContext)
+                        check(recoveryPrefs.edit().clear().commit()) {
+                            "Unable to clear app-level wallet metadata"
+                        }
 
                         anonWalletHandler.releaseSecureWipePriority()
                         _wipeProgress.postValue(1f)
@@ -291,7 +289,6 @@ fun SecureWipe(
     goToHome: () -> Unit = {},
 ) {
 
-    val prefs = koinInject<SharedPreferences>(named(WALLET_PREFERENCES))
     val anonWalletHandler = koinInject<AnonWalletHandler>()
     val secureWipeViewModel = koinViewModel<SecureWipeViewModel>()
     val focusRequester = remember { FocusRequester() }
@@ -403,9 +400,10 @@ fun SecureWipe(
         wipeSubmitting = true
         error = null
         scope.launch(Dispatchers.IO) {
-            val hash = prefs.getString(PREFS_PASSPHRASE_HASH, "")
-            val hashedPass = KeyStoreHelper.getCrazyPass(AnonConfig.context, passPhrase)
-            if (hash != hashedPass) {
+            val currentActivity = activity
+            val validPassphrase = currentActivity != null &&
+                AppPassphraseStore.verify(currentActivity, passPhrase)
+            if (!validPassphrase) {
                 withContext(Dispatchers.Main) {
                     wipeSubmitting = false
                     requestClearScreen(false)
@@ -423,7 +421,6 @@ fun SecureWipe(
             // secure deletion on reading/exporting the wallet seed; it is not needed to erase
             // the wallet once the user has verified the deletion password.
 
-            val currentActivity = activity
             if (currentActivity == null) {
                 withContext(Dispatchers.Main) {
                     wipeSubmitting = false
@@ -482,13 +479,13 @@ fun SecureWipe(
                                 anonWalletHandler.scope.launch {
                                     delay(1_000)
                                     monitorWipeJob?.invoke(
-                                        secureWipeViewModel.wipe(passPhrase, currentActivity)
+                                        secureWipeViewModel.wipe(currentActivity)
                                     )
                                 }
                             }
                         }
                     }
-                    monitorWipeJob?.invoke(secureWipeViewModel.wipe(passPhrase, currentActivity))
+                    monitorWipeJob?.invoke(secureWipeViewModel.wipe(currentActivity))
                     taskStarted = true
                 } catch (e: Exception) {
                     Timber.tag(TAG).e(e, "Unable to start secure deletion; retrying")
