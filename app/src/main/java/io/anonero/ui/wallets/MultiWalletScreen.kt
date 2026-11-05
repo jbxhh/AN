@@ -39,18 +39,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -96,19 +96,9 @@ fun MultiWalletScreen(
     var editFieldHadFocus by remember { mutableStateOf(false) }
     val editFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
-    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val focusManager = LocalFocusManager.current
     var screenCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var editingFieldBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
-
-    fun finishEditing() {
-        val walletFile = walletToRename ?: return
-        editFieldHadFocus = false
-        saveWalletName(walletFile)
-        walletToRename = null
-        keyboardController?.hide()
-        focusManager.clearFocus(force = true)
-        editingFieldBounds = null
-    }
 
     fun saveWalletName(walletFile: File) {
         val customName = editedName.trim()
@@ -119,6 +109,16 @@ fun MultiWalletScreen(
                 putString(walletDisplayNamePreferenceKey(walletFile), customName)
             }
         }
+    }
+
+    fun finishEditing() {
+        val walletFile = walletToRename ?: return
+        editFieldHadFocus = false
+        saveWalletName(walletFile)
+        walletToRename = null
+        keyboardController?.hide()
+        focusManager.clearFocus(force = true)
+        editingFieldBounds = null
     }
 
     DisposableEffect(lifecycleOwner, context) {
