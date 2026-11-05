@@ -1,6 +1,8 @@
 package io.anonero.ui.onboard.graph
 
 import android.content.Context
+import android.content.SharedPreferences
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
@@ -29,7 +31,10 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.toRoute
 import io.anonero.AnonConfig
 import io.anonero.R
+import io.anonero.model.WalletManager
 import io.anonero.model.node.NodeFields
+import io.anonero.services.AnonWalletHandler
+import io.anonero.services.WalletReplacement
 import io.anonero.services.WalletState
 import io.anonero.ui.MainActivity
 import io.anonero.ui.home.graph.routes.Home
@@ -48,12 +53,19 @@ import io.anonero.ui.onboard.SetupPassphrase
 import io.anonero.ui.onboard.restore.RestorePreview
 import io.anonero.ui.onboard.viewonly.RestoreFromKeys
 import io.anonero.ui.viewmodels.AppViewModel
+import io.anonero.util.AppPinStore
+import io.anonero.util.KeyStoreHelper
+import io.anonero.util.PREFS_PINLESS_WALLET
+import io.anonero.util.WALLET_PREFERENCES
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import org.koin.compose.koinInject
+import org.koin.core.qualifier.named
+import java.io.File
+import timber.log.Timber
 
 
 @Serializable
@@ -100,6 +112,176 @@ private fun startConfiguredNodeService(context: Context, appViewModel: AppViewMo
         .getString(NodeFields.RPC_HOST.value, "")
     if (!host.isNullOrBlank()) {
         appViewModel.startService()
+    }
+}
+
+/**
+ * The restore UI and restoreFromSeed implementation are shared with first-run
+ * onboarding. This wrapper only reserves a new wallet file and safely replaces
+ * the currently open native handle before invoking that same restore operation.
+ */
+private suspend fun restoreImportedWallet(
+    context: Context,
+    activity: MainActivity?,
+    onboardViewModel: OnboardViewModel,
+    walletHandler: AnonWalletHandler,
+    walletState: WalletState,
+    walletPreferences: SharedPreferences,
+) {
+    val appContext = context.applicationContext
+    val previousWalletName = AnonConfig.getActiveWalletName(appContext)
+    val managedWalletPin = WalletManager.instance?.getManagedWalletPassword().orEmpty()
+    val globalPin = AppPinStore.get(appContext) ?: managedWalletPin.takeIf {
+        it.isNotEmpty() && !walletPreferences.getBoolean(
+            AnonConfig.walletPreferenceKey(appContext, PREFS_PINLESS_WALLET),
+            false
+        )
+    }.orEmpty()
+    check(globalPin.isNotBlank()) { "无法读取首次启动时设置的全局 PIN，无法导入钱包" }
+    AppPinStore.rememberIfMissing(appContext, globalPin)
+
+    check(walletHandler.tryBeginWalletTransition()) {
+        "钱包正在执行其他操作，请稍后重试导入"
+    }
+
+    var previousReplacement: WalletReplacement? = null
+    var createdWalletFile: File? = null
+    var previousWalletDetached = false
+    var transitionReleased = false
+
+    try {
+        walletState.preparePendingWalletHome()
+        activity?.stopNotificationService()
+
+        withContext(Dispatchers.IO) {
+            previousReplacement = walletHandler.prepareWalletReplacement(managedWalletPin)
+            walletHandler.detachWalletForReplacement(previousReplacement!!)
+            previousWalletDetached = true
+
+            createdWalletFile = if (AnonConfig.getWalletFiles(appContext).isEmpty()) {
+                AnonConfig.setActiveWallet(appContext, "anon")
+                AnonConfig.getDefaultWalletFile(appContext)
+            } else {
+                AnonConfig.createNewWalletFile(appContext)
+            }
+
+            // This is the same restore operation used by first-run recovery.
+            // Only the app PIN prompt is bypassed; the primary app PIN is reused.
+            onboardViewModel.restoreFromSeed(
+                globalPin,
+                rememberPassphraseGlobally = false
+            )
+
+            val restoredWallet = WalletManager.instance?.wallet
+                ?: error("恢复完成后没有可用的钱包句柄")
+            check(restoredWallet.name == createdWalletFile?.name) {
+                "恢复的钱包与新建的钱包文件不匹配"
+            }
+            walletState.prepareImmediateWalletHome(restoredWallet)
+            runCatching { walletState.publishWalletSnapshot(restoredWallet) }
+                .onFailure {
+                    Timber.tag("OnboardingGraph").w(it, "Unable to publish imported wallet snapshot")
+                }
+            runCatching { walletState.ensureNextReceiveAddress() }
+                .onFailure {
+                    Timber.tag("OnboardingGraph").w(it, "Unable to prepare imported wallet receive address")
+                }
+        }
+
+        walletHandler.endWalletTransition()
+        transitionReleased = true
+
+        walletHandler.scope.launch(Dispatchers.IO) {
+            runCatching { walletHandler.finishPendingWalletReplacement() }
+                .onFailure {
+                    Timber.tag("OnboardingGraph").w(it, "Unable to close previous wallet after import")
+                }
+
+            val configuredNode = appContext.getSharedPreferences(
+                AnonConfig.PREFS,
+                Context.MODE_PRIVATE
+            ).getString(NodeFields.RPC_HOST.value, "")
+            if (!configuredNode.isNullOrBlank()) {
+                runCatching { walletHandler.startService() }
+                    .onFailure {
+                        Timber.tag("OnboardingGraph").w(it, "Unable to start service for imported wallet")
+                    }
+            }
+            withContext(Dispatchers.Main) {
+                runCatching { activity?.startNotificationService() }
+                    .onFailure {
+                        Timber.tag("OnboardingGraph").w(it, "Unable to start notifications for imported wallet")
+                    }
+            }
+        }
+    } catch (error: Exception) {
+        withContext(Dispatchers.IO) {
+            if (previousWalletDetached) {
+                if (previousReplacement != null) {
+                    runCatching {
+                        walletHandler.restoreWalletAfterFailedCreation(previousReplacement!!)
+                    }.onFailure {
+                        Timber.tag("OnboardingGraph").e(it, "Unable to restore previous wallet after import failure")
+                    }
+                } else {
+                    WalletManager.instance?.wallet?.let { failedWallet ->
+                        runCatching { WalletManager.instance?.close(failedWallet) }
+                            .onFailure {
+                                Timber.tag("OnboardingGraph").w(it, "Unable to close incomplete imported wallet")
+                            }
+                    }
+                }
+
+                createdWalletFile?.let { walletFile ->
+                    runCatching { walletFile.delete() }
+                    runCatching { File("${walletFile.path}.keys").delete() }
+                    val editor = walletPreferences.edit()
+                    walletPreferences.all.keys
+                        .filter { it.startsWith("${walletFile.name}::") }
+                        .forEach(editor::remove)
+                    editor.commit()
+                    KeyStoreHelper.removeWalletUserPass(appContext, walletFile.name)
+                }
+                AnonConfig.setActiveWallet(appContext, previousWalletName)
+            }
+
+            WalletManager.instance?.wallet?.let { restoredWallet ->
+                walletState.prepareImmediateWalletHome(restoredWallet)
+                runCatching { walletState.publishWalletSnapshot(restoredWallet) }
+                    .onFailure {
+                        Timber.tag("OnboardingGraph").w(it, "Unable to republish previous wallet after import failure")
+                    }
+            }
+        }
+
+        walletHandler.endWalletTransition()
+        transitionReleased = true
+
+        if (previousWalletDetached) {
+            walletHandler.scope.launch(Dispatchers.IO) {
+                val configuredNode = appContext.getSharedPreferences(
+                    AnonConfig.PREFS,
+                    Context.MODE_PRIVATE
+                ).getString(NodeFields.RPC_HOST.value, "")
+                if (!configuredNode.isNullOrBlank()) {
+                    runCatching { walletHandler.startService() }
+                        .onFailure {
+                            Timber.tag("OnboardingGraph").w(it, "Unable to restart previous wallet service")
+                        }
+                }
+                withContext(Dispatchers.Main) {
+                    runCatching { activity?.startNotificationService() }
+                        .onFailure {
+                            Timber.tag("OnboardingGraph").w(it, "Unable to restart previous wallet notifications")
+                        }
+                }
+            }
+        }
+        throw error
+    } finally {
+        if (!transitionReleased) {
+            walletHandler.endWalletTransition()
+        }
     }
 }
 
@@ -169,15 +351,21 @@ fun NavGraphBuilder.onboardingGraph(
             )
         }
         composable<OnboardRestoreScreen> {
+            BackHandler(enabled = onboardViewModel.isWalletImport()) {
+                onboardViewModel.cancelWalletImport()
+                navController.navigateUp()
+            }
             RestoreWallet(
                 onboardViewModel = onboardViewModel,
                 onBackPressed = {
+                    if (onboardViewModel.isWalletImport()) {
+                        onboardViewModel.cancelWalletImport()
+                    }
                     navController.navigateUp()
                 },
                 oNextPressed = {
                     onboardViewModel.setRestorePayload(it)
-                    navController
-                        .navigate(OnboardNodeSetupScreen)
+                    navController.navigate(OnboardNodeSetupScreen)
                 }
             )
         }
@@ -227,6 +415,8 @@ fun NavGraphBuilder.onboardingGraph(
             var showErrorMessage by remember { mutableStateOf<String?>(null) }
             val context = LocalContext.current
             val activity = LocalActivity.current
+            val walletHandler = koinInject<AnonWalletHandler>()
+            val walletPreferences = koinInject<SharedPreferences>(named(WALLET_PREFERENCES))
             OnboardErrorDialog(
                 showErrorMessage = showErrorMessage,
                 isRestoreMode = onboardViewModel.getMode() == Mode.RESTORE,
@@ -240,56 +430,88 @@ fun NavGraphBuilder.onboardingGraph(
                     navController.navigate(OnboardLogsScreen)
                 }
             )
-            PinSetup(
-                onNext = { pin ->
-                    var loadingMessage = context.getString(R.string.creating_wallet)
-                    if (onboardViewModel.getMode() == Mode.RESTORE) {
-                        loadingMessage = context.getString(R.string.restoring_wallet)
-                    }
-                    navController.navigate(OnboardLoading(loadingMessage))
+            if (onboardViewModel.isWalletImport()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(
+                        OnboardLoading(context.getString(R.string.restoring_wallet))
+                    )
                     onboardViewModel.viewModelScope.launch {
-                        if (AnonConfig.viewOnly) {
-                            onboardViewModel.createViewOnly(pin)
-                        } else {
-                            if (onboardViewModel.getMode() == Mode.RESTORE) {
-                                withContext(Dispatchers.IO) {
-                                    onboardViewModel.restoreFromSeed(pin)
-                                }
-                            } else {
-                                onboardViewModel.create(pin)
-                            }
-                        }
-                        // Seed restore/create paths reach Home without reopening the wallet.
-                        // Publish local balance and primary address before Home's first frame;
-                        // node/Tor initialization continues asynchronously afterward.
-                        withContext(Dispatchers.IO) {
-                            walletState.publishWalletSnapshot()
-                        }
+                        restoreImportedWallet(
+                            context = context,
+                            activity = activity as? MainActivity,
+                            onboardViewModel = onboardViewModel,
+                            walletHandler = walletHandler,
+                            walletState = walletState,
+                            walletPreferences = walletPreferences,
+                        )
                         delay(600)
-                    }.invokeOnCompletion {
-                        if (it == null) {
-                            if (AnonConfig.viewOnly) {
-                                startConfiguredNodeService(context, appViewModel)
-                                navController.navigate(HomeScreenRoute()) {
-                                    popUpTo(LandingScreenRoute)
+                    }.invokeOnCompletion { error ->
+                        if (error == null) {
+                            onboardViewModel.finishWalletImport()
+                            navController.navigate(HomeScreenRoute(pinVerified = true)) {
+                                popUpTo(Home::class.qualifiedName!!) {
+                                    inclusive = false
                                 }
+                                launchSingleTop = true
+                            }
+                        } else {
+                            navController.popBackStack()
+                            showErrorMessage = error.message ?: "Unknown error"
+                        }
+                    }
+                }
+            } else {
+                PinSetup(
+                    onNext = { pin ->
+                        var loadingMessage = context.getString(R.string.creating_wallet)
+                        if (onboardViewModel.getMode() == Mode.RESTORE) {
+                            loadingMessage = context.getString(R.string.restoring_wallet)
+                        }
+                        navController.navigate(OnboardLoading(loadingMessage))
+                        onboardViewModel.viewModelScope.launch {
+                            if (AnonConfig.viewOnly) {
+                                onboardViewModel.createViewOnly(pin)
                             } else {
                                 if (onboardViewModel.getMode() == Mode.RESTORE) {
+                                    withContext(Dispatchers.IO) {
+                                        onboardViewModel.restoreFromSeed(pin)
+                                    }
+                                } else {
+                                    onboardViewModel.create(pin)
+                                }
+                            }
+                            // Seed restore/create paths reach Home without reopening the wallet.
+                            // Publish local balance and primary address before Home's first frame;
+                            // node/Tor initialization continues asynchronously afterward.
+                            withContext(Dispatchers.IO) {
+                                walletState.publishWalletSnapshot()
+                            }
+                            delay(600)
+                        }.invokeOnCompletion {
+                            if (it == null) {
+                                if (AnonConfig.viewOnly) {
                                     startConfiguredNodeService(context, appViewModel)
                                     navController.navigate(HomeScreenRoute()) {
                                         popUpTo(LandingScreenRoute)
                                     }
                                 } else {
-                                    navController.navigate(OnboardSeedScreen(onboardViewModel.getSeed()))
+                                    if (onboardViewModel.getMode() == Mode.RESTORE) {
+                                        startConfiguredNodeService(context, appViewModel)
+                                        navController.navigate(HomeScreenRoute()) {
+                                            popUpTo(LandingScreenRoute)
+                                        }
+                                    } else {
+                                        navController.navigate(OnboardSeedScreen(onboardViewModel.getSeed()))
+                                    }
                                 }
+                            } else {
+                                navController.popBackStack()
+                                showErrorMessage = it.message ?: "Unknown error";
                             }
-                        } else {
-                            navController.popBackStack()
-                            showErrorMessage = it.message ?: "Unknown error";
                         }
                     }
-                }
-            )
+                )
+            }
         }
         composable<OnboardMultiWalletCreatePinScreen> {
             val walletState = koinInject<WalletState>()
