@@ -72,6 +72,8 @@
      <string name="outputs">OUTPUTS</string>
      <string name="set_transaction_description">Set transaction description</string>
      <string name="save">Save</string>
+     <string name="wallet_passphrase_saved">Wallet passphrase saved</string>
+     <string name="wallet_passphrase_save_failed">Unable to save wallet passphrase</string>
      <string name="dismiss">Dismiss</string>
      <string name="transaction_id">TRANSACTION ID</string>
      <string name="transaction_fee">TRANSACTION FEE</string>
