@@ -74,6 +74,8 @@
     <string name="outputs">输出</string>
     <string name="set_transaction_description">交易备注</string>
     <string name="save">保存</string>
+    <string name="wallet_passphrase_saved">密码短语已保存</string>
+    <string name="wallet_passphrase_save_failed">密码短语保存失败</string>
     <string name="dismiss">取消</string>
     <string name="transaction_id">交易哈希</string>
     <string name="transaction_fee">矿工费</string>
