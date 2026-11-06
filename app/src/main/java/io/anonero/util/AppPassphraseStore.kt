@@ -40,28 +40,39 @@ object AppPassphraseStore {
         val candidateHash = runCatching {
             KeyStoreHelper.getCrazyPass(appContext, passphrase)
         }.getOrNull() ?: return false
-        val walletPreferences = appContext.getSharedPreferences(
-            WALLET_PREFERENCES,
-            Context.MODE_PRIVATE
+        // Wallet credential writes use the injected wallet preferences, whose
+        // provider currently resolves to AnonConfig.PREFS ("anonPref"). Keep the
+        // historical "walletPref" store in the read set for older installations.
+        val preferenceStores = listOf(
+            appContext.getSharedPreferences(AnonConfig.PREFS, Context.MODE_PRIVATE),
+            appContext.getSharedPreferences(WALLET_PREFERENCES, Context.MODE_PRIVATE)
         )
         // Secure deletion applies to the complete wallet list, so any passphrase
         // belonging to any wallet in that list may authorize the wipe. Do not scope
         // this check to the currently active wallet.
         val walletFiles = AnonConfig.getWalletFiles(appContext)
-        val walletHashes = walletFiles.map { walletFile ->
-            walletPreferences.getString(
-                "${walletFile.name}::$PREFS_PASSPHRASE_HASH",
-                null
-            )
+        val walletHashes = walletFiles.flatMap { walletFile ->
+            preferenceStores.map { walletPreferences ->
+                walletPreferences.getString(
+                    "${walletFile.name}::$PREFS_PASSPHRASE_HASH",
+                    null
+                )
+            }
         }
         if (matchesAnyWalletPassphraseHash(walletHashes, candidateHash)) return true
 
         // Older single-wallet installations may still have the original unscoped
         // hash. It remains associated with the primary "anon" wallet even when a
-        // secondary wallet is currently selected.
+        // secondary wallet is currently selected. Check both the current and legacy
+        // preference stores so existing installations remain unlockable.
         if (walletFiles.none { it.name == "anon" }) return false
-        val legacyWalletHash = walletPreferences.getString(PREFS_PASSPHRASE_HASH, null)
-        if (!matchesLegacyWalletPassphraseHash(legacyWalletHash, candidateHash)) return false
+        val legacyWalletHashes = preferenceStores.map {
+            it.getString(PREFS_PASSPHRASE_HASH, null)
+        }
+        if (!legacyWalletHashes.any {
+                matchesLegacyWalletPassphraseHash(it, candidateHash)
+            }
+        ) return false
 
         rememberIfMissing(appContext, passphrase)
         return true
