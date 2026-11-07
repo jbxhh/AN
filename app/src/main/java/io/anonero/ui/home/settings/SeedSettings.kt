@@ -5,7 +5,6 @@ import io.anonero.ui.theme.AnonOutlineButton
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.SharedPreferences
 import android.widget.Toast
 import android.util.Log
 import android.view.HapticFeedbackConstants
@@ -74,26 +73,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
-import io.anonero.AnonConfig
 import io.anonero.R
 import io.anonero.model.NeroKeyPayload
 import io.anonero.model.WalletManager
 import io.anonero.ui.components.qr.QrCodeColors
 import io.anonero.ui.components.qr.QrCodeView
-import io.anonero.util.KeyStoreHelper
-import io.anonero.util.PREFS_PASSPHRASE_HASH
 import io.anonero.util.ShakeConfig
-import io.anonero.util.WALLET_PREFERENCES
 import io.anonero.util.rememberShakeController
 import io.anonero.util.shake
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import org.koin.compose.koinInject
-import org.koin.core.qualifier.named
 import kotlin.random.Random
 
 
@@ -116,8 +108,6 @@ fun generatePlaceHolderSeed(): List<String> {
 @Composable
 fun SeedSettingsPage(onBackPress: () -> Unit = {}) {
 
-    val prefs = koinInject<SharedPreferences>(named(WALLET_PREFERENCES))
-
     var seedWords by remember {
         mutableStateOf(
             generatePlaceHolderSeed()
@@ -131,8 +121,6 @@ fun SeedSettingsPage(onBackPress: () -> Unit = {}) {
     val focusRequester = remember { FocusRequester() }
     var passPhraseDialog by remember { mutableStateOf(true) }
     var passPhrase by remember { mutableStateOf("") }
-    var seedPassphraseInput by remember { mutableStateOf("") }
-    var isSavingSeedPassphrase by remember { mutableStateOf(false) }
     var neroPayload by remember { mutableStateOf("") }
     val errorShake = rememberShakeController()
     val scope = rememberCoroutineScope()
@@ -358,57 +346,6 @@ fun SeedSettingsPage(onBackPress: () -> Unit = {}) {
 
     val wallet = WalletManager.instance?.wallet
 
-    fun saveWalletSeedPassphrase() {
-        val targetWallet = wallet ?: return
-        val candidate = seedPassphraseInput
-        if (candidate.length < 4 || isSavingSeedPassphrase) return
-
-        isSavingSeedPassphrase = true
-        val walletPassphraseKey = AnonConfig.walletPreferenceKey(
-            context,
-            PREFS_PASSPHRASE_HASH
-        )
-        scope.launch(Dispatchers.IO) {
-            try {
-                val mnemonic = targetWallet.getSeed(candidate)
-                    ?.takeIf { it.isNotBlank() }
-                    ?: throw IllegalStateException("Wallet seed is unavailable")
-                val legacyMnemonic = runCatching {
-                    targetWallet.getLegacySeed(candidate)
-                }.getOrNull()
-                val passphraseHash = KeyStoreHelper.getCrazyPass(context, candidate)
-                check(
-                    prefs.edit()
-                        .putString(walletPassphraseKey, passphraseHash)
-                        .commit()
-                ) { "Unable to save wallet passphrase" }
-
-                withContext(Dispatchers.Main) {
-                    passPhrase = candidate
-                    seedWords = mnemonic.trim().split(Regex("\\s+"))
-                    legacyMnemonic?.takeIf { it.isNotBlank() }?.let {
-                        legacySeed = it.trim().split(Regex("\\s+"))
-                    }
-                    isSavingSeedPassphrase = false
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.wallet_passphrase_saved),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    isSavingSeedPassphrase = false
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.wallet_passphrase_save_failed),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            }
-        }
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -516,46 +453,6 @@ fun SeedSettingsPage(onBackPress: () -> Unit = {}) {
                     )
                 }
 
-                item {
-                    ListItem(
-                        headlineContent = {
-                            Text(
-                                text = stringResource(id = R.string.passphrase),
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(start = 4.dp)
-                            )
-                        },
-                        supportingContent = {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                OutlinedTextField(
-                                    value = seedPassphraseInput,
-                                    onValueChange = { seedPassphraseInput = it },
-                                    modifier = Modifier.weight(1f),
-                                    shape = MaterialTheme.shapes.small,
-                                    singleLine = true,
-                                    visualTransformation = PasswordVisualTransformation(),
-                                    keyboardOptions = KeyboardOptions(
-                                        imeAction = ImeAction.Done
-                                    ),
-                                    keyboardActions = KeyboardActions(
-                                        onDone = { saveWalletSeedPassphrase() }
-                                    )
-                                )
-                                Button(
-                                    onClick = { saveWalletSeedPassphrase() },
-                                    enabled = seedPassphraseInput.length >= 4 &&
-                                        !isSavingSeedPassphrase
-                                ) {
-                                    Text(stringResource(id = R.string.save))
-                                }
-                            }
-                        }
-                    )
-                }
                 item {
                     HorizontalDivider(
                         thickness = 1.dp
